@@ -10,7 +10,7 @@
 //!   sources) with **file-based** ignores that carry written justifications.
 //!
 //! `deny.toml` is the single source of truth for advisory ignores;
-//! `.cargo/audit.toml` is derived from it via [`Commands::Sync`]. Release
+//! `.cargo/audit.toml` is derived from it via `jci-audit sync`. Release
 //! validation is **reproducible**: it runs both tools offline against a pinned
 //! advisory-db commit, then a live audit as a non-blocking warning.
 //!
