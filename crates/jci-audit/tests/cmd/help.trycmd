@@ -1,0 +1,22 @@
+```
+$ jci-audit --help
+Orchestrate cargo-audit and cargo-deny per pipeline context. `check` gates PRs on both tools; `release` validates reproducibly against a pinned advisory-db; `sync` derives .cargo/audit.toml from the canonical deny.toml; `prune` detects stale advisory ignores; `init` scaffolds a standard deny.toml.
+
+Usage: jci-audit <COMMAND>
+
+Commands:
+  check    PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan; both blocking. Aggregates exit codes and surfaces stderr
+  release  Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`
+  sync     Derive `.cargo/audit.toml` from the canonical `deny.toml` `[advisories].ignore`. Makes deny.toml the single source of truth
+  prune    Stale-ignore detector: run audit/deny against the naked advisory-db and report ignores that no longer fire
+  init     Scaffold a standard `deny.toml` template and a derived `.cargo/audit.toml`
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+```

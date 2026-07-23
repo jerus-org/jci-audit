@@ -1,0 +1,40 @@
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Vulnerabilities are always denied by cargo-deny. unmaintained/unsound are
+# scope selectors ("all" | "workspace" | "transitive" | "none"); "all" checks
+# every crate in the graph and reports them as warnings.
+unmaintained = "all"
+yanked = "warn"
+# Canonical source of truth for advisory ignores. `.cargo/audit.toml` is
+# derived from this list via `jci-audit sync`. Each entry needs a written
+# justification. Empty today — jci-audit's dependency graph carries no
+# outstanding advisories.
+ignore = []
+
+[licenses]
+# All licenses are denied unless explicitly allowed. Permissive licenses are
+# allowed globally; weak-copyleft licenses are NOT — they are scoped to the
+# specific transitive crates that carry them via [[licenses.exceptions]], so a
+# new copyleft dependency fails the check until consciously reviewed.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

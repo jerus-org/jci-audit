@@ -1,0 +1,52 @@
+[package]
+name = "jci-audit"
+version = "0.1.0"
+description = "Context-aware Rust security gate orchestrating cargo-audit and cargo-deny with reproducible release-time validation"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+# cargo-about tooling config: needed to regenerate THIRD-PARTY-LICENSES.md but
+# not part of the distributed crate.
+exclude = ["about.toml", "about.hbs"]
+
+# jci-audit orchestrates the `cargo audit` and `cargo deny` *binaries* as
+# subprocesses — it does not link them as library crates. They are runtime
+# prerequisites (shipped by the `jerusdp/ci-rust:audit` executor image), and
+# the CLI's preflight check reports their absence rather than failing opaquely.
+
+[dependencies]
+# CLI
+clap.workspace = true
+
+# Error Handling
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-log.workspace = true
+
+# NOTE: config, toml_edit, serde, serde_json, thiserror are declared in the
+# workspace dependency catalog and switched on in later phases (sync/release);
+# the P0 skeleton keeps its graph minimal.
+
+[dev-dependencies]
+trycmd.workspace = true
+
+[[bin]]
+name = "jci-audit"
+path = "src/main.rs"
+
+[lib]
+name = "jci_audit"
+path = "src/lib.rs"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/jci-audit-v{ version }/jci-audit-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "{ bin }{ binary-ext }"
