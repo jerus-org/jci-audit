@@ -18,7 +18,9 @@
 //! does not reimplement them. See [`preflight`] for the presence check every
 //! shelling subcommand runs first.
 
+pub mod init;
 pub mod preflight;
+pub mod sync;
 
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
@@ -117,8 +119,23 @@ fn run_release(version: &str, advisory_db: Option<&std::path::Path>) -> Result<(
 }
 
 fn run_sync(check: bool) -> Result<()> {
-    tracing::info!(check, "sync");
-    bail!("`jci-audit sync` is not yet implemented (P1)")
+    let cwd = std::env::current_dir()?;
+    tracing::info!(check, dir = %cwd.display(), "sync");
+    match sync::sync_at(&cwd, check)? {
+        sync::SyncOutcome::InSync => {
+            println!(".cargo/audit.toml is in sync with deny.toml");
+            Ok(())
+        }
+        sync::SyncOutcome::Wrote(n) => {
+            println!("wrote .cargo/audit.toml ({n} ignore(s)) derived from deny.toml");
+            Ok(())
+        }
+        sync::SyncOutcome::Drift => {
+            bail!(
+                ".cargo/audit.toml is out of sync with deny.toml — run `jci-audit sync` to regenerate"
+            )
+        }
+    }
 }
 
 fn run_prune(check: bool) -> Result<()> {
@@ -128,8 +145,11 @@ fn run_prune(check: bool) -> Result<()> {
 }
 
 fn run_init(force: bool) -> Result<()> {
-    tracing::info!(force, "init");
-    bail!("`jci-audit init` is not yet implemented (P1)")
+    let cwd = std::env::current_dir()?;
+    tracing::info!(force, dir = %cwd.display(), "init");
+    init::init_at(&cwd, force)?;
+    println!("wrote deny.toml and derived .cargo/audit.toml");
+    Ok(())
 }
 
 #[cfg(test)]
