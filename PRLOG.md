@@ -12,6 +12,11 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - implement sync and init commands (P1)(pr [#3])
 - implement check command (P1)(pr [#4])
 
+### Changed
+
+- docs-add missing PR #1 to PRLOG(pr [#5])
+
 [#1]: https://github.com/jerus-org/jci-audit/pull/1
 [#3]: https://github.com/jerus-org/jci-audit/pull/3
 [#4]: https://github.com/jerus-org/jci-audit/pull/4
+[#5]: https://github.com/jerus-org/jci-audit/pull/5
