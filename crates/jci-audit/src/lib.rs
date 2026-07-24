@@ -18,6 +18,7 @@
 //! does not reimplement them. See [`preflight`] for the presence check every
 //! shelling subcommand runs first.
 
+pub mod check;
 pub mod init;
 pub mod preflight;
 pub mod sync;
@@ -109,7 +110,13 @@ impl Cli {
 fn run_check(manifest_path: &std::path::Path) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     tracing::info!(?manifest_path, "check");
-    bail!("`jci-audit check` is not yet implemented (P1)")
+    let report = check::check_with(&check::SystemRunner, manifest_path)?;
+    if report.success() {
+        println!("security check passed (cargo deny + cargo audit)");
+        Ok(())
+    } else {
+        bail!("security check failed: {}", report.failures().join(", "))
+    }
 }
 
 fn run_release(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()> {
