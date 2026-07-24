@@ -1,0 +1,47 @@
+version: 2.1
+
+parameters:
+  jci_audit_version:
+    type: string
+    default: ""
+    description: "Override jci-audit crate version (empty = nextsv auto-detect)"
+  workspace_version:
+    type: string
+    default: ""
+    description: "Override workspace v* version (empty = nextsv auto-detect)"
+
+orbs:
+  toolkit: jerus-org/circleci-toolkit@6.6.2
+
+workflows:
+  release:
+    jobs:
+      - toolkit/calculate_versions:
+          name: calculate-versions
+          verify_tools: true
+          crates: "jci-audit:jci-audit-v"
+          crate_version_overrides: "jci-audit:<< pipeline.parameters.jci_audit_version >>"
+          workspace_version_override: << pipeline.parameters.workspace_version >>
+
+      - approve-release:
+          type: approval
+          requires: [calculate-versions]
+
+      - toolkit/release_crate:
+          name: release-jci-audit
+          requires: [approve-release]
+          package: jci-audit
+          crate_tag_prefix: jci-audit-v
+          build_binary: true
+          binary_name: jci-audit
+          context:
+            - release
+            - bot-check
+            - pcu-app
+
+      - toolkit/release_prlog:
+          requires: [release-jci-audit]
+          context:
+            - release
+            - bot-check
+            - pcu-app

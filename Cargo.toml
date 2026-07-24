@@ -1,0 +1,37 @@
+[workspace]
+members = ["crates/jci-audit"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+authors = ["Jeremiah Russell <jrussell@jerus.ie>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jerus-org/jci-audit"
+rust-version = "1.85"
+keywords = ["security", "audit", "cargo-deny", "circleci", "orb"]
+categories = ["development-tools", "command-line-utilities"]
+
+[workspace.dependencies]
+# CLI
+clap = { version = "4.5.48", features = ["derive"] }
+
+# Error Handling
+anyhow = "1.0.104"
+thiserror = "2.0.19"
+
+# Logging
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-log = "0.2.0"
+
+# Config (jci-audit.toml) and TOML editing (deny.toml <-> audit.toml sync)
+config = { version = "0.15.25", default-features = false, features = ["toml"] }
+toml_edit = "0.24.0"
+
+# Serialization (release record JSON, deny.toml parsing)
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+
+# Testing
+tempfile = "3.27.0"
+trycmd = "1.2.0"

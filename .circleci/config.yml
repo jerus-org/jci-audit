@@ -1,0 +1,77 @@
+version: 2.1
+
+parameters:
+  min_rust_version:
+    type: string
+    default: "1.85"
+
+orbs:
+  toolkit: jerus-org/circleci-toolkit@6.6.2
+
+workflows:
+  validation:
+    jobs:
+      - toolkit/verify_commit_signatures:
+          name: verify_commit_signatures_trusted
+          context: bot-check
+          post_comment: true
+          update_pcu: false
+          filters:
+            branches:
+              ignore:
+                - main
+                - /pull\/[0-9]+/
+
+      - toolkit/verify_commit_signatures:
+          name: verify_commit_signatures_forked
+          post_comment: false
+          update_pcu: false
+          filters:
+            branches:
+              only:
+                - /pull\/[0-9]+/
+
+      - toolkit/required_builds:
+          min_rust_version: << pipeline.parameters.min_rust_version >>
+
+      - toolkit/optional_builds:
+          filters:
+            branches:
+              ignore: main
+
+      - toolkit/test_doc_build:
+          filters:
+            branches:
+              ignore: main
+
+      - toolkit/idiomatic_rust:
+          filters:
+            branches:
+              ignore: main
+
+      - toolkit/common_tests:
+          min_rust_version: << pipeline.parameters.min_rust_version >>
+
+      - toolkit/security:
+          name: security audit only
+          sonarcloud: false
+          filters:
+            branches:
+              only:
+                - /pull\/[0-9]+/
+
+      - toolkit/security:
+          name: security with sonarcloud
+          context: SonarCloud
+          filters:
+            branches:
+              ignore:
+                - /pull\/[0-9]+/
+
+      - toolkit/code_coverage:
+          context: SonarCloud
+          filters:
+            branches:
+              ignore:
+                - /pull\/[0-9]+/
+                - main

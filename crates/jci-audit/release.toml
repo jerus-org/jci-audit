@@ -1,0 +1,8 @@
+pre-release-commit-message = "chore: Release jci-audit v{{version}}"
+tag-message = "{{tag_name}}"
+tag-name = "jci-audit-v{{version}}"
+pre-release-hook = ["./release-hook.sh"]
+# jci-audit ships as a binary (installed via cargo-binstall), not a library
+# dependency, so there is no `jci-audit = "x.y.z"` version string to rewrite in
+# the README — mirror gen-orb-mcp's binary convention with no replacements.
+pre-release-replacements = []

@@ -1,0 +1,10 @@
+sign-tag = true
+sign-commit = true
+# Release each crate individually, in a deliberately chosen dependency order,
+# rather than letting cargo-release batch all crates into one consolidated
+# commit. Keeps per-crate release commits/tags distinct and under our control
+# (learning from the pcu workspace). Applies even with a single crate today so
+# the model is consistent as the workspace grows.
+consolidate-commits = false
+allow-branch = ["main"]
+pre-release-replacements = []
