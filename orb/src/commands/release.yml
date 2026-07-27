@@ -1,0 +1,16 @@
+description: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
+parameters:
+  version:
+    type: string
+    description: The release version being validated (e.g. "1.2.0")
+  advisory_db:
+    type: string
+    description: Path to a checked-out advisory-db at the pinned commit. When omitted, the pinned commit is resolved from configuration
+    default: ''
+steps:
+- run:
+    name: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
+    command: <<include(scripts/release.sh)>>
+    environment:
+      VERSION: << parameters.version >>
+      ADVISORY_DB: << parameters.advisory_db >>

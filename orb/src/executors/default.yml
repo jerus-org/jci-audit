@@ -1,0 +1,8 @@
+description: Execution environment with jci-audit pre-installed.
+docker:
+- image: jerusdp/jci-audit:<< parameters.tag >>
+parameters:
+  tag:
+    type: string
+    description: Docker image tag.
+    default: latest
