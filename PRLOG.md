@@ -15,6 +15,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - docs-add missing PR #1 to PRLOG(pr [#5])
+- refactor-invoke tools as standalone binaries(pr [#11])
 
 ### Fixed
 
@@ -33,3 +34,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#7]: https://github.com/jerus-org/jci-audit/pull/7
 [#8]: https://github.com/jerus-org/jci-audit/pull/8
 [#10]: https://github.com/jerus-org/jci-audit/pull/10
+[#11]: https://github.com/jerus-org/jci-audit/pull/11
