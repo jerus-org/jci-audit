@@ -26,7 +26,7 @@ tracing-log = "0.2.0"
 
 # Config (jci-audit.toml) and TOML editing (deny.toml <-> audit.toml sync)
 config = { version = "0.15.25", default-features = false, features = ["toml"] }
-toml_edit = "0.24.0"
+toml_edit = "0.25.13"
 
 # Serialization (release record JSON, deny.toml parsing)
 serde = { version = "1.0.229", features = ["derive"] }
