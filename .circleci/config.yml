@@ -8,6 +8,10 @@ parameters:
 orbs:
   toolkit: jerus-org/circleci-toolkit@7.0.0
 
+  orb-tools: circleci/orb-tools@12.3.3
+  # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.3
+  # <<< gen-circleci-orb
 workflows:
   validation:
     jobs:
@@ -75,3 +79,114 @@ workflows:
               ignore:
                 - /pull\/[0-9]+/
                 - main
+      # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
+      - gen-circleci-orb/build_rust_binary:
+          name: build-binary
+          package: jci-audit
+      - gen-circleci-orb/generate:
+          name: regenerate-orb
+          binary: jci-audit
+          orb_namespace: jerus-org
+          orb_dir: orb
+          attach_workspace: true
+          check_ci_wiring: true
+          ssh_fingerprint: "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
+          persist_orb_workspace: true
+          context: [release]
+          requires: [build-binary, toolkit/common_tests]
+          filters:
+            branches:
+              ignore:
+                - main
+      - orb-tools/pack:
+          name: pack-orb
+          checkout: false
+          source_dir: orb/src
+          pre-steps:
+            - attach_workspace:
+                at: .
+          requires: [regenerate-orb]
+          filters:
+            branches:
+              ignore:
+                - main
+      - orb-tools/review:
+          name: review-orb
+          checkout: false
+          source_dir: orb/src
+          pre-steps:
+            - attach_workspace:
+                at: .
+          requires: [pack-orb]
+          filters:
+            branches:
+              ignore:
+                - main
+      # <<< gen-circleci-orb
+
+  # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
+  orb-release:
+    jobs:
+      - orb-tools/pack:
+          name: orb-release-pack
+          checkout: false
+          source_dir: orb/src
+          pre-steps:
+            - checkout
+            - run:
+                name: Inject release version into executor default tag
+                command: |
+                  VERSION=${CIRCLE_TAG#jci-audit-v}
+                  echo "Injecting version: ${VERSION}"
+                  sed -i "s/default: latest/default: ${VERSION}/" orb/src/executors/default.yml
+                  echo "Updated executor:"
+                  cat orb/src/executors/default.yml
+          filters:
+            tags:
+              only: /^jci-audit-v.*/
+            branches:
+              ignore: /.*/
+
+      - gen-circleci-orb/build_container:
+          name: orb-release-container
+          binary: jci-audit
+          docker_namespace: jerusdp
+          orb_dir: orb
+          crate_tag_prefix: jci-audit-v
+          context: [docker]
+          filters:
+            tags:
+              only: /^jci-audit-v.*/
+            branches:
+              ignore: /.*/
+
+      - gen-circleci-orb/ensure_orb_registered:
+          name: orb-release-ensure-registered-jerus-org
+          orb_name: jerus-org/jci-audit
+          context: [orb-publishing]
+          filters:
+            tags:
+              only: /^jci-audit-v.*/
+            branches:
+              ignore: /.*/
+
+      - orb-tools/publish:
+          name: publish-orb-jerus-org
+          pre-steps:
+            - run:
+                name: Normalize CIRCLE_TAG for orb version
+                command: |
+                  VERSION=${CIRCLE_TAG#jci-audit-v}
+                  echo "export CIRCLE_TAG=v${VERSION}" >> "$BASH_ENV"
+          orb_name: jerus-org/jci-audit
+          pub_type: production
+          vcs_type: github
+          enable_pr_comment: false
+          requires: [orb-release-container, orb-release-pack, orb-release-ensure-registered-jerus-org]
+          context: [orb-publishing]
+          filters:
+            tags:
+              only: /^jci-audit-v.*/
+            branches:
+              ignore: /.*/
+  # <<< gen-circleci-orb

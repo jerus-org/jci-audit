@@ -1,0 +1,12 @@
+description: 'PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan; both blocking. Aggregates exit codes and surfaces stderr'
+parameters:
+  manifest_path:
+    type: string
+    description: Path to the Cargo.toml (or its directory) to check
+    default: .
+steps:
+- run:
+    name: 'PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan; both blocking. Aggregates exit codes and surfaces stderr'
+    command: <<include(scripts/check.sh)>>
+    environment:
+      MANIFEST_PATH: << parameters.manifest_path >>

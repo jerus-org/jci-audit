@@ -1,0 +1,10 @@
+description: >
+  Example usage of the jci-audit orb.
+usage:
+  version: 2.1
+  orbs:
+    jci-audit: jerus-org/jci-audit@1.0
+  workflows:
+    use-my-orb:
+      jobs:
+        - jci-audit/check

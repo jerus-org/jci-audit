@@ -1,0 +1,16 @@
+description: 'Stale-ignore detector: run audit/deny against the naked advisory-db and report ignores that no longer fire'
+parameters:
+  check:
+    type: boolean
+    description: Fail (non-zero) when a stale ignore is found. For CI
+    default: false
+steps:
+- when:
+    condition: << parameters.check >>
+    steps:
+    - run:
+        name: Set CHECK flag
+        command: echo 'export CHECK=true' >> "$BASH_ENV"
+- run:
+    name: 'Stale-ignore detector: run audit/deny against the naked advisory-db and report ignores that no longer fire'
+    command: <<include(scripts/prune.sh)>>
