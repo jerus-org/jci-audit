@@ -16,7 +16,12 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - docs-add missing PR #1 to PRLOG(pr [#5])
 
+### Fixed
+
+- deps: lock file maintenance(pr [#9])
+
 [#1]: https://github.com/jerus-org/jci-audit/pull/1
 [#3]: https://github.com/jerus-org/jci-audit/pull/3
 [#4]: https://github.com/jerus-org/jci-audit/pull/4
 [#5]: https://github.com/jerus-org/jci-audit/pull/5
+[#9]: https://github.com/jerus-org/jci-audit/pull/9
