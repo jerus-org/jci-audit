@@ -11,6 +11,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - scaffold jci-audit workspace (P0)(pr [#1])
 - implement sync and init commands (P1)(pr [#3])
 - implement check command (P1)(pr [#4])
+- generate jci-audit orb with executor tools(pr [#12])
 
 ### Changed
 
@@ -35,3 +36,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#8]: https://github.com/jerus-org/jci-audit/pull/8
 [#10]: https://github.com/jerus-org/jci-audit/pull/10
 [#11]: https://github.com/jerus-org/jci-audit/pull/11
+[#12]: https://github.com/jerus-org/jci-audit/pull/12
