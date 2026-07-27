@@ -76,9 +76,16 @@ impl CheckReport {
     }
 }
 
-/// The cargo-deny invocation used by `check`: full policy enforcement.
-const DENY_ARGS: &[&str] = &["deny", "check", "advisories", "bans", "licenses", "sources"];
-/// The cargo-audit invocation used by `check`: live advisory scan.
+// Tools are invoked as their STANDALONE binaries (`cargo-deny`, `cargo-audit`)
+// rather than via `cargo <sub>`, so they run in a cargo-less executor image
+// (the orb runtime ships the tool binaries but no Rust toolchain). Both forms
+// resolve to the same binaries on a dev machine.
+
+/// cargo-deny standalone: full policy enforcement.
+const DENY_ARGS: &[&str] = &["check", "advisories", "bans", "licenses", "sources"];
+/// cargo-audit standalone: the `audit` subcommand runs the live advisory scan
+/// (`cargo-audit audit` — the exact form `cargo audit` dispatches to; a bare
+/// `cargo-audit` does not scan).
 const AUDIT_ARGS: &[&str] = &["audit"];
 
 /// Run both tools in `cwd`, surfacing each one's output, and return the
@@ -87,8 +94,8 @@ const AUDIT_ARGS: &[&str] = &["audit"];
 pub fn check_with<R: CommandRunner>(runner: &R, cwd: &Path) -> Result<CheckReport> {
     let mut steps = Vec::with_capacity(2);
 
-    let deny = runner.run("cargo", DENY_ARGS, cwd)?;
-    surface("cargo deny check advisories bans licenses sources", &deny);
+    let deny = runner.run("cargo-deny", DENY_ARGS, cwd)?;
+    surface("cargo-deny check advisories bans licenses sources", &deny);
     steps.push(CheckStep {
         label: "cargo deny".to_string(),
         success: deny.success,
@@ -96,8 +103,8 @@ pub fn check_with<R: CommandRunner>(runner: &R, cwd: &Path) -> Result<CheckRepor
 
     // Always run cargo-audit too — never short-circuit on cargo-deny's result,
     // so both tools' findings are surfaced in one pass.
-    let audit = runner.run("cargo", AUDIT_ARGS, cwd)?;
-    surface("cargo audit", &audit);
+    let audit = runner.run("cargo-audit", AUDIT_ARGS, cwd)?;
+    surface("cargo-audit audit", &audit);
     steps.push(CheckStep {
         label: "cargo audit".to_string(),
         success: audit.success,
@@ -176,11 +183,12 @@ mod tests {
 
         let calls = runner.calls.borrow();
         assert_eq!(calls.len(), 2);
+        // Standalone binaries (no `cargo` dispatch) so the tools run in a
+        // cargo-less executor image.
         assert_eq!(
             calls[0],
             vec![
-                "cargo",
-                "deny",
+                "cargo-deny",
                 "check",
                 "advisories",
                 "bans",
@@ -188,7 +196,7 @@ mod tests {
                 "sources"
             ]
         );
-        assert_eq!(calls[1], vec!["cargo", "audit"]);
+        assert_eq!(calls[1], vec!["cargo-audit", "audit"]);
     }
 
     #[test]

@@ -46,16 +46,18 @@ impl Tool {
         }
     }
 
-    /// Probe whether the tool responds to `<tool> --version` on this host.
+    /// Probe whether the tool's standalone binary responds to `--version`.
     fn is_present(&self) -> bool {
-        probe_version(self.subcommand())
+        probe_version(self.crate_name())
     }
 }
 
-/// Run `cargo <subcommand> --version`, returning true on a successful exit.
-fn probe_version(subcommand: &str) -> bool {
-    Command::new("cargo")
-        .args([subcommand, "--version"])
+/// Run `<binary> --version` (e.g. `cargo-audit --version`), returning true on a
+/// successful exit. Probes the standalone binary so presence detection matches
+/// how `check` invokes the tool — and works in a cargo-less executor.
+fn probe_version(binary: &str) -> bool {
+    Command::new(binary)
+        .arg("--version")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
