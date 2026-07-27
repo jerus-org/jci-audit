@@ -20,6 +20,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: lock file maintenance(pr [#9])
 - deps: update rust crate clap to 4.6.4(pr [#6])
+- deps: update rust crate trycmd to 1.2.1(pr [#7])
 
 [#1]: https://github.com/jerus-org/jci-audit/pull/1
 [#3]: https://github.com/jerus-org/jci-audit/pull/3
@@ -27,3 +28,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#5]: https://github.com/jerus-org/jci-audit/pull/5
 [#9]: https://github.com/jerus-org/jci-audit/pull/9
 [#6]: https://github.com/jerus-org/jci-audit/pull/6
+[#7]: https://github.com/jerus-org/jci-audit/pull/7
