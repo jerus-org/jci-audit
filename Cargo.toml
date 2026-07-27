@@ -34,4 +34,4 @@ serde_json = "1.0.151"
 
 # Testing
 tempfile = "3.27.0"
-trycmd = "1.2.0"
+trycmd = "1.2.1"
