@@ -25,6 +25,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate trycmd to 1.2.1(pr [#7])
 - deps: update rust crate toml_edit to 0.25.13(pr [#8])
 - deps: update dependency toolkit to v7(pr [#10])
+- deps: lock file maintenance(pr [#13])
 
 [#1]: https://github.com/jerus-org/jci-audit/pull/1
 [#3]: https://github.com/jerus-org/jci-audit/pull/3
@@ -37,3 +38,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#10]: https://github.com/jerus-org/jci-audit/pull/10
 [#11]: https://github.com/jerus-org/jci-audit/pull/11
 [#12]: https://github.com/jerus-org/jci-audit/pull/12
+[#13]: https://github.com/jerus-org/jci-audit/pull/13
