@@ -26,6 +26,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate toml_edit to 0.25.13(pr [#8])
 - deps: update dependency toolkit to v7(pr [#10])
 - deps: lock file maintenance(pr [#13])
+- deps: update dependency gen-circleci-orb to v0.1.4(pr [#14])
 
 [#1]: https://github.com/jerus-org/jci-audit/pull/1
 [#3]: https://github.com/jerus-org/jci-audit/pull/3
@@ -39,3 +40,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#11]: https://github.com/jerus-org/jci-audit/pull/11
 [#12]: https://github.com/jerus-org/jci-audit/pull/12
 [#13]: https://github.com/jerus-org/jci-audit/pull/13
+[#14]: https://github.com/jerus-org/jci-audit/pull/14
