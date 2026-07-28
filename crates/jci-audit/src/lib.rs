@@ -21,6 +21,7 @@
 pub mod check;
 pub mod init;
 pub mod preflight;
+pub mod prune;
 pub mod sync;
 
 use anyhow::{Result, bail};
@@ -146,9 +147,37 @@ fn run_sync(check: bool) -> Result<()> {
 }
 
 fn run_prune(check: bool) -> Result<()> {
-    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
-    tracing::info!(check, "prune");
-    bail!("`jci-audit prune` is not yet implemented (P2)")
+    // Only cargo-audit is shelled out to: the naked probe reads the advisory
+    // database directly, and cargo-deny would apply deny.toml's own ignores.
+    preflight::ensure_available(&[Tool::CargoAudit])?;
+    let cwd = std::env::current_dir()?;
+    tracing::info!(check, dir = %cwd.display(), "prune");
+
+    // The naked run needs a working directory outside the repository, or cargo
+    // discovers the repo's .cargo/audit.toml and applies the very suppressions
+    // being tested.
+    let naked_cwd = prune::naked_run_dir();
+    std::fs::create_dir_all(&naked_cwd)?;
+    let report = prune::prune_with(&check::SystemRunner, &cwd, &naked_cwd)?;
+    let _ = std::fs::remove_dir_all(&naked_cwd);
+
+    println!(
+        "{} configured ignore(s); {} advisory(ies) firing against the naked database",
+        report.configured.len(),
+        report.firing.len()
+    );
+    if report.is_clean() {
+        println!("no stale ignores — every configured ignore still fires");
+        return Ok(());
+    }
+    println!("stale ignore(s) — no longer fire, remove from deny.toml:");
+    for id in &report.stale {
+        println!("  - {id}");
+    }
+    if check {
+        bail!("{} stale ignore(s) found", report.stale.len())
+    }
+    Ok(())
 }
 
 fn run_init(force: bool) -> Result<()> {
