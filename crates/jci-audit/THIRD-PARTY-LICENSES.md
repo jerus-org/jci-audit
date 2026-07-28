@@ -725,7 +725,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- jci-audit 0.0.1
+- jci-audit 0.0.2
 
 ```text
 MIT License
