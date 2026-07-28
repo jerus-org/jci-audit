@@ -1,0 +1,16 @@
+description: Re-verify a past release against the advisory snapshot it was locked to, using the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag
+parameters:
+  version:
+    type: string
+    description: The released version to verify (e.g. "1.2.0")
+  advisory_db:
+    type: string
+    description: Advisory-db root; cargo-deny's checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db
+    default: ''
+steps:
+- run:
+    name: Re-verify a past release against the advisory snapshot it was locked to, using the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag
+    command: <<include(scripts/verify.sh)>>
+    environment:
+      VERSION: << parameters.version >>
+      ADVISORY_DB: << parameters.advisory_db >>
