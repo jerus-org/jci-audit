@@ -30,6 +30,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#13])
 - deps: update dependency gen-circleci-orb to v0.1.4(pr [#14])
 - deps: update dependency orb-tools to v12.4.0(pr [#15])
+- set initial version baseline to 0.0.0(pr [#18])
 
 [#1]: https://github.com/jerus-org/jci-audit/pull/1
 [#3]: https://github.com/jerus-org/jci-audit/pull/3
@@ -47,3 +48,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#15]: https://github.com/jerus-org/jci-audit/pull/15
 [#16]: https://github.com/jerus-org/jci-audit/pull/16
 [#17]: https://github.com/jerus-org/jci-audit/pull/17
+[#18]: https://github.com/jerus-org/jci-audit/pull/18
