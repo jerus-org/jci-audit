@@ -1,6 +1,6 @@
 [package]
 name = "jci-audit"
-version = "0.1.0"
+version = "0.0.0"
 description = "Context-aware Rust security gate orchestrating cargo-audit and cargo-deny with reproducible release-time validation"
 edition.workspace = true
 authors.workspace = true
