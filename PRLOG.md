@@ -32,6 +32,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency orb-tools to v12.4.0(pr [#15])
 - set initial version baseline to 0.0.0(pr [#18])
 - add binstall signing scaffold for pubkey injection(pr [#19])
+- seed the crate CHANGELOG.md(pr [#20])
 
 [#1]: https://github.com/jerus-org/jci-audit/pull/1
 [#3]: https://github.com/jerus-org/jci-audit/pull/3
@@ -51,3 +52,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#17]: https://github.com/jerus-org/jci-audit/pull/17
 [#18]: https://github.com/jerus-org/jci-audit/pull/18
 [#19]: https://github.com/jerus-org/jci-audit/pull/19
+[#20]: https://github.com/jerus-org/jci-audit/pull/20
