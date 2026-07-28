@@ -34,8 +34,11 @@ tracing-log.workspace = true
 # TOML parsing/editing: read deny.toml [advisories].ignore, render audit.toml
 toml_edit.workspace = true
 
-# JSON parsing: cargo-audit --json reports (prune)
+# JSON parsing: cargo-audit --json reports (prune), release record (release)
 serde_json.workspace = true
+
+# Hashing: records which Cargo.lock a release was validated against
+sha2.workspace = true
 
 # NOTE: config, serde, thiserror are declared in the workspace dependency
 # catalog and switched on when a phase needs them.

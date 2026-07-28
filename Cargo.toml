@@ -32,6 +32,9 @@ toml_edit = "0.25.13"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 
+# Hashing — records which Cargo.lock a release was validated against
+sha2 = "0.10.9"
+
 # Testing
 tempfile = "3.27.0"
 trycmd = "1.2.1"

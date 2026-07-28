@@ -22,6 +22,7 @@ pub mod check;
 pub mod init;
 pub mod preflight;
 pub mod prune;
+pub mod release;
 pub mod sync;
 
 use anyhow::{Result, bail};
@@ -122,8 +123,34 @@ fn run_check(manifest_path: &std::path::Path) -> Result<()> {
 
 fn run_release(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
-    tracing::info!(version, ?advisory_db, "release");
-    bail!("`jci-audit release` is not yet implemented (P3)")
+    let cwd = std::env::current_dir()?;
+    let db_root = advisory_db
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(release::default_db_root);
+    // The derived cargo-deny config is ephemeral: deny.toml stays the single
+    // source of truth, so nothing derived is committed except the record.
+    let work = release::work_dir();
+    tracing::info!(version, db = %db_root.display(), "release");
+
+    let outcome = release::release_with(&check::SystemRunner, &cwd, version, &db_root, &work);
+    let _ = std::fs::remove_dir_all(&work);
+    let outcome = outcome?;
+
+    println!("release gate passed (cargo-deny against the local advisory-db copy)");
+    println!("  advisory-db commit: {}", outcome.db_commit);
+    println!("  record: {}", outcome.record_path.display());
+    if outcome.live_findings.is_empty() {
+        println!("  live audit (currency, non-blocking): no findings");
+    } else {
+        println!(
+            "  live audit (currency, non-blocking) reported {} advisory(ies):",
+            outcome.live_findings.len()
+        );
+        for id in &outcome.live_findings {
+            println!("    - {id}");
+        }
+    }
+    Ok(())
 }
 
 fn run_sync(check: bool) -> Result<()> {
