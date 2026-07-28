@@ -8,7 +8,7 @@ parameters:
 orbs:
   toolkit: jerus-org/circleci-toolkit@7.0.0
 
-  orb-tools: circleci/orb-tools@12.3.3
+  orb-tools: circleci/orb-tools@12.4.0
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.4
   # <<< gen-circleci-orb
