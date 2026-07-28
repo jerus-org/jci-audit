@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - implement check command (P1)(pr [#4])
 - generate jci-audit orb with executor tools(pr [#12])
 - implement prune stale-ignore detector (P2)(pr [#16])
+- implement release gate with locked advisory snapshot (P3)(pr [#17])
 
 ### Changed
 
@@ -45,3 +46,4 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#14]: https://github.com/jerus-org/jci-audit/pull/14
 [#15]: https://github.com/jerus-org/jci-audit/pull/15
 [#16]: https://github.com/jerus-org/jci-audit/pull/16
+[#17]: https://github.com/jerus-org/jci-audit/pull/17
