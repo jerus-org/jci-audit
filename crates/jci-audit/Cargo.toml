@@ -59,3 +59,12 @@ path = "src/lib.rs"
 pkg-url = "{ repo }/releases/download/jci-audit-v{ version }/jci-audit-{ target }.tar.gz"
 pkg-fmt = "tgz"
 bin-dir = "{ bin }{ binary-ext }"
+
+# cargo-binstall signature verification. The pubkey is a placeholder in source:
+# the release pipeline generates an ephemeral minisign/rsign keypair, signs the
+# tarball, and `pcu release inject-pubkey` replaces the `pubkey` value below with
+# that release's public key before the crate is published. Without this section
+# pcu has nothing to replace and the signature is published unverifiable.
+[package.metadata.binstall.signing]
+algorithm = "minisign"
+pubkey = "RWQPLACEHOLDERPLACEHOLDERPLACEHOLDERPLACEHOLDERPLACEHOLD"
