@@ -34,7 +34,7 @@ use toml_edit::{DocumentMut, value};
 use crate::{check::CommandRunner, sync::locate_paths};
 
 /// Schema version of the emitted record, so consumers can evolve with it.
-pub const RECORD_SCHEMA_VERSION: u64 = 1;
+pub const RECORD_SCHEMA_VERSION: u64 = 2;
 
 /// The cargo-deny checks the release gate enforces.
 pub const DENY_CHECKS: &[&str] = &["advisories", "bans", "licenses", "sources"];
@@ -134,6 +134,7 @@ pub fn build_record(
     deny_version: &str,
     audit_version: &str,
     lockfile_sha256: &str,
+    deny_toml_sha256: &str,
 ) -> Value {
     json!({
         "schema_version": RECORD_SCHEMA_VERSION,
@@ -141,6 +142,10 @@ pub fn build_record(
         "advisory_db": { "commit": db_commit },
         "tools": { "cargo_deny": deny_version, "cargo_audit": audit_version },
         "lockfile": { "sha256": lockfile_sha256 },
+        // The policy digest makes the record self-verifying: it proves WHICH
+        // exception set (deny.toml ignores, licenses, bans, sources) was in
+        // force, rather than trusting git history to supply it.
+        "policy": { "deny_toml_sha256": deny_toml_sha256 },
         "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
     })
 }
@@ -184,6 +189,7 @@ pub fn release_with<R: CommandRunner>(
     // the single source of truth for every actual policy decision.
     let deny_toml = std::fs::read_to_string(&deny_path)
         .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
+    let deny_toml_sha256 = lockfile_digest(deny_toml.as_bytes());
     let derived = with_db_path(&deny_toml, db_root)?;
     std::fs::create_dir_all(work_dir)
         .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
@@ -255,6 +261,7 @@ pub fn release_with<R: CommandRunner>(
         &deny_version,
         &audit_version,
         &lockfile_sha256,
+        &deny_toml_sha256,
     );
     let path = record_path(&root, version);
     if let Some(parent) = path.parent() {
@@ -369,6 +376,7 @@ allow = ["MIT"]
             "cargo-deny 0.20.2",
             "cargo-audit 0.22.0",
             "d1",
+            "p1",
         );
         let b = build_record(
             "1.2.0",
@@ -376,8 +384,16 @@ allow = ["MIT"]
             "cargo-deny 0.20.2",
             "cargo-audit 0.22.0",
             "d1",
+            "p1",
         );
         assert_eq!(render_record(&a).unwrap(), render_record(&b).unwrap());
+        // The policy digest proves which exception set was in force.
+        assert!(
+            render_record(&a)
+                .unwrap()
+                .contains("\"deny_toml_sha256\": \"p1\""),
+            "record must carry the policy digest"
+        );
 
         let rendered = render_record(&a).unwrap();
         assert!(

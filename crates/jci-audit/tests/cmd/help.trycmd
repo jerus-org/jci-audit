@@ -9,6 +9,7 @@ Commands:
   release  Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`
   sync     Derive `.cargo/audit.toml` from the canonical `deny.toml` `[advisories].ignore`. Makes deny.toml the single source of truth
   prune    Stale-ignore detector: run audit/deny against the naked advisory-db and report ignores that no longer fire
+  verify   Re-verify a past release against the advisory snapshot it was locked to, using the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag
   init     Scaffold a standard `deny.toml` template and a derived `.cargo/audit.toml`
   help     Print this message or the help of the given subcommand(s)
 

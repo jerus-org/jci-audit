@@ -24,6 +24,7 @@ pub mod preflight;
 pub mod prune;
 pub mod release;
 pub mod sync;
+pub mod verify;
 
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
@@ -84,6 +85,19 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+    /// Re-verify a past release against the advisory snapshot it was locked
+    /// to, using the policy (deny.toml) that was in force at the time. Run it
+    /// from a checkout of the released tag.
+    Verify {
+        /// The released version to verify (e.g. "1.2.0").
+        #[arg(long)]
+        version: String,
+
+        /// Advisory-db root; cargo-deny's checkout is moved to the recorded
+        /// commit beneath it. Defaults to ~/.cargo/advisory-db.
+        #[arg(long)]
+        advisory_db: Option<std::path::PathBuf>,
+    },
     /// Scaffold a standard `deny.toml` template and a derived
     /// `.cargo/audit.toml`.
     Init {
@@ -104,6 +118,10 @@ impl Cli {
             } => run_release(version, advisory_db.as_deref()),
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
+            Commands::Verify {
+                version,
+                advisory_db,
+            } => run_verify(version, advisory_db.as_deref()),
             Commands::Init { force } => run_init(*force),
         }
     }
@@ -205,6 +223,39 @@ fn run_prune(check: bool) -> Result<()> {
         bail!("{} stale ignore(s) found", report.stale.len())
     }
     Ok(())
+}
+
+fn run_verify(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()> {
+    preflight::ensure_available(&[Tool::CargoDeny])?;
+    let cwd = std::env::current_dir()?;
+    let db_root = advisory_db
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(release::default_db_root);
+    let work = release::work_dir();
+    tracing::info!(version, db = %db_root.display(), "verify");
+
+    let outcome = verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work);
+    let _ = std::fs::remove_dir_all(&work);
+    let outcome = outcome?;
+
+    println!(
+        "verifying release {} against advisory-db {}",
+        outcome.version, outcome.db_commit
+    );
+    for note in &outcome.unverified {
+        println!("  not verified: {note}");
+    }
+    for m in &outcome.mismatches {
+        println!("  MISMATCH: {m}");
+    }
+    if outcome.is_ok() {
+        println!("reproduced: the release passes the gate against its recorded snapshot");
+        Ok(())
+    } else if !outcome.mismatches.is_empty() {
+        bail!("verification failed: inputs do not match the record")
+    } else {
+        bail!("verification failed: the gate did not reproduce the recorded verdict")
+    }
 }
 
 fn run_init(force: bool) -> Result<()> {
