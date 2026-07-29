@@ -11,6 +11,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - add verify command and record the policy digest(pr [#21])
 - digest the dependency set, not the raw lockfile(pr [#23])
 - commit and push the release record from the orb(pr [#24])
+- record the release before the crate release(pr [#25])
 
 ## [0.0.1] - 2026-07-28
 
@@ -64,5 +65,6 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#21]: https://github.com/jerus-org/jci-audit/pull/21
 [#23]: https://github.com/jerus-org/jci-audit/pull/23
 [#24]: https://github.com/jerus-org/jci-audit/pull/24
+[#25]: https://github.com/jerus-org/jci-audit/pull/25
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
