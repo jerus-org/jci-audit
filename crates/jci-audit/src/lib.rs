@@ -63,9 +63,16 @@ enum Commands {
     /// commit (deny + audit offline), then a non-blocking live audit. Records
     /// the run to `.security/release-<VERSION>.json`.
     Release {
-        /// The release version being validated (e.g. "1.2.0").
+        /// The release version being validated (e.g. "1.2.0"). When omitted it
+        /// is read from the environment variable named by --version-env, since
+        /// release pipelines compute the version at runtime.
         #[arg(long)]
-        version: String,
+        version: Option<String>,
+
+        /// Env var NAME holding the release version when --version is not given
+        /// (default SEMVER).
+        #[arg(long)]
+        version_env: Option<String>,
 
         /// Path to a checked-out advisory-db at the pinned commit. When
         /// omitted, the pinned commit is resolved from configuration.
@@ -146,6 +153,7 @@ impl Cli {
             Commands::Check { manifest_path } => run_check(manifest_path),
             Commands::Release {
                 version,
+                version_env,
                 advisory_db,
                 commit,
                 push,
@@ -172,7 +180,13 @@ impl Cli {
                         .clone()
                         .unwrap_or_else(|| gitops::SignEnvNames::default().sign_key),
                 };
-                run_release(version, advisory_db.as_deref(), *commit, *push, &names)
+                let version = release::resolve_version(
+                    version.as_deref(),
+                    version_env
+                        .as_deref()
+                        .unwrap_or(release::DEFAULT_VERSION_ENV),
+                )?;
+                run_release(&version, advisory_db.as_deref(), *commit, *push, &names)
             }
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
@@ -376,15 +390,24 @@ mod tests {
     }
 
     #[test]
-    fn parse_release_requires_version() {
-        // Missing --version is a parse error.
-        assert!(Cli::try_parse_from(["jci-audit", "release"]).is_err());
+    fn release_version_is_optional_at_parse_time() {
+        // Release pipelines compute the version at runtime, so it is resolved
+        // from the environment rather than being required on the command line.
+        assert!(Cli::try_parse_from(["jci-audit", "release"]).is_ok());
         let cli =
             Cli::try_parse_from(["jci-audit", "release", "--version", "1.2.0"]).expect("parses");
         match cli.command {
-            Commands::Release { version, .. } => assert_eq!(version, "1.2.0"),
+            Commands::Release { version, .. } => assert_eq!(version.as_deref(), Some("1.2.0")),
             other => panic!("expected Release, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn push_requires_commit() {
+        // Pushing without committing would push whatever the job happened to
+        // have, which is never what was meant.
+        assert!(Cli::try_parse_from(["jci-audit", "release", "--push"]).is_err());
+        assert!(Cli::try_parse_from(["jci-audit", "release", "--commit", "--push"]).is_ok());
     }
 
     #[test]
