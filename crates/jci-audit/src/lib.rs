@@ -19,6 +19,7 @@
 //! shelling subcommand runs first.
 
 pub mod check;
+pub mod gitops;
 pub mod init;
 pub mod preflight;
 pub mod prune;
@@ -70,6 +71,37 @@ enum Commands {
         /// omitted, the pinned commit is resolved from configuration.
         #[arg(long)]
         advisory_db: Option<std::path::PathBuf>,
+
+        /// Commit the record. Required when the release pipeline runs
+        /// cargo-release afterwards: cargo-release refuses to start on a dirty
+        /// tree, so the record must already be committed.
+        #[arg(long)]
+        commit: bool,
+
+        /// Push the commit using the credentials the CI checkout provided.
+        /// Nothing here carries credentials of its own.
+        #[arg(long, requires = "commit")]
+        push: bool,
+
+        /// Env var NAME holding the base64 GPG signing key (default GPG_KEY).
+        #[arg(long)]
+        gpg_key_env: Option<String>,
+
+        /// Env var NAME holding the GPG ownertrust (default GPG_TRUST).
+        #[arg(long)]
+        gpg_trust_env: Option<String>,
+
+        /// Env var NAME holding the committer name (default GIT_USER_NAME).
+        #[arg(long)]
+        user_name_env: Option<String>,
+
+        /// Env var NAME holding the committer email (default GIT_USER_EMAIL).
+        #[arg(long)]
+        user_email_env: Option<String>,
+
+        /// Env var NAME holding the GPG signing key id (default GPG_SIGN_KEY).
+        #[arg(long)]
+        sign_key_env: Option<String>,
     },
     /// Derive `.cargo/audit.toml` from the canonical `deny.toml`
     /// `[advisories].ignore`. Makes deny.toml the single source of truth.
@@ -115,7 +147,33 @@ impl Cli {
             Commands::Release {
                 version,
                 advisory_db,
-            } => run_release(version, advisory_db.as_deref()),
+                commit,
+                push,
+                gpg_key_env,
+                gpg_trust_env,
+                user_name_env,
+                user_email_env,
+                sign_key_env,
+            } => {
+                let names = gitops::SignEnvNames {
+                    gpg_key: gpg_key_env
+                        .clone()
+                        .unwrap_or_else(|| gitops::SignEnvNames::default().gpg_key),
+                    gpg_trust: gpg_trust_env
+                        .clone()
+                        .unwrap_or_else(|| gitops::SignEnvNames::default().gpg_trust),
+                    user_name: user_name_env
+                        .clone()
+                        .unwrap_or_else(|| gitops::SignEnvNames::default().user_name),
+                    user_email: user_email_env
+                        .clone()
+                        .unwrap_or_else(|| gitops::SignEnvNames::default().user_email),
+                    sign_key: sign_key_env
+                        .clone()
+                        .unwrap_or_else(|| gitops::SignEnvNames::default().sign_key),
+                };
+                run_release(version, advisory_db.as_deref(), *commit, *push, &names)
+            }
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
             Commands::Verify {
@@ -139,7 +197,13 @@ fn run_check(manifest_path: &std::path::Path) -> Result<()> {
     }
 }
 
-fn run_release(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()> {
+fn run_release(
+    version: &str,
+    advisory_db: Option<&std::path::Path>,
+    commit: bool,
+    push: bool,
+    sign_names: &gitops::SignEnvNames,
+) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     let cwd = std::env::current_dir()?;
     let db_root = advisory_db
@@ -166,6 +230,36 @@ fn run_release(version: &str, advisory_db: Option<&std::path::Path>) -> Result<(
         );
         for id in &outcome.live_findings {
             println!("    - {id}");
+        }
+    }
+
+    if commit {
+        let work = release::work_dir();
+        let signing = gitops::import_signing_key(&check::SystemRunner, sign_names, &work)?;
+        let identity = if signing {
+            gitops::read_identity(sign_names)
+        } else {
+            None
+        };
+        if signing && identity.is_none() {
+            println!("  note: a signing key was imported but the committer identity is not set");
+        }
+        gitops::commit_paths(
+            &check::SystemRunner,
+            &cwd,
+            &[&outcome.record_path],
+            &gitops::record_commit_message(version),
+            identity.as_ref(),
+        )?;
+        let _ = std::fs::remove_dir_all(&work);
+        println!(
+            "  committed the record{}",
+            if identity.is_some() { " (signed)" } else { "" }
+        );
+
+        if push {
+            gitops::push(&check::SystemRunner, &cwd)?;
+            println!("  pushed");
         }
     }
     Ok(())

@@ -7,7 +7,7 @@ edition = "2024"
 authors = ["Jeremiah Russell <jrussell@jerus.ie>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jerus-org/jci-audit"
-rust-version = "1.85"
+rust-version = "1.88"
 keywords = ["security", "audit", "cargo-deny", "circleci", "orb"]
 categories = ["development-tools", "command-line-utilities"]
 
@@ -34,6 +34,9 @@ serde_json = "1.0.151"
 
 # Hashing — records which Cargo.lock a release was validated against
 sha2 = "0.10.9"
+
+# Decoding the base64-encoded signing key supplied via the environment
+base64 = "0.22.1"
 
 # Testing
 tempfile = "3.27.0"
