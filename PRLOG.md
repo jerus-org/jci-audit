@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - add verify command and record the policy digest(pr [#21])
+- digest the dependency set, not the raw lockfile(pr [#23])
 
 ## [0.0.1] - 2026-07-28
 
@@ -60,5 +61,6 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#19]: https://github.com/jerus-org/jci-audit/pull/19
 [#20]: https://github.com/jerus-org/jci-audit/pull/20
 [#21]: https://github.com/jerus-org/jci-audit/pull/21
+[#23]: https://github.com/jerus-org/jci-audit/pull/23
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
