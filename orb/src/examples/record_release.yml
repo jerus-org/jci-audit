@@ -11,8 +11,14 @@ description: >
 
   Nothing in the orb carries credentials of its own. Write authority comes from
   the job's own pre-steps — here an SSH key with write access — so the checkout's
-  read-only key model is respected rather than worked around. Signing material is
-  referenced by environment variable NAME; the values stay in your context.
+  read-only key model is respected rather than worked around.
+
+  Signing material is referenced by environment variable NAME, never by value, so
+  nothing secret appears in your configuration. The defaults are GPG_KEY,
+  GPG_TRUST, GIT_USER_NAME, GIT_USER_EMAIL and GPG_SIGN_KEY; if your context
+  stores them under different names, set the matching *_env parameters (shown
+  commented below). Signing is skipped when no key is present, which is usually
+  what you want locally but rarely what you want in CI.
 
   Supply the version either as the `version` parameter, or by exporting it (the
   `version_env` parameter names the variable, default SEMVER) when your pipeline
@@ -31,14 +37,16 @@ usage:
             version: "1.2.0"
             commit: true
             push: true
-            # Names only — the values come from the context.
-            gpg_key_env: BOT_GPG_KEY
-            gpg_trust_env: BOT_TRUST
-            user_name_env: BOT_USER_NAME
-            user_email_env: BOT_USER_EMAIL
-            sign_key_env: BOT_SIGN_KEY
+            # Uses the default variable names. If your context stores the
+            # signing material under different names, set them here — these are
+            # NAMES, never values:
+            #   gpg_key_env: YOUR_GPG_KEY_VAR
+            #   gpg_trust_env: YOUR_GPG_TRUST_VAR
+            #   user_name_env: YOUR_COMMITTER_NAME_VAR
+            #   user_email_env: YOUR_COMMITTER_EMAIL_VAR
+            #   sign_key_env: YOUR_SIGNING_KEY_ID_VAR
             context:
-              - release
+              - your-signing-context
             pre-steps:
               # Write authority for the push. Without it the push fails on the
               # read-only deploy key, with guidance rather than a workaround.
