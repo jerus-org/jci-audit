@@ -5,8 +5,12 @@
 //! exceptions documented at the time?* — by reconstructing the three inputs and
 //! re-running the gate:
 //!
-//! 1. **Dependency set** — the checked-out `Cargo.lock` must match the digest in
-//!    the record, which proves you are on the released state.
+//! 1. **Dependency set** — the external dependency set in the checked-out
+//!    `Cargo.lock` must match the record's digest, which proves you are on the
+//!    released dependency set. The digest deliberately covers the third-party
+//!    packages rather than the raw file, because the release itself rewrites the
+//!    crate's own version in `Cargo.lock`. Records predating that (schema 1 and
+//!    2) carry a raw-file digest, which is compared instead.
 //! 2. **Policy** — the checked-out `deny.toml` must match the record's policy
 //!    digest, which proves the exception set is the one that was in force.
 //!    Records written before that digest existed (`schema_version` 1) cannot be
@@ -16,7 +20,7 @@
 //!    commit and cargo-deny runs `--offline`, so it cannot fetch and drift
 //!    mid-verification.
 //!
-//! Run it from a checkout of the released tag; the lockfile digest check is what
+//! Run it from a checkout of the released tag; the dependency-set check is what
 //! makes "are we on the right state?" self-evident rather than assumed.
 
 use std::path::{Path, PathBuf};
@@ -26,9 +30,23 @@ use serde_json::Value;
 
 use crate::{
     check::CommandRunner,
-    release::{DENY_CHECKS, discover_db_checkout, lockfile_digest, record_path, with_db_path},
+    release::{
+        DENY_CHECKS, dependency_set_digest, discover_db_checkout, lockfile_digest, record_path,
+        with_db_path,
+    },
     sync::locate_paths,
 };
+
+/// Digests computed from the checked-out tree, compared against the record.
+#[derive(Debug, Clone)]
+pub struct CheckoutDigests {
+    /// Digest of the external dependency set (schema 3+).
+    pub dependencies: String,
+    /// Raw digest of Cargo.lock, for records predating the dependency digest.
+    pub lockfile_raw: String,
+    /// Digest of deny.toml — the exception set in force.
+    pub deny_toml: String,
+}
 
 /// What a verification concluded.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,25 +94,36 @@ fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
 ///
 /// Returns `(mismatches, unverified)`. A record without a policy digest
 /// (`schema_version` 1) yields an `unverified` note rather than a false pass.
-pub fn compare_inputs(
-    record: &Value,
-    lock_sha: &str,
-    deny_sha: &str,
-) -> (Vec<String>, Vec<String>) {
+pub fn compare_inputs(record: &Value, digests: &CheckoutDigests) -> (Vec<String>, Vec<String>) {
     let mut mismatches = Vec::new();
     let mut unverified = Vec::new();
 
-    match record
-        .get("lockfile")
+    let lockfile = record.get("lockfile");
+    let recorded_deps = lockfile
+        .and_then(|l| l.get("dependencies_sha256"))
+        .and_then(Value::as_str);
+    // Records predating schema 3 digest the raw file instead. That digest cannot
+    // survive the release that produced it (cargo-release rewrites the crate's
+    // own version in Cargo.lock), so it is only meaningful for a record made
+    // from the released state itself.
+    let recorded_raw = lockfile
         .and_then(|l| l.get("sha256"))
-        .and_then(Value::as_str)
-    {
-        Some(recorded) if recorded == lock_sha => {}
-        Some(recorded) => mismatches.push(format!(
-            "Cargo.lock does not match the record (recorded {recorded}, found {lock_sha}) \
-             — you are not on the released state"
+        .and_then(Value::as_str);
+
+    match (recorded_deps, recorded_raw) {
+        (Some(recorded), _) if recorded == digests.dependencies => {}
+        (Some(recorded), _) => mismatches.push(format!(
+            "dependency set does not match the record (recorded {recorded}, found {}) \
+             — you are not on the released dependency set",
+            digests.dependencies
         )),
-        None => unverified.push("record has no Cargo.lock digest".to_string()),
+        (None, Some(recorded)) if recorded == digests.lockfile_raw => {}
+        (None, Some(recorded)) => mismatches.push(format!(
+            "Cargo.lock does not match the record (recorded {recorded}, found {}) \
+             — you are not on the released state",
+            digests.lockfile_raw
+        )),
+        (None, None) => unverified.push("record has no dependency digest".to_string()),
     }
 
     match record
@@ -102,10 +131,11 @@ pub fn compare_inputs(
         .and_then(|p| p.get("deny_toml_sha256"))
         .and_then(Value::as_str)
     {
-        Some(recorded) if recorded == deny_sha => {}
+        Some(recorded) if recorded == digests.deny_toml => {}
         Some(recorded) => mismatches.push(format!(
-            "deny.toml does not match the record (recorded {recorded}, found {deny_sha}) \
-             — the exception set differs from the one in force at release"
+            "deny.toml does not match the record (recorded {recorded}, found {}) \
+             — the exception set differs from the one in force at release",
+            digests.deny_toml
         )),
         // schema_version 1 predates the policy digest.
         None => unverified.push(
@@ -136,15 +166,16 @@ pub fn verify_with<R: CommandRunner>(
     let db_commit = field(&record, &["advisory_db", "commit"])?.to_string();
 
     // Compare the checked-out inputs with what the record attests.
-    let lock_bytes = std::fs::read(root.join("Cargo.lock"))
+    let lock_text = std::fs::read_to_string(root.join("Cargo.lock"))
         .with_context(|| format!("no Cargo.lock at '{}'", root.display()))?;
     let deny_toml = std::fs::read_to_string(&deny_path)
         .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
-    let (mismatches, unverified) = compare_inputs(
-        &record,
-        &lockfile_digest(&lock_bytes),
-        &lockfile_digest(deny_toml.as_bytes()),
-    );
+    let digests = CheckoutDigests {
+        dependencies: dependency_set_digest(&lock_text)?,
+        lockfile_raw: lockfile_digest(lock_text.as_bytes()),
+        deny_toml: lockfile_digest(deny_toml.as_bytes()),
+    };
+    let (mismatches, unverified) = compare_inputs(&record, &digests);
 
     // The tool's semantics can change between versions, so a difference is worth
     // surfacing even though we cannot install the recorded version here.
@@ -225,6 +256,20 @@ mod tests {
     use super::*;
     use crate::check::ToolOutput;
 
+    /// Current schema: digests the external dependency set.
+    fn record_v3(deps: &str, policy: &str) -> Value {
+        json!({
+            "schema_version": 3,
+            "version": "1.2.0",
+            "advisory_db": { "commit": "abc1234def" },
+            "tools": { "cargo_deny": "cargo-deny 0.20.2", "cargo_audit": "cargo-audit 0.22.0" },
+            "lockfile": { "dependencies_sha256": deps },
+            "policy": { "deny_toml_sha256": policy },
+            "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
+        })
+    }
+
+    /// Legacy schema: digests the raw lockfile.
     fn record_v2(lock: &str, policy: &str) -> Value {
         json!({
             "schema_version": 2,
@@ -307,40 +352,67 @@ mod tests {
 
     #[test]
     fn matching_inputs_have_no_mismatches() {
-        let rec = record_v2("lock-sha", "policy-sha");
-        let (mismatches, unverified) = compare_inputs(&rec, "lock-sha", "policy-sha");
+        let rec = record_v3("deps-sha", "policy-sha");
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+        };
+        let (mismatches, unverified) = compare_inputs(&rec, &d);
         assert!(mismatches.is_empty(), "got {mismatches:?}");
         assert!(unverified.is_empty(), "got {unverified:?}");
     }
 
     #[test]
     fn lockfile_mismatch_is_reported() {
-        let rec = record_v2("lock-sha", "policy-sha");
-        let (mismatches, _) = compare_inputs(&rec, "DIFFERENT", "policy-sha");
+        let rec = record_v3("deps-sha", "policy-sha");
+        let d = CheckoutDigests {
+            dependencies: "DIFFERENT".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d);
         assert_eq!(mismatches.len(), 1);
-        assert!(mismatches[0].contains("Cargo.lock"), "got {mismatches:?}");
+        assert!(
+            mismatches[0].contains("dependency set"),
+            "got {mismatches:?}"
+        );
     }
 
     #[test]
     fn policy_mismatch_is_reported() {
-        let rec = record_v2("lock-sha", "policy-sha");
-        let (mismatches, _) = compare_inputs(&rec, "lock-sha", "DIFFERENT");
+        let rec = record_v3("deps-sha", "policy-sha");
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "DIFFERENT".into(),
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d);
         assert_eq!(mismatches.len(), 1);
         assert!(mismatches[0].contains("deny.toml"), "got {mismatches:?}");
     }
 
     #[test]
     fn v1_record_cannot_verify_policy_but_still_checks_the_lockfile() {
-        let rec = record_v1("lock-sha");
-        let (mismatches, unverified) = compare_inputs(&rec, "lock-sha", "anything");
+        let rec = record_v1("raw-lock-sha");
+        let d = CheckoutDigests {
+            dependencies: "deps".into(),
+            lockfile_raw: "raw-lock-sha".into(),
+            deny_toml: "anything".into(),
+        };
+        let (mismatches, unverified) = compare_inputs(&rec, &d);
         assert!(mismatches.is_empty(), "v1 policy absence is not a mismatch");
         assert_eq!(unverified.len(), 1);
         assert!(
             unverified[0].contains("deny.toml") || unverified[0].contains("policy"),
             "must say the policy was not verified: {unverified:?}"
         );
-        // …but a v1 lockfile mismatch is still caught.
-        let (mismatches, _) = compare_inputs(&rec, "DIFFERENT", "anything");
+        // …but a v1 lockfile mismatch is still caught, via the raw digest.
+        let d = CheckoutDigests {
+            lockfile_raw: "DIFFERENT".into(),
+            ..d
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d);
         assert_eq!(mismatches.len(), 1);
     }
 
@@ -422,9 +494,9 @@ mod tests {
 
     #[test]
     fn wrong_checkout_is_caught_before_the_gate_runs() {
-        // Record describes a different lockfile than the one checked out.
-        let rec = record_v2(
-            "some-other-lockfile-digest",
+        // Record describes a different dependency set than the one checked out.
+        let rec = record_v3(
+            "some-other-dependency-digest",
             &lockfile_digest(DENY.as_bytes()),
         );
         let (repo, db) = scenario(&rec);
@@ -439,7 +511,7 @@ mod tests {
         .unwrap();
         assert!(!out.is_ok());
         assert!(
-            out.mismatches.iter().any(|m| m.contains("Cargo.lock")),
+            out.mismatches.iter().any(|m| m.contains("dependency set")),
             "got {:?}",
             out.mismatches
         );
