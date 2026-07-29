@@ -15,6 +15,42 @@ orbs:
   jci-audit: jerus-org/jci-audit@0.0.2
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.4
 
+# Hand-rolled rather than the orb's own release job, and deliberately so: the
+# published orb's job schema and its baked-in binary are always one release
+# behind, so a capability could never be used by the release that introduces it.
+# This job takes the executor from the orb (which carries cargo-audit,
+# cargo-deny, git and gnupg) but runs the binary built from this commit.
+# Consumers use the orb job — see orb/src/examples/record_release.yml.
+jobs:
+  record-release:
+    executor: jci-audit/default
+    steps:
+      # Write authority for the push. Nothing in the tool carries credentials of
+      # its own; without this the push fails on the read-only checkout key.
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
+      - checkout
+      # One attach: the shared workspace holds both the freshly built binary
+      # (from build-binary) and versions.env (from calculate-versions).
+      - attach_workspace:
+          at: /tmp/workspace
+      - run:
+          name: Record the security validation
+          command: |
+            source /tmp/workspace/versions.env
+            export PATH="/tmp/workspace:$PATH"
+            echo "Recording security validation for ${SEMVER}"
+            jci-audit release \
+              --version "${SEMVER}" \
+              --commit \
+              --push \
+              --gpg-key-env BOT_GPG_KEY \
+              --gpg-trust-env BOT_TRUST \
+              --user-name-env BOT_USER_NAME \
+              --user-email-env BOT_USER_EMAIL \
+              --sign-key-env BOT_SIGN_KEY
+
 workflows:
   release:
     jobs:
@@ -41,39 +77,13 @@ workflows:
 
       # Record the security validation BEFORE the crate release. cargo-release
       # refuses to start on a dirty tree, so the record cannot simply be left
-      # for it to pick up — it is committed here, which also makes it an
-      # ancestor of the release commit and so part of the tagged tree.
-      #
-      # Dogfoods the orb's own release job. Write authority comes from the
-      # pre-step: nothing in the tool carries credentials of its own.
-      - jci-audit/release:
-          name: record-release
+      # for it to pick up — committing it here also makes it an ancestor of the
+      # release commit, and so part of the tagged tree.
+      - record-release:
           requires: [build-binary]
-          attach_workspace: true
-          commit: true
-          push: true
-          # The signing material lives in the release context under these names.
-          # Only NAMES are configured here; the values never leave the context.
-          gpg_key_env: BOT_GPG_KEY
-          gpg_trust_env: BOT_TRUST
-          user_name_env: BOT_USER_NAME
-          user_email_env: BOT_USER_EMAIL
-          sign_key_env: BOT_SIGN_KEY
           context:
             - release
             - bot-check
-          pre-steps:
-            - add_ssh_keys:
-                fingerprints:
-                  - "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
-            - attach_workspace:
-                at: /tmp/release-versions
-            - run:
-                name: Export the calculated version
-                command: |
-                  source /tmp/release-versions/versions.env
-                  echo "export SEMVER=${SEMVER}" >> "$BASH_ENV"
-                  echo "Recording security validation for ${SEMVER}"
 
       - toolkit/release_crate:
           name: release-jci-audit
