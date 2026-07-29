@@ -18,6 +18,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - record the release with the binary being released(pr [#26])
 - hand-roll the record job to escape the orb bootstrap(pr [#27])
 - read the calculated version under its real name(pr [#28])
+- give the executor a cargo toolchain(pr [#29])
 
 ## [0.0.1] - 2026-07-28
 
@@ -75,5 +76,6 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#26]: https://github.com/jerus-org/jci-audit/pull/26
 [#27]: https://github.com/jerus-org/jci-audit/pull/27
 [#28]: https://github.com/jerus-org/jci-audit/pull/28
+[#29]: https://github.com/jerus-org/jci-audit/pull/29
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
