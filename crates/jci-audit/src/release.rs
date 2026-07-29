@@ -29,12 +29,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use toml_edit::{DocumentMut, value};
+use toml_edit::{DocumentMut, Item, value};
 
 use crate::{check::CommandRunner, sync::locate_paths};
 
 /// Schema version of the emitted record, so consumers can evolve with it.
-pub const RECORD_SCHEMA_VERSION: u64 = 2;
+pub const RECORD_SCHEMA_VERSION: u64 = 3;
 
 /// The cargo-deny checks the release gate enforces.
 pub const DENY_CHECKS: &[&str] = &["advisories", "bans", "licenses", "sources"];
@@ -80,6 +80,48 @@ pub fn lockfile_digest(bytes: &[u8]) -> String {
             let _ = write!(acc, "{byte:02x}");
             acc
         })
+}
+
+/// Digest of the **external** dependency set in a `Cargo.lock`.
+///
+/// Only `[[package]]` entries carrying a `source` are included. Workspace-local
+/// packages have none, and their version lines are rewritten by the release
+/// itself — cargo-release bumps the crate's version in `Cargo.lock` as part of
+/// the release commit — so hashing them would make the record depend on the
+/// release rather than on what was audited, and a later `verify` against the
+/// released tag would report a false mismatch.
+///
+/// The digest therefore states exactly what it means: the third-party
+/// dependency set the gate validated. Entries are sorted, so it does not depend
+/// on lockfile ordering.
+pub fn dependency_set_digest(lockfile_toml: &str) -> Result<String> {
+    let doc = lockfile_toml
+        .parse::<DocumentMut>()
+        .context("failed to parse Cargo.lock")?;
+
+    let mut entries: Vec<String> = doc
+        .get("package")
+        .and_then(Item::as_array_of_tables)
+        .map(|packages| {
+            packages
+                .iter()
+                .filter_map(|pkg| {
+                    // No `source` => a workspace-local package, excluded.
+                    let source = pkg.get("source")?.as_str()?;
+                    let name = pkg.get("name")?.as_str()?;
+                    let version = pkg.get("version")?.as_str()?;
+                    let checksum = pkg
+                        .get("checksum")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or_default();
+                    Some(format!("{name} {version} {source} {checksum}"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    entries.sort();
+
+    Ok(lockfile_digest(entries.join("\n").as_bytes()))
 }
 
 /// Discover cargo-deny's advisory-db checkout beneath `root`.
@@ -133,7 +175,7 @@ pub fn build_record(
     db_commit: &str,
     deny_version: &str,
     audit_version: &str,
-    lockfile_sha256: &str,
+    dependencies_sha256: &str,
     deny_toml_sha256: &str,
 ) -> Value {
     json!({
@@ -141,7 +183,10 @@ pub fn build_record(
         "version": version,
         "advisory_db": { "commit": db_commit },
         "tools": { "cargo_deny": deny_version, "cargo_audit": audit_version },
-        "lockfile": { "sha256": lockfile_sha256 },
+        // The EXTERNAL dependency set, not the raw file: cargo-release rewrites
+        // the crate's own version in Cargo.lock as part of the release commit,
+        // so a raw digest would not survive the release it describes.
+        "lockfile": { "dependencies_sha256": dependencies_sha256 },
         // The policy digest makes the record self-verifying: it proves WHICH
         // exception set (deny.toml ignores, licenses, bans, sources) was in
         // force, rather than trusting git history to supply it.
@@ -181,9 +226,9 @@ pub fn release_with<R: CommandRunner>(
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
     let lockfile = root.join("Cargo.lock");
-    let lock_bytes = std::fs::read(&lockfile)
+    let lock_text = std::fs::read_to_string(&lockfile)
         .with_context(|| format!("no Cargo.lock found at '{}'", lockfile.display()))?;
-    let lockfile_sha256 = lockfile_digest(&lock_bytes);
+    let dependencies_sha256 = dependency_set_digest(&lock_text)?;
 
     // Derived config: only db-path is overridden, so the repo's deny.toml stays
     // the single source of truth for every actual policy decision.
@@ -260,7 +305,7 @@ pub fn release_with<R: CommandRunner>(
         &db_commit,
         &deny_version,
         &audit_version,
-        &lockfile_sha256,
+        &dependencies_sha256,
         &deny_toml_sha256,
     );
     let path = record_path(&root, version);
@@ -344,6 +389,64 @@ allow = ["MIT"]
         assert_eq!(a.len(), 64, "hex sha256 is 64 chars: {a}");
     }
 
+    const LOCK_SAMPLE: &str = r#"
+version = 4
+
+[[package]]
+name = "jci-audit"
+version = "0.0.2"
+dependencies = ["clap"]
+
+[[package]]
+name = "clap"
+version = "4.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
+"#;
+
+    #[test]
+    fn dependency_digest_ignores_the_workspace_version_bump() {
+        // THE property this exists for: cargo-release rewrites the crate's own
+        // version in Cargo.lock during the release, so the digest must not move.
+        let bumped = LOCK_SAMPLE.replace(r#"version = "0.0.2""#, r#"version = "0.0.3""#);
+        assert_eq!(
+            dependency_set_digest(LOCK_SAMPLE).unwrap(),
+            dependency_set_digest(&bumped).unwrap(),
+            "the release's own version bump must not change the dependency digest"
+        );
+    }
+
+    #[test]
+    fn dependency_digest_tracks_external_dependencies() {
+        let changed = LOCK_SAMPLE.replace(r#"version = "4.6.4""#, r#"version = "4.6.5""#);
+        assert_ne!(
+            dependency_set_digest(LOCK_SAMPLE).unwrap(),
+            dependency_set_digest(&changed).unwrap(),
+            "an external dependency change MUST change the digest"
+        );
+        let rechecksummed = LOCK_SAMPLE.replace("d91e0c1457", "0000000000");
+        assert_ne!(
+            dependency_set_digest(LOCK_SAMPLE).unwrap(),
+            dependency_set_digest(&rechecksummed).unwrap(),
+            "a checksum change MUST change the digest"
+        );
+    }
+
+    #[test]
+    fn dependency_digest_is_order_independent_and_stable() {
+        let a = dependency_set_digest(LOCK_SAMPLE).unwrap();
+        assert_eq!(a, dependency_set_digest(LOCK_SAMPLE).unwrap());
+        assert_eq!(a.len(), 64);
+        // An empty lockfile has no external packages but is still well-defined.
+        assert!(
+            dependency_set_digest(
+                "version = 4
+"
+            )
+            .is_ok()
+        );
+    }
+
     #[test]
     fn discovers_the_single_nested_checkout() {
         let dir = tempfile::tempdir().unwrap();
@@ -375,7 +478,7 @@ allow = ["MIT"]
             "abc123",
             "cargo-deny 0.20.2",
             "cargo-audit 0.22.0",
-            "d1",
+            "deps1",
             "p1",
         );
         let b = build_record(
@@ -383,7 +486,7 @@ allow = ["MIT"]
             "abc123",
             "cargo-deny 0.20.2",
             "cargo-audit 0.22.0",
-            "d1",
+            "deps1",
             "p1",
         );
         assert_eq!(render_record(&a).unwrap(), render_record(&b).unwrap());
@@ -400,7 +503,10 @@ allow = ["MIT"]
             rendered.contains("\"commit\": \"abc123\""),
             "got:\n{rendered}"
         );
-        assert!(rendered.contains("\"sha256\": \"d1\""), "got:\n{rendered}");
+        assert!(
+            rendered.contains("\"dependencies_sha256\": \"deps1\""),
+            "got:\n{rendered}"
+        );
         // Volatile data must never be recorded.
         for forbidden in ["timestamp", "date", "live", "generated_at"] {
             assert!(
