@@ -223,8 +223,8 @@ pub fn resolve_version(explicit: Option<&str>, env_name: &str) -> Result<String>
     match std::env::var(env_name) {
         Ok(v) if !v.trim().is_empty() => Ok(v.trim().to_string()),
         _ => bail!(
-            "no release version: pass --version, or set {env_name} \
-             (release pipelines usually export it from the calculated versions)"
+            "no release version: pass --version, or export the variable named by \
+             --version-env (currently {env_name})"
         ),
     }
 }
