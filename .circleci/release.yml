@@ -39,10 +39,19 @@ jobs:
           name: Record the security validation
           command: |
             source /tmp/workspace/versions.env
+            # calculate-versions stores each crate as CRATE_VERSION_<NAME>,
+            # uppercased with hyphens replaced; SEMVER is derived later by
+            # release_crate and is NOT in the file.
+            VERSION="${CRATE_VERSION_JCI_AUDIT}"
+            if [ -z "${VERSION}" ]; then
+              echo "ERROR: CRATE_VERSION_JCI_AUDIT not found in versions.env" >&2
+              cat /tmp/workspace/versions.env >&2
+              exit 1
+            fi
             export PATH="/tmp/workspace:$PATH"
-            echo "Recording security validation for ${SEMVER}"
+            echo "Recording security validation for ${VERSION}"
             jci-audit release \
-              --version "${SEMVER}" \
+              --version "${VERSION}" \
               --commit \
               --push \
               --gpg-key-env BOT_GPG_KEY \
