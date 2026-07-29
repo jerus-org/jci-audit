@@ -40,6 +40,13 @@ workflows:
           requires: [approve-release]
           commit: true
           push: true
+          # The signing material lives in the release context under these names.
+          # Only NAMES are configured here; the values never leave the context.
+          gpg_key_env: BOT_GPG_KEY
+          gpg_trust_env: BOT_TRUST
+          user_name_env: BOT_USER_NAME
+          user_email_env: BOT_USER_EMAIL
+          sign_key_env: BOT_SIGN_KEY
           context:
             - release
             - bot-check

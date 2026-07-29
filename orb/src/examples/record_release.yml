@@ -1,0 +1,51 @@
+description: >
+  Record a release's security validation, and commit it, before the crate is
+  released.
+
+  The record attests that the release passed the gate against a known advisory
+  snapshot, so the release can be re-verified later with `jci-audit verify`.
+  It must be committed BEFORE the release tool runs: cargo-release refuses to
+  start on a dirty tree, so a file merely left in place would abort it. Ordering
+  the record first also makes it an ancestor of the release commit, and so part
+  of the tagged tree.
+
+  Nothing in the orb carries credentials of its own. Write authority comes from
+  the job's own pre-steps — here an SSH key with write access — so the checkout's
+  read-only key model is respected rather than worked around. Signing material is
+  referenced by environment variable NAME; the values stay in your context.
+
+  Supply the version either as the `version` parameter, or by exporting it (the
+  `version_env` parameter names the variable, default SEMVER) when your pipeline
+  computes it at runtime.
+usage:
+  version: 2.1
+  orbs:
+    jci-audit: jerus-org/jci-audit@0.0.2
+  workflows:
+    release:
+      jobs:
+        - jci-audit/release:
+            name: record-release
+            # Explicit version. Omit this and export SEMVER instead when the
+            # version is calculated during the pipeline.
+            version: "1.2.0"
+            commit: true
+            push: true
+            # Names only — the values come from the context.
+            gpg_key_env: BOT_GPG_KEY
+            gpg_trust_env: BOT_TRUST
+            user_name_env: BOT_USER_NAME
+            user_email_env: BOT_USER_EMAIL
+            sign_key_env: BOT_SIGN_KEY
+            context:
+              - release
+            pre-steps:
+              # Write authority for the push. Without it the push fails on the
+              # read-only deploy key, with guidance rather than a workaround.
+              - add_ssh_keys:
+                  fingerprints:
+                    - "SHA256:your-write-key-fingerprint"
+        # Release the crate only after the record is committed, so the release
+        # starts from a clean tree that already contains it.
+        - your-release-job:
+            requires: [record-release]
