@@ -1,0 +1,59 @@
+description: >
+  Record a release's security validation, and commit it, before the crate is
+  released.
+
+  The record attests that the release passed the gate against a known advisory
+  snapshot, so the release can be re-verified later with `jci-audit verify`.
+  It must be committed BEFORE the release tool runs: cargo-release refuses to
+  start on a dirty tree, so a file merely left in place would abort it. Ordering
+  the record first also makes it an ancestor of the release commit, and so part
+  of the tagged tree.
+
+  Nothing in the orb carries credentials of its own. Write authority comes from
+  the job's own pre-steps — here an SSH key with write access — so the checkout's
+  read-only key model is respected rather than worked around.
+
+  Signing material is referenced by environment variable NAME, never by value, so
+  nothing secret appears in your configuration. The defaults are GPG_KEY,
+  GPG_TRUST, GIT_USER_NAME, GIT_USER_EMAIL and GPG_SIGN_KEY; if your context
+  stores them under different names, set the matching *_env parameters (shown
+  commented below). Signing is skipped when no key is present, which is usually
+  what you want locally but rarely what you want in CI.
+
+  Supply the version either as the `version` parameter, or by exporting it (the
+  `version_env` parameter names the variable, default SEMVER) when your pipeline
+  computes it at runtime.
+usage:
+  version: 2.1
+  orbs:
+    jci-audit: jerus-org/jci-audit@0.0.2
+  workflows:
+    release:
+      jobs:
+        - jci-audit/release:
+            name: record-release
+            # Explicit version. Omit this and export SEMVER instead when the
+            # version is calculated during the pipeline.
+            version: "1.2.0"
+            commit: true
+            push: true
+            # Uses the default variable names. If your context stores the
+            # signing material under different names, set them here — these are
+            # NAMES, never values:
+            #   gpg_key_env: YOUR_GPG_KEY_VAR
+            #   gpg_trust_env: YOUR_GPG_TRUST_VAR
+            #   user_name_env: YOUR_COMMITTER_NAME_VAR
+            #   user_email_env: YOUR_COMMITTER_EMAIL_VAR
+            #   sign_key_env: YOUR_SIGNING_KEY_ID_VAR
+            context:
+              - your-signing-context
+            pre-steps:
+              # Write authority for the push. Without it the push fails on the
+              # read-only deploy key, with guidance rather than a workaround.
+              - add_ssh_keys:
+                  fingerprints:
+                    - "SHA256:your-write-key-fingerprint"
+        # Release the crate only after the record is committed, so the release
+        # starts from a clean tree that already contains it.
+        - your-release-job:
+            requires: [record-release]

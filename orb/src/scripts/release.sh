@@ -1,5 +1,5 @@
 set -- jci-audit release
-set -- "$@" --version "${VERSION}"
+[[ -n "${VERSION:-}" ]] && set -- "$@" --version "${VERSION}"
 [[ -n "${ADVISORY_DB:-}" ]] && set -- "$@" --advisory-db "${ADVISORY_DB}"
 [[ "${COMMIT:-false}" = "true" ]] && set -- "$@" --commit
 [[ "${PUSH:-false}" = "true" ]] && set -- "$@" --push
