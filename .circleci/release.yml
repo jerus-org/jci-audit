@@ -13,6 +13,7 @@ parameters:
 orbs:
   toolkit: jerus-org/circleci-toolkit@7.0.0
   jci-audit: jerus-org/jci-audit@0.0.2
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.4
 
 workflows:
   release:
@@ -28,6 +29,16 @@ workflows:
           type: approval
           requires: [calculate-versions]
 
+      # Build the binary from THIS commit. record-release attaches the workspace,
+      # which prepends it to PATH, so the release is recorded by the code being
+      # released rather than by the previous version baked into the orb's image.
+      # Without this the pipeline could only ever use features that were already
+      # released — the self-hosted orb's bootstrap problem.
+      - gen-circleci-orb/build_rust_binary:
+          name: build-binary
+          package: jci-audit
+          requires: [approve-release]
+
       # Record the security validation BEFORE the crate release. cargo-release
       # refuses to start on a dirty tree, so the record cannot simply be left
       # for it to pick up — it is committed here, which also makes it an
@@ -37,7 +48,8 @@ workflows:
       # pre-step: nothing in the tool carries credentials of its own.
       - jci-audit/release:
           name: record-release
-          requires: [approve-release]
+          requires: [build-binary]
+          attach_workspace: true
           commit: true
           push: true
           # The signing material lives in the release context under these names.
