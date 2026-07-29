@@ -18,7 +18,7 @@ RUN apt-get update \
 RUN cargo install cargo-binstall --locked \
     && cargo binstall --no-confirm cargo-audit cargo-deny
 
-FROM debian:13-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
+FROM rust:1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     ca-certificates \

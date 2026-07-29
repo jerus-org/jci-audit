@@ -23,7 +23,12 @@ orbs:
 # Consumers use the orb job — see orb/src/examples/record_release.yml.
 jobs:
   record-release:
-    executor: jci-audit/default
+    # Not the orb's executor: the published 0.0.2 image has no cargo toolchain,
+    # so cargo-deny cannot run `cargo metadata`. Fixed for consumers by basing
+    # the orb's runtime on a Rust image, but that only reaches us once published.
+    # This image carries cargo, cargo-deny, cargo-audit, git and gnupg — the same
+    # executor the release and prlog jobs sign and push from.
+    executor: toolkit/rust_env_rolling
     steps:
       # Write authority for the push. Nothing in the tool carries credentials of
       # its own; without this the push fails on the read-only checkout key.
