@@ -12,6 +12,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - digest the dependency set, not the raw lockfile(pr [#23])
 - commit and push the release record from the orb(pr [#24])
 - record the release before the crate release(pr [#25])
+- use the pcu library to commit and push the record(pr [#32])
 
 ### Fixed
 
@@ -79,5 +80,6 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#28]: https://github.com/jerus-org/jci-audit/pull/28
 [#29]: https://github.com/jerus-org/jci-audit/pull/29
 [#30]: https://github.com/jerus-org/jci-audit/pull/30
+[#32]: https://github.com/jerus-org/jci-audit/pull/32
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
