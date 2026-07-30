@@ -89,6 +89,13 @@ fn pcu_config() -> Result<config::Config> {
         .set_default("default_branch", "main")?
         .set_default("username", "CIRCLE_PROJECT_USERNAME")?
         .set_default("reponame", "CIRCLE_PROJECT_REPONAME")?
+        // Required even though nothing here touches a PR log: the client reads it
+        // while building, regardless of command, and refuses to construct without
+        // it. pcu's own default, and the file this workspace actually keeps.
+        .set_default("prlog", "PRLOG.md")?
+        // `push` is what populates `branch` from the variable named above —
+        // `push_commit` pushes the local branch of that name. Any other value
+        // leaves it unset and the push has no ref to send.
         .set_override("command", "push")?
         .add_source(config::Environment::with_prefix("PCU"));
     // A token is a fallback for environments without App credentials; note it has
@@ -269,5 +276,21 @@ mod tests {
     fn pcu_config_builds_without_credentials_present() {
         // Construction must not require secrets; only the push does.
         assert!(pcu_config().is_ok());
+    }
+
+    #[test]
+    fn pcu_config_supplies_every_setting_the_client_requires() {
+        // `Client::new_with` reads each of these and refuses to build when one is
+        // absent, whether or not the command uses it. `prlog` was missing, and it
+        // failed only in CI — after the gate had passed and the record was
+        // written, which is the most expensive place to discover it. Asserted key
+        // by key so a future omission names itself.
+        let cfg = pcu_config().expect("config must build");
+        for key in ["command", "username", "reponame", "branch", "prlog"] {
+            assert!(
+                cfg.get::<String>(key).is_ok(),
+                "pcu's client requires the '{key}' setting"
+            );
+        }
     }
 }
