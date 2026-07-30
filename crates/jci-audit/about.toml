@@ -1,8 +1,11 @@
 # cargo-about configuration for generating THIRD-PARTY-LICENSES.md.
-# The accepted list mirrors the license policy in deny.toml: jci-audit's
-# dependency graph is permissive-only (no OpenPGP/GPG-signing stack), so unlike
-# gen-circleci-orb it needs no LGPL-2.0-or-later / MPL-2.0 exceptions. Keep this
-# list in sync with deny.toml's [licenses].allow.
+#
+# Mirrors the license policy in deny.toml, including its structure: permissive
+# licenses are accepted globally, and each weak-copyleft license is scoped to the
+# one crate that carries it. Scoping matters — a global accept list would take a
+# NEW copyleft dependency in silence, which is the case worth catching. Adding a
+# crate here is the same conscious review as adding a [[licenses.exceptions]]
+# entry to deny.toml, and the two must be kept in step.
 accepted = [
     "MIT",
     "Apache-2.0",
@@ -19,3 +22,17 @@ accepted = [
 # Notices cover what ships in the binary: dev-only dependencies (test harness,
 # etc.) are not distributed, so they are excluded.
 ignore-dev-dependencies = true
+
+# The weak-copyleft crates, matching deny.toml's [[licenses.exceptions]] one for
+# one. All three arrive through pcu.
+
+# LGPL-2.0-or-later: the OpenPGP stack that signs the record commit.
+[buffered-reader]
+accepted = ["LGPL-2.0-or-later"]
+
+[sequoia-openpgp]
+accepted = ["LGPL-2.0-or-later"]
+
+# MPL-2.0 (file-level copyleft): transitive config/dirs helper.
+[option-ext]
+accepted = ["MPL-2.0"]
