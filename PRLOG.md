@@ -19,6 +19,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - hand-roll the record job to escape the orb bootstrap(pr [#27])
 - read the calculated version under its real name(pr [#28])
 - give the executor a cargo toolchain(pr [#29])
+- decode the signing key the way CI stores it(pr [#30])
 
 ## [0.0.1] - 2026-07-28
 
@@ -77,5 +78,6 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#27]: https://github.com/jerus-org/jci-audit/pull/27
 [#28]: https://github.com/jerus-org/jci-audit/pull/28
 [#29]: https://github.com/jerus-org/jci-audit/pull/29
+[#30]: https://github.com/jerus-org/jci-audit/pull/30
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
