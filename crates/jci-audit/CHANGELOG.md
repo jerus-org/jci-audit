@@ -5,9 +5,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.3] - 2026-07-30
 
-Summary: 
+Summary: Added[5], Fixed[6]
+
+### Added
+
+ - feat: use the pcu library to commit and push the record
+ - feat: record the release before the crate release
+ - feat: commit and push the release record from the orb
+ - feat: digest the dependency set, not the raw lockfile
+ - feat: add verify command and record the policy digest
+
+### Fixed
+
+ - fix: accept the pcu stack's licenses in cargo-about
+ - fix: give the pcu client the prlog setting it requires
+ - fix: push the record with credentials the branch rules accept
+ - fix: decode the signing key the way CI stores it
+ - fix: read the calculated version under its real name
+ - fix: seed the crate CHANGELOG.md
 
 ## [0.0.2] - 2026-07-28
 
