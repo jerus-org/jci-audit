@@ -3,7 +3,7 @@ version: 2.1
 parameters:
   min_rust_version:
     type: string
-    default: "1.88"
+    default: "1.89"
 
 orbs:
   toolkit: jerus-org/circleci-toolkit@7.0.0

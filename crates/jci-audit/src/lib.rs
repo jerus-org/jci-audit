@@ -85,8 +85,10 @@ enum Commands {
         #[arg(long)]
         commit: bool,
 
-        /// Push the commit using the credentials the CI checkout provided.
-        /// Nothing here carries credentials of its own.
+        /// Push the commit. A protected branch accepts only a credential its
+        /// rules permit to bypass them, so supply PCU_APP_ID and PCU_PRIVATE_KEY
+        /// for a GitHub App token; a deploy key cannot bypass, whatever write
+        /// access it carries.
         #[arg(long, requires = "commit")]
         push: bool,
 
@@ -248,8 +250,8 @@ fn run_release(
     }
 
     if commit {
-        let work = release::work_dir();
-        let signing = gitops::import_signing_key(&check::SystemRunner, sign_names, &work)?;
+        gitops::ensure_paths_exist(&[&outcome.record_path])?;
+        let signing = gitops::import_signing_key(sign_names)?;
         let identity = if signing {
             gitops::read_identity(sign_names)
         } else {
@@ -258,23 +260,17 @@ fn run_release(
         if signing && identity.is_none() {
             println!("  note: a signing key was imported but the committer identity is not set");
         }
-        gitops::commit_paths(
-            &check::SystemRunner,
-            &cwd,
+        gitops::commit_and_push(
             &[&outcome.record_path],
             &gitops::record_commit_message(version),
             identity.as_ref(),
+            push,
         )?;
-        let _ = std::fs::remove_dir_all(&work);
         println!(
-            "  committed the record{}",
-            if identity.is_some() { " (signed)" } else { "" }
+            "  committed the record{}{}",
+            if identity.is_some() { " (signed)" } else { "" },
+            if push { " and pushed" } else { "" }
         );
-
-        if push {
-            gitops::push(&check::SystemRunner, &cwd)?;
-            println!("  pushed");
-        }
     }
     Ok(())
 }

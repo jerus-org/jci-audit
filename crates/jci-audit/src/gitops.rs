@@ -1,29 +1,34 @@
-//! Committing and pushing the release record, without linking a git library.
+//! Committing and pushing the release record.
 //!
-//! The record has to reach `main` **before** cargo-release runs: cargo-release
-//! refuses to start on a dirty tree (a pre-created file is rejected whether
-//! staged or not), so the record cannot simply be left for it to pick up. Making
-//! it a commit of its own also puts it in the tagged tree, since the release
-//! commit descends from it.
+//! The record has to reach the branch **before** cargo-release runs: cargo-release
+//! refuses to start on a dirty tree (a pre-created file is rejected whether staged
+//! or not), so the record cannot simply be left for it to pick up. Making it a
+//! commit of its own also puts it in the tagged tree, since the release commit
+//! descends from it.
 //!
-//! This is done by driving the `git` and `gpg` binaries, exactly as the rest of
-//! the tool drives `cargo-audit` and `cargo-deny` — the orb executor already
-//! carries git, gnupg and openssh-client. Linking a git/GitHub library instead
-//! would pull a much larger dependency tree into a tool whose own output is a
-//! security audit; the obvious candidate transitively carries an RSA advisory
-//! that this crate would then have to suppress in its own `deny.toml`.
+//! This uses **pcu** — the same CI git client the organisation's other tools use —
+//! rather than driving `git` and `gpg` directly. Two reasons, the second decisive:
 //!
-//! **Credentials are ambient.** Nothing here mints or carries its own: the push
-//! uses whatever authorisation the CI checkout already established. On the usual
-//! read-only deploy key it fails, and says so with guidance rather than
-//! attempting to work around a deliberate control.
+//! 1. It already handles the awkward parts: CI stores the signing key
+//!    base64-encoded with literal `\n` escapes, which pcu's importer expands and
+//!    decodes forgivingly.
+//! 2. **A protected branch refuses a direct push** however much write access the
+//!    pusher holds, accepting only a credential its rules permit to bypass them.
+//!    pcu mints a GitHub App installation token when `PCU_APP_ID` and
+//!    `PCU_PRIVATE_KEY` are present, which is what lands a commit on such a
+//!    branch. A deploy key cannot, so `git push` is not an option here.
+//!
+//! pcu brings `rsa` into the graph through `openidconnect`, which carries
+//! RUSTSEC-2023-0071. That advisory concerns private-key operations whose timing is
+//! observable over a network: the git path never enters OIDC or sigstore, and a CLI
+//! in CI is not a decryption oracle. It is suppressed in `deny.toml` with that
+//! reasoning, and [`crate::prune`] will report the suppression as stale the moment
+//! `rsa` leaves the graph. Tracked upstream as jerus-org/pcu#1028, which would let
+//! this crate take pcu's git surface without `rsa` at all.
 
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
-use base64::{Engine, engine::general_purpose::STANDARD};
-
-use crate::check::CommandRunner;
+use anyhow::{Result, bail};
 
 /// Names of the environment variables holding the signing material.
 ///
@@ -59,39 +64,14 @@ pub struct SigningIdentity {
     pub sign_key: String,
 }
 
-/// Decode a base64 signing key supplied through the environment.
-///
-/// CI stores multi-line values with **literal `\n` escape sequences**, and the
-/// base64 itself is usually line-wrapped, so a strict decode fails on the
-/// embedded whitespace. Expand the escapes first, then keep only base64
-/// alphabet characters — the equivalent of `printf '%b' | base64 --decode
-/// --ignore-garbage`, which is how the rest of the toolchain reads these values.
-///
-/// Escapes must be expanded BEFORE filtering: dropping the backslash of `\n`
-/// would leave a bare `n`, which is itself a valid base64 character and would
-/// silently corrupt the key.
-pub fn decode_key(raw: &str) -> Result<Vec<u8>> {
-    // Expand literal escape sequences first — see the note above on why order
-    // matters here.
-    let expanded = raw.replace("\\r\\n", "\n").replace("\\n", "\n");
-    let cleaned: String = expanded
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '='))
-        .collect();
-    if cleaned.is_empty() {
-        bail!("no base64 content found");
-    }
-    Ok(STANDARD.decode(&cleaned)?)
-}
-
 /// The commit message for a release record.
 pub fn record_commit_message(version: &str) -> String {
     format!("chore: record security validation for {version}")
 }
 
-/// Read the signing identity, returning `None` when the environment does not
-/// supply it — an unsigned commit is then made, which is the right behaviour for
-/// a local run and fails visibly in CI where signatures are required.
+/// Read the signing identity, returning `None` unless the environment supplies it
+/// in full — a partial identity would attribute the commit to whatever git happened
+/// to be configured with, which is worse than an unsigned commit.
 pub fn read_identity(names: &SignEnvNames) -> Option<SigningIdentity> {
     let get = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
     Some(SigningIdentity {
@@ -101,221 +81,126 @@ pub fn read_identity(names: &SignEnvNames) -> Option<SigningIdentity> {
     })
 }
 
-/// Import the GPG key named by `names.gpg_key` (base64-encoded) and its
-/// ownertrust, so the commit can be signed.
-///
-/// Written to files under `work_dir` rather than piped, so no key material ever
-/// appears in a command line, and removed immediately afterwards.
-pub fn import_signing_key<R: CommandRunner>(
-    runner: &R,
-    names: &SignEnvNames,
-    work_dir: &Path,
-) -> Result<bool> {
-    let Ok(key_b64) = std::env::var(&names.gpg_key) else {
+/// pcu's configuration: the CircleCI variable names it expects, with
+/// `PCU_APP_ID`/`PCU_PRIVATE_KEY` (or `GITHUB_TOKEN`) supplying the credential.
+fn pcu_config() -> Result<config::Config> {
+    let mut builder = config::Config::builder()
+        .set_default("branch", "CIRCLE_BRANCH")?
+        .set_default("default_branch", "main")?
+        .set_default("username", "CIRCLE_PROJECT_USERNAME")?
+        .set_default("reponame", "CIRCLE_PROJECT_REPONAME")?
+        .set_override("command", "push")?
+        .add_source(config::Environment::with_prefix("PCU"));
+    // A token is a fallback for environments without App credentials; note it has
+    // no bypass authority on a protected branch.
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        builder = builder.set_default("pat", token)?;
+    }
+    Ok(builder.build()?)
+}
+
+/// Import the signing key named by `names.gpg_key`, reporting whether one was
+/// available. pcu handles the base64 and the literal `\n` escapes CI introduces.
+pub fn import_signing_key(names: &SignEnvNames) -> Result<bool> {
+    let Ok(key) = std::env::var(&names.gpg_key) else {
         return Ok(false);
     };
-    if key_b64.trim().is_empty() {
+    if key.trim().is_empty() {
         return Ok(false);
     }
-
-    let key = decode_key(&key_b64)
-        .with_context(|| format!("could not decode the key in {}", names.gpg_key))?;
-
-    std::fs::create_dir_all(work_dir)
-        .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
-    let key_path = work_dir.join("signing-key.asc");
-    std::fs::write(&key_path, key).context("failed to stage the signing key")?;
-
-    let import = runner.run(
-        "gpg",
-        &["--batch", "--import", key_path.to_str().unwrap_or_default()],
-        work_dir,
-    );
-    // Remove the key material before reacting to the result.
-    let _ = std::fs::remove_file(&key_path);
-    let import = import?;
-    if !import.success {
-        bail!("failed to import the signing key: {}", import.stderr.trim());
-    }
-
-    // Ownertrust is optional: without it gpg still signs, it just warns.
-    if let Ok(trust) = std::env::var(&names.gpg_trust)
-        && !trust.trim().is_empty()
-    {
-        let trust_path = work_dir.join("ownertrust.txt");
-        std::fs::write(&trust_path, trust).context("failed to stage the ownertrust")?;
-        let _ = runner.run(
-            "gpg",
-            &[
-                "--batch",
-                "--import-ownertrust",
-                trust_path.to_str().unwrap_or_default(),
-            ],
-            work_dir,
-        );
-        let _ = std::fs::remove_file(&trust_path);
-    }
+    let trust = std::env::var(&names.gpg_trust).unwrap_or_default();
+    pcu::import_gpg_key(&key, &trust)
+        .map_err(|e| anyhow::anyhow!("could not import the key in {}: {e}", names.gpg_key))?;
     Ok(true)
 }
 
-/// Stage the given paths and create a commit.
+/// Stage the given paths, commit them, and optionally push.
 ///
-/// Signs when an identity with a signing key is supplied. Always signs off
-/// (DCO), matching the contribution requirements.
-pub fn commit_paths<R: CommandRunner>(
-    runner: &R,
-    root: &Path,
+/// Signs when an identity is supplied. The identity is passed explicitly rather
+/// than read from git config, which is not reliably visible to pcu's repo handle
+/// in CI.
+pub fn commit_and_push(
     paths: &[&Path],
     message: &str,
     identity: Option<&SigningIdentity>,
+    push: bool,
 ) -> Result<()> {
-    // Stage exactly the named paths — never a blanket add, which would sweep up
-    // whatever else the job happens to have left in the tree.
-    let mut add: Vec<String> = vec!["add".to_string(), "--".to_string()];
-    add.extend(paths.iter().map(|p| p.display().to_string()));
-    let add_refs: Vec<&str> = add.iter().map(String::as_str).collect();
-    let staged = runner.run("git", &add_refs, root)?;
-    if !staged.success {
-        bail!("failed to stage the record: {}", staged.stderr.trim());
-    }
+    use pcu::GitOps;
 
-    // Identity is supplied per-invocation with -c, so nothing is written to the
-    // repository or global git config.
-    let mut args: Vec<String> = Vec::new();
-    if let Some(id) = identity {
-        args.push("-c".into());
-        args.push(format!("user.name={}", id.user_name));
-        args.push("-c".into());
-        args.push(format!("user.email={}", id.user_email));
-        args.push("-c".into());
-        args.push(format!("user.signingkey={}", id.sign_key));
-    }
-    args.push("commit".into());
-    if identity.is_some() {
-        args.push("-S".into());
-    }
-    args.push("--signoff".into());
-    args.push("-m".into());
-    args.push(message.to_string());
+    let config = pcu_config()?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let client = runtime
+        .block_on(pcu::Client::new_with(&config))
+        .map_err(|e| anyhow::anyhow!("could not create the pcu client: {e}"))?;
 
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let committed = runner.run("git", &arg_refs, root)?;
-    if !committed.success {
-        bail!("failed to commit the record: {}", committed.stderr.trim());
-    }
-    Ok(())
-}
+    client
+        .stage_paths(paths)
+        .map_err(|e| anyhow::anyhow!("failed to stage the record: {e}"))?;
 
-/// Push the current branch using whatever credentials the environment provides.
-pub fn push<R: CommandRunner>(runner: &R, root: &Path) -> Result<()> {
-    let pushed = runner.run("git", &["push"], root)?;
-    if !pushed.success {
-        bail!("{}", ambient_push_failure(&pushed.stderr));
-    }
-    Ok(())
-}
-
-/// Guidance shown when an ambient push is refused, so the cause is obvious.
-pub fn ambient_push_failure(stderr: &str) -> String {
-    // Two quite different causes present as one failure, and the remedies differ,
-    // so name both rather than guessing.
-    let ruleset = stderr.contains("GH013")
-        || stderr.contains("rule violations")
-        || stderr.contains("protected branch")
-        || stderr.contains("must be made through a pull request");
-
-    let cause = if ruleset {
-        "the branch's rules rejected it — authorisation succeeded, but the branch          requires changes to arrive another way (typically by pull request).          Pushing here needs a credential the rules allow to bypass them, such as a          GitHub App installation token; a deploy key will not do, however much          write access it has."
-    } else {
-        "the credentials were refused. A standard CircleCI + GitHub checkout leaves          a READ-ONLY deploy key, which cannot push. Load a write key with          add_ssh_keys, or run the record step in a job that already has write          authorisation."
+    let sign = match identity {
+        Some(id) => pcu::SignConfig::new(pcu::Sign::Gpg)
+            .with_identity(&id.user_name, &id.user_email)
+            .with_signing_key(&id.sign_key),
+        None => pcu::SignConfig::new(pcu::Sign::None),
     };
+    client
+        .commit_staged(sign, message, "", None)
+        .map_err(|e| anyhow::anyhow!("failed to commit the record: {e}"))?;
 
-    format!(
-        "push refused with the credentials the CI checkout provided: {}\n\n{}\n\n\
-         Nothing here carries credentials of its own, and it will not weaken the \
-         checkout's configuration to get around this.",
-        stderr.trim(),
-        cause
-    )
+    if !push {
+        return Ok(());
+    }
+    let committer = identity.map(|i| i.user_name.as_str()).unwrap_or_default();
+    client
+        .push_commit("", None, false, committer)
+        .map_err(|e| push_failure(&e.to_string()))?;
+    Ok(())
+}
+
+/// Explain a push failure. The two causes present alike and have different
+/// remedies, so name them apart rather than guessing.
+fn push_failure(err: &str) -> anyhow::Error {
+    let ruleset = err.contains("GH013")
+        || err.contains("rule violations")
+        || err.contains("protected branch")
+        || err.contains("must be made through a pull request");
+    if ruleset {
+        anyhow::anyhow!(
+            "push refused by the branch's rules: {err}\n\n\
+             Authorisation succeeded — the branch requires changes to arrive another \
+             way, typically by pull request. Landing a commit here needs a credential \
+             its rules permit to bypass them: supply PCU_APP_ID and PCU_PRIVATE_KEY so \
+             a GitHub App token is used. A deploy key or personal token cannot bypass, \
+             however much write access it carries."
+        )
+    } else {
+        anyhow::anyhow!(
+            "push refused: {err}\n\n\
+             A standard CircleCI + GitHub checkout leaves a READ-ONLY deploy key, which \
+             cannot push. Supply App credentials, or run this step in a job that already \
+             holds write authorisation."
+        )
+    }
+}
+
+/// Refuse to proceed when the paths to commit are absent: the commit would be
+/// empty and the release would continue as though a record had been made.
+pub fn ensure_paths_exist(paths: &[&Path]) -> Result<()> {
+    for path in paths {
+        if !path.exists() {
+            bail!("nothing to commit: '{}' does not exist", path.display());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, path::PathBuf};
+    use std::path::PathBuf;
 
     use super::*;
-    use crate::check::ToolOutput;
-
-    struct MockRunner {
-        ok: bool,
-        calls: RefCell<Vec<Vec<String>>>,
-    }
-
-    impl MockRunner {
-        fn new(ok: bool) -> Self {
-            Self {
-                ok,
-                calls: RefCell::new(Vec::new()),
-            }
-        }
-        fn calls(&self) -> Vec<Vec<String>> {
-            self.calls.borrow().clone()
-        }
-    }
-
-    impl CommandRunner for MockRunner {
-        fn run(&self, program: &str, args: &[&str], _cwd: &Path) -> Result<ToolOutput> {
-            let mut call = vec![program.to_string()];
-            call.extend(args.iter().map(|s| s.to_string()));
-            self.calls.borrow_mut().push(call);
-            Ok(ToolOutput {
-                success: self.ok,
-                stdout: String::new(),
-                stderr: if self.ok {
-                    String::new()
-                } else {
-                    "remote: write access denied".to_string()
-                },
-            })
-        }
-    }
-
-    fn identity() -> SigningIdentity {
-        SigningIdentity {
-            user_name: "A Bot".to_string(),
-            user_email: "bot@example.com".to_string(),
-            sign_key: "DEADBEEF".to_string(),
-        }
-    }
-
-    #[test]
-    fn decodes_plain_base64() {
-        // "hello" == aGVsbG8=
-        assert_eq!(decode_key("aGVsbG8=").unwrap(), b"hello");
-    }
-
-    #[test]
-    fn decodes_despite_wrapping_whitespace() {
-        // Real newlines and spaces, as line-wrapped base64 arrives.
-        assert_eq!(decode_key("aGVs\nbG8=").unwrap(), b"hello");
-        assert_eq!(decode_key("aGVs bG8=").unwrap(), b"hello");
-        assert_eq!(decode_key("  aGVsbG8=\n").unwrap(), b"hello");
-    }
-
-    #[test]
-    fn decodes_despite_literal_escape_sequences() {
-        // CI stores multi-line values with a literal backslash-n. Expanding
-        // these BEFORE filtering matters: dropping only the backslash would
-        // leave a bare `n`, a valid base64 character, silently corrupting the key.
-        let with_escapes = "aGVs\\nbG8=";
-        assert_eq!(decode_key(with_escapes).unwrap(), b"hello");
-    }
-
-    #[test]
-    fn rejects_input_with_no_base64_content() {
-        assert!(decode_key("!!! ???").is_err());
-        assert!(decode_key("").is_err());
-    }
 
     #[test]
     fn message_names_the_version() {
@@ -325,113 +210,9 @@ mod tests {
     }
 
     #[test]
-    fn commit_stages_only_the_given_paths() {
-        let runner = MockRunner::new(true);
-        let record = PathBuf::from(".security/release-1.2.0.json");
-        commit_paths(
-            &runner,
-            Path::new("/repo"),
-            &[record.as_path()],
-            "msg",
-            Some(&identity()),
-        )
-        .unwrap();
-
-        let calls = runner.calls();
-        let add = calls
-            .iter()
-            .find(|c| c[0] == "git" && c.contains(&"add".to_string()))
-            .expect("no git add");
-        assert!(
-            add.contains(&record.display().to_string()),
-            "must stage the record: {add:?}"
-        );
-        // Never a blanket add.
-        assert!(!add.contains(&"-A".to_string()), "blanket add: {add:?}");
-        assert!(!add.contains(&".".to_string()), "blanket add: {add:?}");
-    }
-
-    #[test]
-    fn commit_is_signed_and_signed_off_when_identity_is_supplied() {
-        let runner = MockRunner::new(true);
-        commit_paths(
-            &runner,
-            Path::new("/repo"),
-            &[Path::new("f")],
-            "msg",
-            Some(&identity()),
-        )
-        .unwrap();
-        let calls = runner.calls();
-        let commit = calls
-            .iter()
-            .find(|c| c.contains(&"commit".to_string()))
-            .expect("no git commit");
-        assert!(commit.contains(&"-S".to_string()), "must sign: {commit:?}");
-        assert!(
-            commit.contains(&"--signoff".to_string()) || commit.contains(&"-s".to_string()),
-            "must sign off (DCO): {commit:?}"
-        );
-        // Identity is passed per-invocation, never written to global config.
-        let joined = commit.join(" ");
-        assert!(joined.contains("user.name=A Bot"), "{joined}");
-        assert!(joined.contains("user.email=bot@example.com"), "{joined}");
-        assert!(joined.contains("user.signingkey=DEADBEEF"), "{joined}");
-    }
-
-    #[test]
-    fn commit_without_identity_is_unsigned() {
-        let runner = MockRunner::new(true);
-        commit_paths(&runner, Path::new("/repo"), &[Path::new("f")], "msg", None).unwrap();
-        let calls = runner.calls();
-        let commit = calls
-            .iter()
-            .find(|c| c.contains(&"commit".to_string()))
-            .expect("no git commit");
-        assert!(!commit.contains(&"-S".to_string()), "got {commit:?}");
-    }
-
-    #[test]
-    fn failed_commit_is_an_error() {
-        let runner = MockRunner::new(false);
-        assert!(
-            commit_paths(&runner, Path::new("/repo"), &[Path::new("f")], "m", None).is_err(),
-            "a failing git commit must not be swallowed"
-        );
-    }
-
-    #[test]
-    fn push_failure_explains_the_read_only_key() {
-        let runner = MockRunner::new(false);
-        let err = push(&runner, Path::new("/repo")).unwrap_err().to_string();
-        assert!(err.contains("READ-ONLY"), "got: {err}");
-        assert!(
-            err.contains("add_ssh_keys") || err.contains("write authorisation"),
-            "must say how to fix it: {err}"
-        );
-    }
-
-    #[test]
-    fn push_failure_distinguishes_a_branch_rule_from_a_missing_credential() {
-        // Observed live: the key authenticated fine and the ruleset refused the
-        // push. Blaming a read-only key there sends the reader down the wrong path.
-        let msg = ambient_push_failure(
-            "remote: error: GH013: Repository rule violations found for refs/heads/main.\n             remote: - Changes must be made through a pull request.",
-        );
-        assert!(
-            msg.contains("authorisation succeeded"),
-            "must not blame the credential: {msg}"
-        );
-        assert!(msg.contains("App"), "must name what can bypass: {msg}");
-        assert!(
-            !msg.contains("READ-ONLY"),
-            "must not mention read-only: {msg}"
-        );
-    }
-
-    #[test]
-    fn identity_is_read_from_the_named_variables() {
-        // Absent variables yield no identity rather than a broken half-config.
+    fn identity_requires_every_part() {
+        // A partial identity counts as absent: committing with whatever git was
+        // configured with would misattribute the commit.
         let names = SignEnvNames {
             user_name: "JCI_TEST_ABSENT_NAME".into(),
             ..SignEnvNames::default()
@@ -441,13 +222,52 @@ mod tests {
 
     #[test]
     fn import_is_skipped_when_no_key_is_supplied() {
-        let runner = MockRunner::new(true);
         let names = SignEnvNames {
             gpg_key: "JCI_TEST_ABSENT_KEY".into(),
             ..SignEnvNames::default()
         };
+        assert!(!import_signing_key(&names).unwrap());
+    }
+
+    #[test]
+    fn missing_paths_are_refused_before_committing() {
+        let missing = PathBuf::from("/definitely/not/here/release-9.9.9.json");
+        let err = ensure_paths_exist(&[missing.as_path()]).unwrap_err();
+        assert!(err.to_string().contains("nothing to commit"), "got: {err}");
+    }
+
+    #[test]
+    fn existing_paths_pass_the_guard() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(!import_signing_key(&runner, &names, dir.path()).unwrap());
-        assert!(runner.calls().is_empty(), "must not invoke gpg");
+        let f = dir.path().join("record.json");
+        std::fs::write(&f, "{}").unwrap();
+        assert!(ensure_paths_exist(&[f.as_path()]).is_ok());
+    }
+
+    #[test]
+    fn push_failure_distinguishes_a_branch_rule_from_a_missing_credential() {
+        // Observed live: the key authenticated and the ruleset refused the push.
+        // Blaming a credential there sends the reader down the wrong path.
+        let ruled =
+            push_failure("remote: error: GH013: Repository rule violations found for main.")
+                .to_string();
+        assert!(
+            ruled.contains("Authorisation succeeded"),
+            "must not blame the credential: {ruled}"
+        );
+        assert!(ruled.contains("PCU_APP_ID"), "must name the fix: {ruled}");
+        assert!(
+            !ruled.contains("READ-ONLY"),
+            "must not mention read-only: {ruled}"
+        );
+
+        let refused = push_failure("Permission denied (publickey)").to_string();
+        assert!(refused.contains("READ-ONLY"), "got: {refused}");
+    }
+
+    #[test]
+    fn pcu_config_builds_without_credentials_present() {
+        // Construction must not require secrets; only the push does.
+        assert!(pcu_config().is_ok());
     }
 }

@@ -15,7 +15,7 @@ parameters:
     default: false
   push:
     type: boolean
-    description: Push the commit using the credentials the CI checkout provided. Nothing here carries credentials of its own
+    description: Push the commit. A protected branch accepts only a credential its rules permit to bypass them, so supply PCU_APP_ID and PCU_PRIVATE_KEY for a GitHub App token; a deploy key cannot bypass, whatever write access it carries
     default: false
   gpg_key_env:
     type: string

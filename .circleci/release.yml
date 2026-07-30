@@ -30,11 +30,9 @@ jobs:
     # executor the release and prlog jobs sign and push from.
     executor: toolkit/rust_env_rolling
     steps:
-      # Write authority for the push. Nothing in the tool carries credentials of
-      # its own; without this the push fails on the read-only checkout key.
-      - add_ssh_keys:
-          fingerprints:
-            - "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
+      # main's rules reject a direct push, so the record is pushed with the
+      # GitHub App credentials pcu reads from the pcu-app context — a deploy key
+      # cannot bypass them however much write access it carries.
       - checkout
       # One attach: the shared workspace holds both the freshly built binary
       # (from build-binary) and versions.env (from calculate-versions).
@@ -58,45 +56,12 @@ jobs:
             jci-audit release \
               --version "${VERSION}" \
               --commit \
+              --push \
               --gpg-key-env BOT_GPG_KEY \
               --gpg-trust-env BOT_TRUST \
               --user-name-env BOT_USER_NAME \
               --user-email-env BOT_USER_EMAIL \
               --sign-key-env BOT_SIGN_KEY
-      - run:
-          name: Push the record commit
-          command: |
-            # A deploy key cannot push to main: the repository ruleset requires
-            # changes to arrive by pull request. pcu pushes with the GitHub App
-            # credentials, which carry the bypass authority for that rule — the
-            # same mechanism the release and prlog jobs use. It pushes the commit
-            # already made above; it does not create one.
-            pcu push
-
-workflows:
-  release:
-    jobs:
-      - toolkit/calculate_versions:
-          name: calculate-versions
-          verify_tools: true
-          crates: "jci-audit:jci-audit-v"
-          crate_version_overrides: "jci-audit:<< pipeline.parameters.jci_audit_version >>"
-          workspace_version_override: << pipeline.parameters.workspace_version >>
-
-      - approve-release:
-          type: approval
-          requires: [calculate-versions]
-
-      # Build the binary from THIS commit. record-release attaches the workspace,
-      # which prepends it to PATH, so the release is recorded by the code being
-      # released rather than by the previous version baked into the orb's image.
-      # Without this the pipeline could only ever use features that were already
-      # released — the self-hosted orb's bootstrap problem.
-      - gen-circleci-orb/build_rust_binary:
-          name: build-binary
-          package: jci-audit
-          requires: [approve-release]
-
       # Record the security validation BEFORE the crate release. cargo-release
       # refuses to start on a dirty tree, so the record cannot simply be left
       # for it to pick up — committing it here also makes it an ancestor of the

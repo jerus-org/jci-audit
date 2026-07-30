@@ -40,8 +40,10 @@ serde_json.workspace = true
 # Hashing: records which Cargo.lock a release was validated against
 sha2.workspace = true
 
-# Decoding the base64 signing key from the environment (record commit signing)
-base64.workspace = true
+# Signed commit + App-authenticated push of the release record
+pcu.workspace = true
+tokio.workspace = true
+config.workspace = true
 
 # NOTE: config, serde, thiserror are declared in the workspace dependency
 # catalog and switched on when a phase needs them.

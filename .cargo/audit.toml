@@ -4,4 +4,7 @@
 # ignores; this file lets `cargo audit` (run without cargo-deny) honour the
 # same ignore set.
 [advisories]
-ignore = []
+ignore = [
+    # RUSTSEC-2023-0071 — Marvin Attack, a timing side-channel in `rsa`.
+    "RUSTSEC-2023-0071",
+]
