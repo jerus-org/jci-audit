@@ -52,8 +52,10 @@ Regenerate CLI snapshots after intentional CLI changes:
 ## Conventions
 
 - **RED/GREEN TDD** for all Rust work — failing test first.
-- **Edition 2024**, MSRV **1.85** (edition-2024 floor; verify with `just msrv`
-  before every PR that changes deps/`Cargo.lock`).
+- **Edition 2024**, MSRV **1.89** — set by `pcu`'s own floor, not by edition 2024
+  (whose floor is 1.85). Verify with `just msrv` before every PR that changes
+  deps/`Cargo.lock`; keep `rust-version` and `min_rust_version` in
+  `.circleci/config.yml` in lockstep.
 - `#[cfg(test)]` modules at the END of each file.
 - Conventional Commits, first line < 50 chars, DCO sign-off (`git commit -s`).
 - Workspace `release.toml` uses `consolidate-commits = false` — crates release
