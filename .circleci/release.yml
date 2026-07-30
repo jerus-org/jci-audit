@@ -15,26 +15,27 @@ orbs:
   jci-audit: jerus-org/jci-audit@0.0.2
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.4
 
-# Hand-rolled rather than the orb's own release job, and deliberately so: the
-# published orb's job schema and its baked-in binary are always one release
-# behind, so a capability could never be used by the release that introduces it.
-# This job takes the executor from the orb (which carries cargo-audit,
-# cargo-deny, git and gnupg) but runs the binary built from this commit.
+# TEMPORARY WORKAROUND — replace with the orb's own release job once an orb
+# carrying the current parameter schema is published.
+#
+# The release workflow should run the PUBLISHED orb job: it is the most critical
+# and least exercised path, and pinning it to a released artefact keeps a bug on
+# the tip from breaking the very pipeline needed to ship the fix.
+#
+# It is hand-rolled only because the published orb can express neither the new
+# flags nor an optional version, and no new orb can be published without a
+# working release — a deadlock that has to be broken once. It also cannot use the
+# orb's executor yet: that image has no cargo toolchain, so cargo-deny cannot run
+# `cargo metadata` (fixed for consumers by basing the orb's runtime on a Rust
+# image, which only reaches us once published). The image below carries cargo,
+# cargo-deny, cargo-audit, git and gnupg, and is what the release and prlog jobs
+# already sign and push from.
+#
 # Consumers use the orb job — see orb/src/examples/record_release.yml.
 jobs:
   record-release:
-    # Not the orb's executor: the published 0.0.2 image has no cargo toolchain,
-    # so cargo-deny cannot run `cargo metadata`. Fixed for consumers by basing
-    # the orb's runtime on a Rust image, but that only reaches us once published.
-    # This image carries cargo, cargo-deny, cargo-audit, git and gnupg — the same
-    # executor the release and prlog jobs sign and push from.
     executor: toolkit/rust_env_rolling
     steps:
-      # Write authority for the push. Nothing in the tool carries credentials of
-      # its own; without this the push fails on the read-only checkout key.
-      - add_ssh_keys:
-          fingerprints:
-            - "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
       - checkout
       # One attach: the shared workspace holds both the freshly built binary
       # (from build-binary) and versions.env (from calculate-versions).
@@ -53,8 +54,12 @@ jobs:
               cat /tmp/workspace/versions.env >&2
               exit 1
             fi
+            # The freshly built binary shadows any older one on PATH.
             export PATH="/tmp/workspace:$PATH"
             echo "Recording security validation for ${VERSION}"
+            # main's rules reject a direct push, so pcu pushes with the GitHub App
+            # credentials from the pcu-app context — a deploy key cannot bypass
+            # them however much write access it carries.
             jci-audit release \
               --version "${VERSION}" \
               --commit \
@@ -80,24 +85,25 @@ workflows:
           requires: [calculate-versions]
 
       # Build the binary from THIS commit. record-release attaches the workspace,
-      # which prepends it to PATH, so the release is recorded by the code being
-      # released rather than by the previous version baked into the orb's image.
-      # Without this the pipeline could only ever use features that were already
-      # released — the self-hosted orb's bootstrap problem.
+      # so the release is recorded by the code being released rather than by the
+      # previous version. rust:latest (the job default) has no libclang, which
+      # bindgen needs for openssl-sys — reached through pcu.
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
           package: jci-audit
+          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:36aacfbf82036d7ae47c004f2844220a7fe7d9882b13a4bf741af99d7ded97b6
           requires: [approve-release]
 
       # Record the security validation BEFORE the crate release. cargo-release
-      # refuses to start on a dirty tree, so the record cannot simply be left
-      # for it to pick up — committing it here also makes it an ancestor of the
+      # refuses to start on a dirty tree, so the record cannot simply be left for
+      # it to pick up — committing it here also makes it an ancestor of the
       # release commit, and so part of the tagged tree.
       - record-release:
           requires: [build-binary]
           context:
             - release
             - bot-check
+            - pcu-app
 
       - toolkit/release_crate:
           name: release-jci-audit

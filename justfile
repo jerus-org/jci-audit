@@ -39,8 +39,12 @@ audit:
 # verify the crate builds at its declared MSRV (rust-version) against the
 # locked deps — CI's rolling toolchain never validates the true floor.
 # Requires the workstation tool: cargo binstall cargo-msrv
+#
+# --manifest-path points at the CRATE, not the workspace root: the root declares
+# rust-version under [workspace.package], where cargo-msrv does not look for it,
+# and it exits 1 having verified nothing rather than falling back.
 msrv:
-    cargo msrv verify
+    cargo msrv verify --manifest-path crates/jci-audit/Cargo.toml
 
 # run nightly rustfmt for its extra features, but check that it won't upset stable rustfmt
 fmt:

@@ -1,24 +1,32 @@
 description: >
-  Record a release's security validation, and commit it, before the crate is
-  released.
+  Record a release's security validation, and get it committed, before the crate
+  is released.
 
   The record attests that the release passed the gate against a known advisory
-  snapshot, so the release can be re-verified later with `jci-audit verify`.
-  It must be committed BEFORE the release tool runs: cargo-release refuses to
-  start on a dirty tree, so a file merely left in place would abort it. Ordering
-  the record first also makes it an ancestor of the release commit, and so part
-  of the tagged tree.
+  snapshot, so the release can be re-verified later with `jci-audit verify`. It
+  must be committed BEFORE the release tool runs: cargo-release refuses to start
+  on a dirty tree, so a file merely left in place would abort it. Ordering the
+  record first also makes it an ancestor of the release commit, and so part of
+  the tagged tree.
 
-  Nothing in the orb carries credentials of its own. Write authority comes from
-  the job's own pre-steps — here an SSH key with write access — so the checkout's
-  read-only key model is respected rather than worked around.
+  PUSHING IS YOURS TO DO, and this example is shaped around that. The executor
+  carries no credentials, and no push tooling beyond git — deliberately, because
+  a protected branch typically rejects a direct push however much write access
+  the pusher holds, and accepts only a credential its rules permit to bypass
+  them (a GitHub App installation token, say). Which credential that is, and how
+  your organisation grants it, is not something this orb can know.
 
-  Signing material is referenced by environment variable NAME, never by value, so
-  nothing secret appears in your configuration. The defaults are GPG_KEY,
-  GPG_TRUST, GIT_USER_NAME, GIT_USER_EMAIL and GPG_SIGN_KEY; if your context
-  stores them under different names, set the matching *_env parameters (shown
-  commented below). Signing is skipped when no key is present, which is usually
-  what you want locally but rarely what you want in CI.
+  So the recording job writes the record and hands it on through the workspace,
+  and a job of your own commits and pushes it with whatever your branch rules
+  accept. Carrying the FILE rather than a commit matters: a push job that checks
+  out afresh would discard a commit made in an earlier job.
+
+  If your branch has no such rules — or the job already holds a credential they
+  accept — the `commit` and `push` parameters will do it in one step instead, and
+  the signing material is then read from the environment variables named by the
+  `*_env` parameters (defaults GPG_KEY, GPG_TRUST, GIT_USER_NAME, GIT_USER_EMAIL,
+  GPG_SIGN_KEY). Signing is skipped when no key is present, which is usually what
+  you want locally and rarely what you want in CI.
 
   Supply the version either as the `version` parameter, or by exporting it (the
   `version_env` parameter names the variable, default SEMVER) when your pipeline
@@ -35,25 +43,21 @@ usage:
             # Explicit version. Omit this and export SEMVER instead when the
             # version is calculated during the pipeline.
             version: "1.2.0"
-            commit: true
-            push: true
-            # Uses the default variable names. If your context stores the
-            # signing material under different names, set them here — these are
-            # NAMES, never values:
-            #   gpg_key_env: YOUR_GPG_KEY_VAR
-            #   gpg_trust_env: YOUR_GPG_TRUST_VAR
-            #   user_name_env: YOUR_COMMITTER_NAME_VAR
-            #   user_email_env: YOUR_COMMITTER_EMAIL_VAR
-            #   sign_key_env: YOUR_SIGNING_KEY_ID_VAR
-            context:
-              - your-signing-context
-            pre-steps:
-              # Write authority for the push. Without it the push fails on the
-              # read-only deploy key, with guidance rather than a workaround.
-              - add_ssh_keys:
-                  fingerprints:
-                    - "SHA256:your-write-key-fingerprint"
-        # Release the crate only after the record is committed, so the release
-        # starts from a clean tree that already contains it.
-        - your-release-job:
+            # Hand the record on as a FILE. A push job that checks out afresh
+            # would discard a commit made here.
+            post-steps:
+              - persist_to_workspace:
+                  root: .
+                  paths:
+                    - .security
+
+        # Your own job: commit the record and push it with a credential your
+        # branch rules accept. It should attach the workspace, copy .security/
+        # into the tree, then commit (signed) and push.
+        - your-commit-and-push-job:
             requires: [record-release]
+
+        # Release the crate only after the record is on the branch, so the
+        # release starts from a clean tree that already contains it.
+        - your-release-job:
+            requires: [your-commit-and-push-job]

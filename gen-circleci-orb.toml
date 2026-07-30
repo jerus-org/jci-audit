@@ -33,6 +33,13 @@ crate_tag_prefix = "jci-audit-v"
 docker_namespace = "jerusdp"
 docker_context = "docker"
 orb_context = "orb-publishing"
+# Image the build_rust_binary CI jobs compile in. This configures the CI
+# pipeline, not the orb's own container ([orb].base_image does that). The job
+# default is rust:latest, which has NO libclang — bindgen then fails on
+# openssl-sys, reached through pcu (sequoia-openpgp's OpenSSL backend). This is
+# the toolkit's clang-equipped compile image, digest-pinned so it survives
+# regeneration; Renovate tracks the digest here and in .circleci/ together.
+rust_image = "jerusdp/ci-rust:rolling-6mo@sha256:36aacfbf82036d7ae47c004f2844220a7fe7d9882b13a4bf741af99d7ded97b6"
 mcp = false
 mcp_context = ["pcu-app"]
 mcp_earliest_version = "0.0.1"

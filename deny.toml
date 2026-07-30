@@ -8,9 +8,25 @@ unmaintained = "all"
 yanked = "warn"
 # Canonical source of truth for advisory ignores. `.cargo/audit.toml` is
 # derived from this list via `jci-audit sync`. Each entry needs a written
-# justification. Empty today — jci-audit's dependency graph carries no
-# outstanding advisories.
-ignore = []
+# justification, and `jci-audit prune` reports any entry that no longer fires.
+ignore = [
+    # RUSTSEC-2023-0071 — Marvin Attack, a timing side-channel in `rsa`.
+    #
+    # Path: rsa <- openidconnect <- pcu (and <- sigstore <- pcu). pcu is used
+    # here only for a signed commit and an App-authenticated push of the release
+    # record; a protected branch accepts nothing less, so a plain git push is not
+    # an alternative. pcu has no feature gates today, so the OIDC/sigstore surface
+    # cannot be excluded — jerus-org/pcu#1028 proposes adding them, after which
+    # this entry should disappear.
+    #
+    # Why it is not an exposure here: the advisory concerns RSA PRIVATE-KEY
+    # operations whose timing is "observable over the network", and its own stated
+    # workaround is that local, non-networked use is fine. The git path never
+    # enters OIDC or sigstore, openidconnect uses RSA only to VERIFY signatures (a
+    # public-key operation), and a CLI in CI is not a decryption oracle. There is
+    # also no patched release (`patched = []`), so waiting is not a remedy.
+    "RUSTSEC-2023-0071",
+]
 
 [licenses]
 # All licenses are denied unless explicitly allowed. Permissive licenses are
@@ -29,6 +45,24 @@ allow = [
     "BSL-1.0",
     "CDLA-Permissive-2.0",
 ]
+
+# Weak-copyleft licences are NOT allowed globally: each is scoped to the specific
+# crate that carries it, so a NEW copyleft dependency fails the check until it has
+# been consciously reviewed. All three arrive through pcu.
+
+# LGPL-2.0-or-later: the OpenPGP stack that signs the record commit.
+[[licenses.exceptions]]
+name = "sequoia-openpgp"
+allow = ["LGPL-2.0-or-later"]
+
+[[licenses.exceptions]]
+name = "buffered-reader"
+allow = ["LGPL-2.0-or-later"]
+
+# MPL-2.0 (file-level copyleft): transitive config/dirs helper.
+[[licenses.exceptions]]
+name = "option-ext"
+allow = ["MPL-2.0"]
 
 [bans]
 multiple-versions = "warn"
