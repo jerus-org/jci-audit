@@ -59,6 +59,31 @@ pub struct SigningIdentity {
     pub sign_key: String,
 }
 
+/// Decode a base64 signing key supplied through the environment.
+///
+/// CI stores multi-line values with **literal `\n` escape sequences**, and the
+/// base64 itself is usually line-wrapped, so a strict decode fails on the
+/// embedded whitespace. Expand the escapes first, then keep only base64
+/// alphabet characters — the equivalent of `printf '%b' | base64 --decode
+/// --ignore-garbage`, which is how the rest of the toolchain reads these values.
+///
+/// Escapes must be expanded BEFORE filtering: dropping the backslash of `\n`
+/// would leave a bare `n`, which is itself a valid base64 character and would
+/// silently corrupt the key.
+pub fn decode_key(raw: &str) -> Result<Vec<u8>> {
+    // Expand literal escape sequences first — see the note above on why order
+    // matters here.
+    let expanded = raw.replace("\\r\\n", "\n").replace("\\n", "\n");
+    let cleaned: String = expanded
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '='))
+        .collect();
+    if cleaned.is_empty() {
+        bail!("no base64 content found");
+    }
+    Ok(STANDARD.decode(&cleaned)?)
+}
+
 /// The commit message for a release record.
 pub fn record_commit_message(version: &str) -> String {
     format!("chore: record security validation for {version}")
@@ -93,9 +118,8 @@ pub fn import_signing_key<R: CommandRunner>(
         return Ok(false);
     }
 
-    let key = STANDARD
-        .decode(key_b64.trim())
-        .with_context(|| format!("{} is not valid base64", names.gpg_key))?;
+    let key = decode_key(&key_b64)
+        .with_context(|| format!("could not decode the key in {}", names.gpg_key))?;
 
     std::fs::create_dir_all(work_dir)
         .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
@@ -252,6 +276,35 @@ mod tests {
             user_email: "bot@example.com".to_string(),
             sign_key: "DEADBEEF".to_string(),
         }
+    }
+
+    #[test]
+    fn decodes_plain_base64() {
+        // "hello" == aGVsbG8=
+        assert_eq!(decode_key("aGVsbG8=").unwrap(), b"hello");
+    }
+
+    #[test]
+    fn decodes_despite_wrapping_whitespace() {
+        // Real newlines and spaces, as line-wrapped base64 arrives.
+        assert_eq!(decode_key("aGVs\nbG8=").unwrap(), b"hello");
+        assert_eq!(decode_key("aGVs bG8=").unwrap(), b"hello");
+        assert_eq!(decode_key("  aGVsbG8=\n").unwrap(), b"hello");
+    }
+
+    #[test]
+    fn decodes_despite_literal_escape_sequences() {
+        // CI stores multi-line values with a literal backslash-n. Expanding
+        // these BEFORE filtering matters: dropping only the backslash would
+        // leave a bare `n`, a valid base64 character, silently corrupting the key.
+        let with_escapes = "aGVs\\nbG8=";
+        assert_eq!(decode_key(with_escapes).unwrap(), b"hello");
+    }
+
+    #[test]
+    fn rejects_input_with_no_base64_content() {
+        assert!(decode_key("!!! ???").is_err());
+        assert!(decode_key("").is_err());
     }
 
     #[test]
