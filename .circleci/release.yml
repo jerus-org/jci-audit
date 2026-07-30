@@ -58,12 +58,20 @@ jobs:
             jci-audit release \
               --version "${VERSION}" \
               --commit \
-              --push \
               --gpg-key-env BOT_GPG_KEY \
               --gpg-trust-env BOT_TRUST \
               --user-name-env BOT_USER_NAME \
               --user-email-env BOT_USER_EMAIL \
               --sign-key-env BOT_SIGN_KEY
+      - run:
+          name: Push the record commit
+          command: |
+            # A deploy key cannot push to main: the repository ruleset requires
+            # changes to arrive by pull request. pcu pushes with the GitHub App
+            # credentials, which carry the bypass authority for that rule — the
+            # same mechanism the release and prlog jobs use. It pushes the commit
+            # already made above; it does not create one.
+            pcu push
 
 workflows:
   release:
@@ -98,6 +106,7 @@ workflows:
           context:
             - release
             - bot-check
+            - pcu-app
 
       - toolkit/release_crate:
           name: release-jci-audit

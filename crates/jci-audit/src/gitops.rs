@@ -217,15 +217,25 @@ pub fn push<R: CommandRunner>(runner: &R, root: &Path) -> Result<()> {
 
 /// Guidance shown when an ambient push is refused, so the cause is obvious.
 pub fn ambient_push_failure(stderr: &str) -> String {
+    // Two quite different causes present as one failure, and the remedies differ,
+    // so name both rather than guessing.
+    let ruleset = stderr.contains("GH013")
+        || stderr.contains("rule violations")
+        || stderr.contains("protected branch")
+        || stderr.contains("must be made through a pull request");
+
+    let cause = if ruleset {
+        "the branch's rules rejected it — authorisation succeeded, but the branch          requires changes to arrive another way (typically by pull request).          Pushing here needs a credential the rules allow to bypass them, such as a          GitHub App installation token; a deploy key will not do, however much          write access it has."
+    } else {
+        "the credentials were refused. A standard CircleCI + GitHub checkout leaves          a READ-ONLY deploy key, which cannot push. Load a write key with          add_ssh_keys, or run the record step in a job that already has write          authorisation."
+    };
+
     format!(
-        "push refused with the credentials the CI checkout provided: {}\n\
-         \n\
-         Nothing here carries credentials of its own. A standard CircleCI + GitHub \
-         checkout leaves a READ-ONLY deploy key, which cannot push. Give the job \
-         write authorisation — for example load a write key with add_ssh_keys, or \
-         run the record step in a job that already has it — rather than weakening \
-         the checkout's configuration.",
-        stderr.trim()
+        "push refused with the credentials the CI checkout provided: {}\n\n{}\n\n\
+         Nothing here carries credentials of its own, and it will not weaken the \
+         checkout's configuration to get around this.",
+        stderr.trim(),
+        cause
     )
 }
 
@@ -398,6 +408,24 @@ mod tests {
         assert!(
             err.contains("add_ssh_keys") || err.contains("write authorisation"),
             "must say how to fix it: {err}"
+        );
+    }
+
+    #[test]
+    fn push_failure_distinguishes_a_branch_rule_from_a_missing_credential() {
+        // Observed live: the key authenticated fine and the ruleset refused the
+        // push. Blaming a read-only key there sends the reader down the wrong path.
+        let msg = ambient_push_failure(
+            "remote: error: GH013: Repository rule violations found for refs/heads/main.\n             remote: - Changes must be made through a pull request.",
+        );
+        assert!(
+            msg.contains("authorisation succeeded"),
+            "must not blame the credential: {msg}"
+        );
+        assert!(msg.contains("App"), "must name what can bypass: {msg}");
+        assert!(
+            !msg.contains("READ-ONLY"),
+            "must not mention read-only: {msg}"
         );
     }
 
