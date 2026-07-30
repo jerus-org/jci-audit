@@ -22,6 +22,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - give the executor a cargo toolchain(pr [#29])
 - decode the signing key the way CI stores it(pr [#30])
 - give the pcu client the prlog setting it requires(pr [#33])
+- accept the pcu stack's licenses in cargo-about(pr [#34])
 
 ## [0.0.1] - 2026-07-28
 
@@ -83,5 +84,6 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#30]: https://github.com/jerus-org/jci-audit/pull/30
 [#32]: https://github.com/jerus-org/jci-audit/pull/32
 [#33]: https://github.com/jerus-org/jci-audit/pull/33
+[#34]: https://github.com/jerus-org/jci-audit/pull/34
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
