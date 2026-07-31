@@ -14,6 +14,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - stage the record relative to the repository(pr [#37])
 - make the record commit idempotent(pr [#39])
+- pin the attribution for the two vendored-source crates(pr [#40])
 
 ## [0.0.2] - 2026-07-30
 
@@ -99,6 +100,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#37]: https://github.com/jerus-org/jci-audit/pull/37
 [#38]: https://github.com/jerus-org/jci-audit/pull/38
 [#39]: https://github.com/jerus-org/jci-audit/pull/39
+[#40]: https://github.com/jerus-org/jci-audit/pull/40
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...HEAD
 [0.0.2]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
