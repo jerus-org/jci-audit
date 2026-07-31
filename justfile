@@ -63,10 +63,17 @@ cov-summary:
     cargo llvm-cov --all-features --summary-only
 
 # Regenerate the crate's third-party license notices file (cargo-about)
+# The invocation lives in the script so this and CI cannot drift apart — `just`
+# is not installed in the CI image, so CI runs the script directly.
 licenses:
-    cd crates/jci-audit && cargo about generate about.hbs --output-file THIRD-PARTY-LICENSES.md
+    ./scripts/licenses.sh
 
-# Verify the committed license notices are current (fails if stale)
+# Verify the committed license notices are current (fails if stale).
+# Local only — the rendered text depends on the local cargo cache, so CI runs
+# licenses-policy instead. See the comment in scripts/licenses.sh.
 licenses-check:
-    cd crates/jci-audit && cargo about generate about.hbs --output-file THIRD-PARTY-LICENSES.md
-    git diff --exit-code crates/jci-audit/THIRD-PARTY-LICENSES.md
+    ./scripts/licenses.sh --check
+
+# The gate CI runs: every dependency's license must be accepted by the policy.
+licenses-policy:
+    ./scripts/licenses.sh --policy
