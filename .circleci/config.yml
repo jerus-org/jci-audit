@@ -9,9 +9,29 @@ orbs:
   toolkit: jerus-org/circleci-toolkit@7.0.0
 
   orb-tools: circleci/orb-tools@12.4.0
+
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.4
   # <<< gen-circleci-orb
+jobs:
+  # An unaccepted licence stops the release in its pre-release hook — after the
+  # approval gate and the build, at the most expensive point in the pipeline.
+  # This asks the same question at PR time instead.
+  #
+  # It checks that cargo-about can RESOLVE the licences, not that the committed
+  # notices match byte for byte: the rendered text varies with what the local
+  # cargo cache has unpacked, so comparing bytes here would fail on a correct
+  # tree. See the comment in scripts/licenses.sh. `just` is not in the CI image,
+  # so the invocation is shared through the script rather than copied here.
+  licenses_policy:
+    executor: toolkit/rust_env_rolling
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: Check every dependency's licence is accepted by the policy
+          command: ./scripts/licenses.sh --policy
+
 workflows:
   validation:
     jobs:
@@ -55,6 +75,11 @@ workflows:
 
       - toolkit/common_tests:
           min_rust_version: << pipeline.parameters.min_rust_version >>
+
+      # Unfiltered, like the other correctness gates: a dependency arrives with its
+      # licence on whatever branch it lands on, and this is the only thing that
+      # catches an unaccepted one before a release does.
+      - licenses_policy
 
       - toolkit/security:
           name: security audit only
