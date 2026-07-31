@@ -140,40 +140,92 @@ pub fn relative_to_repo(root: &Path, path: &Path) -> Result<PathBuf> {
     })
 }
 
-/// Refuse to commit unless every expected path is actually in the index.
+/// What became of a record once staging had run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordState {
+    /// In the index, and so will be in the commit.
+    Staged,
+    /// In neither status listing, which means the working tree, the index and
+    /// `HEAD` agree: the record is already committed with exactly this content.
+    AlreadyCommitted,
+    /// Present in the working tree but not the index — the commit would not
+    /// contain it.
+    NotStaged,
+}
+
+/// Classify a record from git's two status views.
 ///
-/// Checks for the paths by name rather than counting: `.security/` holds a
-/// tracked README, so "something was staged" no longer implies "the record was
-/// staged", and a count would wave through a commit that carries neither.
-///
-/// Without this, every way of failing to stage — a path git cannot match, an
-/// ignore rule, a file already committed — ends in a commit that is pushed and
-/// announced as though the record had been stored.
-fn ensure_staged(staged: &[String], paths: &[&Path]) -> Result<()> {
-    let missing: Vec<String> = paths
-        .iter()
-        .filter(|wanted| !staged.iter().any(|s| Path::new(s) == **wanted))
-        .map(|p| p.display().to_string())
-        .collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let found = if staged.is_empty() {
-        "nothing".to_string()
+/// `staged` is index-vs-`HEAD`, `not_staged` is working-tree-vs-index. A file
+/// absent from both differs from neither, so it is already committed as written.
+pub fn classify_record(staged: &[String], not_staged: &[String], path: &Path) -> RecordState {
+    let listed = |set: &[String]| set.iter().any(|s| Path::new(s) == path);
+    if listed(staged) {
+        RecordState::Staged
+    } else if listed(not_staged) {
+        RecordState::NotStaged
     } else {
-        staged.join(", ")
-    };
-    bail!(
-        "the record was not staged, so there is nothing to commit.\n\
-         \n\
-         expected: {}\n\
-         staged:   {found}\n\
-         \n\
-         The file was written but git matched nothing to add. Check that the path \
-         is inside the repository and not excluded by .gitignore. Committing now \
-         would report a record that the commit does not contain.",
-        missing.join(", ")
-    )
+        RecordState::AlreadyCommitted
+    }
+}
+
+/// What committing the record amounted to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitOutcome {
+    /// A commit was made.
+    Committed,
+    /// The record was already committed; nothing needed doing.
+    AlreadyPresent,
+}
+
+/// Decide whether to commit, refuse, or do nothing.
+///
+/// Three outcomes rather than two, because the record is deterministic: a re-run
+/// rewrites byte-identical content, so a retry of an already-recorded release
+/// stages nothing. That is indistinguishable *by count* from the staging failure
+/// that lost the 0.0.3 record, but not indistinguishable by name — an unstaged
+/// record still shows up as a working-tree change, whereas an already-committed
+/// one shows up nowhere.
+///
+/// Refusing the retry would be as wrong as waving the failure through: it would
+/// block a release whose record is present and correct.
+fn decide_commit(
+    staged: &[String],
+    not_staged: &[String],
+    paths: &[&Path],
+) -> Result<CommitOutcome> {
+    let mut missing = Vec::new();
+    let mut to_commit = 0usize;
+    for path in paths {
+        match classify_record(staged, not_staged, path) {
+            RecordState::Staged => to_commit += 1,
+            RecordState::AlreadyCommitted => {}
+            RecordState::NotStaged => missing.push(path.display().to_string()),
+        }
+    }
+
+    if !missing.is_empty() {
+        let found = if staged.is_empty() {
+            "nothing".to_string()
+        } else {
+            staged.join(", ")
+        };
+        bail!(
+            "the record was written but not staged, so the commit would not contain it.\n\
+             \n\
+             expected: {}\n\
+             staged:   {found}\n\
+             \n\
+             git matched nothing to add. Check that the path is inside the repository \
+             and not excluded by .gitignore. Committing now would report a record that \
+             the commit does not contain.",
+            missing.join(", ")
+        );
+    }
+
+    if to_commit == 0 {
+        return Ok(CommitOutcome::AlreadyPresent);
+    }
+    Ok(CommitOutcome::Committed)
 }
 
 /// Stage the given paths, commit them, and optionally push.
@@ -190,7 +242,7 @@ pub fn commit_and_push(
     message: &str,
     identity: Option<&SigningIdentity>,
     push: bool,
-) -> Result<()> {
+) -> Result<CommitOutcome> {
     use pcu::GitOps;
 
     let relative = paths
@@ -217,7 +269,17 @@ pub fn commit_and_push(
         .repo_files_staged()
         .map_err(|e| anyhow::anyhow!("could not read the staged files: {e}"))?;
     let staged: Vec<String> = staged.into_iter().map(|(path, _status)| path).collect();
-    ensure_staged(&staged, &relative)?;
+    let not_staged = client
+        .repo_files_not_staged()
+        .map_err(|e| anyhow::anyhow!("could not read the working tree: {e}"))?;
+    let not_staged: Vec<String> = not_staged.into_iter().map(|(path, _status)| path).collect();
+
+    if decide_commit(&staged, &not_staged, &relative)? == CommitOutcome::AlreadyPresent {
+        // Nothing to commit, and nothing to push either: a fresh checkout is what
+        // put the record in HEAD, so it is already on the remote. Making an empty
+        // commit here would be the very thing the guard exists to prevent.
+        return Ok(CommitOutcome::AlreadyPresent);
+    }
 
     let sign = match identity {
         Some(id) => pcu::SignConfig::new(pcu::Sign::Gpg)
@@ -230,13 +292,13 @@ pub fn commit_and_push(
         .map_err(|e| anyhow::anyhow!("failed to commit the record: {e}"))?;
 
     if !push {
-        return Ok(());
+        return Ok(CommitOutcome::Committed);
     }
     let committer = identity.map(|i| i.user_name.as_str()).unwrap_or_default();
     client
         .push_commit("", None, false, committer)
         .map_err(|e| push_failure(&e.to_string()))?;
-    Ok(())
+    Ok(CommitOutcome::Committed)
 }
 
 /// Explain a push failure. The two causes present alike and have different
@@ -339,20 +401,23 @@ mod tests {
     }
 
     #[test]
-    fn committing_nothing_is_refused() {
+    fn a_record_that_did_not_stage_is_refused() {
         // The guard that matters. Release 0.0.3 staged nothing, committed an
         // empty commit, pushed it, and reported "committed the record and
-        // pushed" — a silent success claiming work it had not done. Whatever the
-        // cause, an empty stage must stop the release rather than decorate it.
-        let path = PathBuf::from(".security/release-0.0.3.json");
-        let err = ensure_staged(&[], &[path.as_path()])
-            .unwrap_err()
-            .to_string();
+        // pushed" — a silent success claiming work it had not done. The record
+        // still shows as a working-tree change, which is how we can tell.
+        let record = PathBuf::from(".security/release-0.0.3.json");
+        let err = decide_commit(
+            &[],
+            &[".security/release-0.0.3.json".to_string()],
+            &[record.as_path()],
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             err.contains(".security/release-0.0.3.json"),
             "must name what it expected to stage: {err}"
         );
-        assert!(ensure_staged(&[".security/release-0.0.3.json".into()], &[path.as_path()]).is_ok());
     }
 
     #[test]
@@ -361,8 +426,9 @@ mod tests {
         // "the record was staged" have stopped being the same claim. A guard that
         // counts would pass here and commit a record that is not in the commit.
         let record = PathBuf::from(".security/release-0.0.4.json");
-        let err = ensure_staged(
+        let err = decide_commit(
             &[".security/README.md".to_string(), "PRLOG.md".to_string()],
+            &[".security/release-0.0.4.json".to_string()],
             &[record.as_path()],
         )
         .unwrap_err()
@@ -374,6 +440,45 @@ mod tests {
         assert!(
             err.contains(".security/README.md"),
             "must show what WAS staged, or the reader cannot tell why: {err}"
+        );
+    }
+
+    #[test]
+    fn a_staged_record_is_committed() {
+        let record = PathBuf::from(".security/release-0.0.4.json");
+        let outcome = decide_commit(
+            &[".security/release-0.0.4.json".to_string()],
+            &[],
+            &[record.as_path()],
+        )
+        .unwrap();
+        assert_eq!(outcome, CommitOutcome::Committed);
+    }
+
+    #[test]
+    fn an_already_committed_record_is_left_alone() {
+        // The record is deterministic, so a retry rewrites byte-identical content
+        // and stages nothing. By count that is indistinguishable from the 0.0.3
+        // failure — but the file appears in neither listing, meaning working tree,
+        // index and HEAD agree: it is already recorded. Refusing here would abort
+        // a release whose record is present and correct.
+        let record = PathBuf::from(".security/release-0.0.4.json");
+        let outcome = decide_commit(&[], &[], &[record.as_path()]).unwrap();
+        assert_eq!(outcome, CommitOutcome::AlreadyPresent);
+    }
+
+    #[test]
+    fn the_three_states_are_told_apart() {
+        let rec = Path::new(".security/release-0.0.4.json");
+        let name = ".security/release-0.0.4.json".to_string();
+        assert_eq!(
+            classify_record(std::slice::from_ref(&name), &[], rec),
+            RecordState::Staged
+        );
+        assert_eq!(classify_record(&[], &[name], rec), RecordState::NotStaged);
+        assert_eq!(
+            classify_record(&[], &[], rec),
+            RecordState::AlreadyCommitted
         );
     }
 

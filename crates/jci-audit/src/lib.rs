@@ -260,18 +260,26 @@ fn run_release(
         if signing && identity.is_none() {
             println!("  note: a signing key was imported but the committer identity is not set");
         }
-        gitops::commit_and_push(
+        let committed = gitops::commit_and_push(
             &cwd,
             &[&outcome.record_path],
             &gitops::record_commit_message(version),
             identity.as_ref(),
             push,
         )?;
-        println!(
-            "  committed the record{}{}",
-            if identity.is_some() { " (signed)" } else { "" },
-            if push { " and pushed" } else { "" }
-        );
+        // Say what actually happened. A retry finds the record already committed
+        // — reporting that as a fresh commit would be the same class of untruth
+        // as reporting a commit that carried nothing.
+        match committed {
+            gitops::CommitOutcome::AlreadyPresent => {
+                println!("  the record is already committed; nothing to do")
+            }
+            gitops::CommitOutcome::Committed => println!(
+                "  committed the record{}{}",
+                if identity.is_some() { " (signed)" } else { "" },
+                if push { " and pushed" } else { "" }
+            ),
+        }
     }
     Ok(())
 }
