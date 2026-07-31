@@ -194,20 +194,52 @@ pub fn verify_with<R: CommandRunner>(
     // Pin the advisory database to the recorded commit.
     let checkout = discover_db_checkout(db_root)?;
     let checkout_str = checkout.to_str().unwrap_or_default().to_string();
-    // Shallow clones lack history, so make the recorded commit reachable first.
-    let _ = runner.run(
-        "git",
-        &["-C", &checkout_str, "fetch", "--unshallow", "origin"],
-        &root,
-    );
+
+    // Note where the checkout was, so it can be put back. cargo-deny and
+    // cargo-audit share it; leaving it on a historical commit would silently give
+    // a later scan an old snapshot of the advisories.
+    let previous_head = runner
+        .run("git", &["-C", &checkout_str, "rev-parse", "HEAD"], &root)
+        .ok()
+        .filter(|o| o.success)
+        .map(|o| o.stdout.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    // Only a shallow clone can be unshallowed — git rejects the flag outright on a
+    // complete repository ("--unshallow on a complete repository does not make
+    // sense"). Asking for it unconditionally meant the fetch failed on every run
+    // after the first, so no commit newer than the local clone could ever be
+    // reached, and verification failed with an unhelpful "reference is not a tree".
+    let shallow = runner
+        .run(
+            "git",
+            &["-C", &checkout_str, "rev-parse", "--is-shallow-repository"],
+            &root,
+        )
+        .map(|o| o.stdout.trim() == "true")
+        .unwrap_or(false);
+    let fetch_args: Vec<&str> = if shallow {
+        vec!["-C", &checkout_str, "fetch", "--unshallow", "origin"]
+    } else {
+        vec!["-C", &checkout_str, "fetch", "origin"]
+    };
+    let fetched = runner.run("git", &fetch_args, &root)?;
+
     let co = runner.run(
         "git",
         &["-C", &checkout_str, "checkout", "--quiet", &db_commit],
         &root,
     )?;
     if !co.success {
+        // A failed fetch is only worth reporting once it has cost something, but
+        // then it is usually the real cause.
+        let cause = if fetched.success {
+            String::new()
+        } else {
+            format!("\n\nfetching it first failed: {}", fetched.stderr.trim())
+        };
         bail!(
-            "could not check the advisory-db out at {db_commit}: {}",
+            "could not check the advisory-db out at {db_commit}: {}{cause}",
             co.stderr.trim()
         );
     }
@@ -227,7 +259,19 @@ pub fn verify_with<R: CommandRunner>(
         "check",
     ];
     args.extend_from_slice(DENY_CHECKS);
-    let gate = runner.run("cargo-deny", &args, &root)?;
+    let gate = runner.run("cargo-deny", &args, &root);
+
+    // The gate is the last thing that needs the database pinned, so put the shared
+    // checkout back now — before propagating any failure from it.
+    if let Some(head) = &previous_head {
+        let _ = runner.run(
+            "git",
+            &["-C", &checkout_str, "checkout", "--quiet", head],
+            &root,
+        );
+    }
+
+    let gate = gate?;
     print!("{}", gate.stdout);
     eprint!("{}", gate.stderr);
 
@@ -295,6 +339,7 @@ mod tests {
 
     struct MockRunner {
         deny_ok: bool,
+        shallow: bool,
         calls: RefCell<Vec<Vec<String>>>,
     }
 
@@ -302,8 +347,23 @@ mod tests {
         fn new(deny_ok: bool) -> Self {
             Self {
                 deny_ok,
+                shallow: false,
                 calls: RefCell::new(Vec::new()),
             }
+        }
+
+        fn shallow(mut self) -> Self {
+            self.shallow = true;
+            self
+        }
+
+        /// The git invocation matching `verb`, if verify made one.
+        fn git_call(&self, verb: &str) -> Option<Vec<String>> {
+            self.calls
+                .borrow()
+                .iter()
+                .find(|c| c[0] == "git" && c.contains(&verb.to_string()))
+                .cloned()
         }
     }
 
@@ -317,8 +377,21 @@ mod tests {
                 stdout: s.to_string(),
                 stderr: String::new(),
             };
+            let has = |needle: &str| args.contains(&needle);
             Ok(match (program, args.first().copied()) {
                 ("cargo-deny", Some("--version")) => ok("cargo-deny 0.20.2\n"),
+                // Model the behaviour that caused the bug: git refuses --unshallow
+                // on a repository that is already complete.
+                ("git", _) if has("--unshallow") && !self.shallow => ToolOutput {
+                    success: false,
+                    stdout: String::new(),
+                    stderr: "fatal: --unshallow on a complete repository does not make sense"
+                        .to_string(),
+                },
+                ("git", _) if has("--is-shallow-repository") => {
+                    ok(if self.shallow { "true\n" } else { "false\n" })
+                }
+                ("git", _) if has("rev-parse") => ok("0ldc0mm1t\n"),
                 ("git", _) => ok(""),
                 ("cargo-deny", _) => ToolOutput {
                     success: self.deny_ok,
@@ -469,6 +542,129 @@ mod tests {
         assert!(
             gate.contains(&"--offline".to_string()),
             "the gate must not be able to fetch: {gate:?}"
+        );
+    }
+
+    #[test]
+    fn a_complete_checkout_is_fetched_without_unshallow() {
+        // git refuses --unshallow once the clone is complete, and cargo-deny's
+        // checkout becomes complete the first time verify unshallows it. Asking
+        // for it unconditionally meant every later run fetched nothing, so a
+        // record naming a newer commit could not be verified at all — which is
+        // every release after the first.
+        let rec = record_v2(
+            &lockfile_digest(LOCK.as_bytes()),
+            &lockfile_digest(DENY.as_bytes()),
+        );
+        let (repo, db) = scenario(&rec);
+        let runner = MockRunner::new(true);
+        verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+        )
+        .unwrap();
+
+        let fetch = runner
+            .git_call("fetch")
+            .expect("must fetch before checking out");
+        assert!(
+            !fetch.contains(&"--unshallow".to_string()),
+            "a complete clone must be fetched plainly: {fetch:?}"
+        );
+    }
+
+    #[test]
+    fn a_shallow_checkout_is_unshallowed() {
+        // The other half: a shallow clone genuinely lacks the history, so the
+        // recorded commit is only reachable after unshallowing.
+        let rec = record_v2(
+            &lockfile_digest(LOCK.as_bytes()),
+            &lockfile_digest(DENY.as_bytes()),
+        );
+        let (repo, db) = scenario(&rec);
+        let runner = MockRunner::new(true).shallow();
+        verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+        )
+        .unwrap();
+
+        let fetch = runner.git_call("fetch").expect("must fetch");
+        assert!(
+            fetch.contains(&"--unshallow".to_string()),
+            "a shallow clone needs its history: {fetch:?}"
+        );
+    }
+
+    #[test]
+    fn the_shared_checkout_is_put_back_afterwards() {
+        // cargo-deny and cargo-audit share this checkout. Leaving it parked on the
+        // release's historical commit would hand a later, unrelated scan an old
+        // snapshot of the advisories without saying so.
+        let rec = record_v2(
+            &lockfile_digest(LOCK.as_bytes()),
+            &lockfile_digest(DENY.as_bytes()),
+        );
+        let (repo, db) = scenario(&rec);
+        let runner = MockRunner::new(true);
+        verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+        )
+        .unwrap();
+
+        let checkouts: Vec<Vec<String>> = runner
+            .calls
+            .borrow()
+            .iter()
+            .filter(|c| c[0] == "git" && c.contains(&"checkout".to_string()))
+            .cloned()
+            .collect();
+        assert_eq!(checkouts.len(), 2, "pin then restore: {checkouts:?}");
+        assert!(
+            checkouts[0].contains(&"abc1234def".to_string()),
+            "first pins the recorded commit: {:?}",
+            checkouts[0]
+        );
+        assert!(
+            checkouts[1].contains(&"0ldc0mm1t".to_string()),
+            "then restores where it was: {:?}",
+            checkouts[1]
+        );
+    }
+
+    #[test]
+    fn the_checkout_is_restored_even_when_the_gate_fails() {
+        let rec = record_v2(
+            &lockfile_digest(LOCK.as_bytes()),
+            &lockfile_digest(DENY.as_bytes()),
+        );
+        let (repo, db) = scenario(&rec);
+        let runner = MockRunner::new(false); // gate fails
+        let _ = verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+        );
+        let restored = runner
+            .calls
+            .borrow()
+            .iter()
+            .any(|c| c[0] == "git" && c.contains(&"0ldc0mm1t".to_string()));
+        assert!(
+            restored,
+            "a failing gate must not strand the shared checkout"
         );
     }
 
