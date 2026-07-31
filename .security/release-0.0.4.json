@@ -1,0 +1,28 @@
+{
+  "advisory_db": {
+    "commit": "8a3b5fd5f716a3fbf1cd107c220565b0438092d2"
+  },
+  "checks": {
+    "deny": {
+      "checks": [
+        "advisories",
+        "bans",
+        "licenses",
+        "sources"
+      ],
+      "passed": true
+    }
+  },
+  "lockfile": {
+    "dependencies_sha256": "0c317dc7c21ab6a8732ba9959ef3ba47757a365e73fe7b167ed228caf5b9f422"
+  },
+  "policy": {
+    "deny_toml_sha256": "f65bff9c9ca371da15a2dd9cf776770526dbee40f3d40bcfd87669afd1fa428b"
+  },
+  "schema_version": 3,
+  "tools": {
+    "cargo_audit": "cargo-audit 0.22.2",
+    "cargo_deny": "cargo-deny 0.20.2"
+  },
+  "version": "0.0.4"
+}
