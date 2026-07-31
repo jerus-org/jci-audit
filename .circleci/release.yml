@@ -12,7 +12,7 @@ parameters:
 
 orbs:
   toolkit: jerus-org/circleci-toolkit@7.0.0
-  jci-audit: jerus-org/jci-audit@0.0.2
+  jci-audit: jerus-org/jci-audit@0.0.4
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.4
 
 # TEMPORARY WORKAROUND — replace with the orb's own release job once an orb
