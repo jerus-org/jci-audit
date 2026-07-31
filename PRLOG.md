@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: update dependency jci-audit to v0.0.4(pr [#42])
 - deps: update rust crate pcu to 0.6.30(pr [#43])
+- deps: update rust crate tokio to 1.53.1(pr [#44])
 
 ## [0.0.3] - 2026-07-31
 
@@ -110,6 +111,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#40]: https://github.com/jerus-org/jci-audit/pull/40
 [#42]: https://github.com/jerus-org/jci-audit/pull/42
 [#43]: https://github.com/jerus-org/jci-audit/pull/43
+[#44]: https://github.com/jerus-org/jci-audit/pull/44
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...HEAD
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...v0.0.2
