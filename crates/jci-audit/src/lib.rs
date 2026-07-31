@@ -261,6 +261,7 @@ fn run_release(
             println!("  note: a signing key was imported but the committer identity is not set");
         }
         gitops::commit_and_push(
+            &cwd,
             &[&outcome.record_path],
             &gitops::record_commit_message(version),
             identity.as_ref(),
