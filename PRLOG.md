@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- ci-gate on the licence policy, not on notice text(pr [#46])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.0.4(pr [#42])
@@ -116,6 +120,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#44]: https://github.com/jerus-org/jci-audit/pull/44
 [#45]: https://github.com/jerus-org/jci-audit/pull/45
 [#41]: https://github.com/jerus-org/jci-audit/pull/41
+[#46]: https://github.com/jerus-org/jci-audit/pull/46
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...HEAD
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...v0.0.2
