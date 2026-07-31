@@ -140,25 +140,39 @@ pub fn relative_to_repo(root: &Path, path: &Path) -> Result<PathBuf> {
     })
 }
 
-/// Refuse to commit when staging produced nothing.
+/// Refuse to commit unless every expected path is actually in the index.
 ///
-/// Without this, every way of staging nothing — a path git cannot match, a file
-/// already committed, an ignore rule — ends in an empty commit that is pushed and
+/// Checks for the paths by name rather than counting: `.security/` holds a
+/// tracked README, so "something was staged" no longer implies "the record was
+/// staged", and a count would wave through a commit that carries neither.
+///
+/// Without this, every way of failing to stage — a path git cannot match, an
+/// ignore rule, a file already committed — ends in a commit that is pushed and
 /// announced as though the record had been stored.
-fn ensure_staged(count: usize, paths: &[&Path]) -> Result<()> {
-    if count > 0 {
+fn ensure_staged(staged: &[String], paths: &[&Path]) -> Result<()> {
+    let missing: Vec<String> = paths
+        .iter()
+        .filter(|wanted| !staged.iter().any(|s| Path::new(s) == **wanted))
+        .map(|p| p.display().to_string())
+        .collect();
+    if missing.is_empty() {
         return Ok(());
     }
-    let wanted = paths
-        .iter()
-        .map(|p| p.display().to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let found = if staged.is_empty() {
+        "nothing".to_string()
+    } else {
+        staged.join(", ")
+    };
     bail!(
-        "nothing was staged, so there is no record to commit (expected: {wanted}).\n\n\
+        "the record was not staged, so there is nothing to commit.\n\
+         \n\
+         expected: {}\n\
+         staged:   {found}\n\
+         \n\
          The file was written but git matched nothing to add. Check that the path \
          is inside the repository and not excluded by .gitignore. Committing now \
-         would push an empty commit and report a record that does not exist."
+         would report a record that the commit does not contain.",
+        missing.join(", ")
     )
 }
 
@@ -202,7 +216,8 @@ pub fn commit_and_push(
     let staged = client
         .repo_files_staged()
         .map_err(|e| anyhow::anyhow!("could not read the staged files: {e}"))?;
-    ensure_staged(staged.len(), &relative)?;
+    let staged: Vec<String> = staged.into_iter().map(|(path, _status)| path).collect();
+    ensure_staged(&staged, &relative)?;
 
     let sign = match identity {
         Some(id) => pcu::SignConfig::new(pcu::Sign::Gpg)
@@ -330,13 +345,36 @@ mod tests {
         // pushed" — a silent success claiming work it had not done. Whatever the
         // cause, an empty stage must stop the release rather than decorate it.
         let path = PathBuf::from(".security/release-0.0.3.json");
-        let err = ensure_staged(0, &[path.as_path()]).unwrap_err().to_string();
-        assert!(err.contains("nothing was staged"), "got: {err}");
+        let err = ensure_staged(&[], &[path.as_path()])
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains(".security/release-0.0.3.json"),
             "must name what it expected to stage: {err}"
         );
-        assert!(ensure_staged(1, &[path.as_path()]).is_ok());
+        assert!(ensure_staged(&[".security/release-0.0.3.json".into()], &[path.as_path()]).is_ok());
+    }
+
+    #[test]
+    fn staging_some_other_file_is_not_staging_the_record() {
+        // `.security/` now holds a tracked README, so "something was staged" and
+        // "the record was staged" have stopped being the same claim. A guard that
+        // counts would pass here and commit a record that is not in the commit.
+        let record = PathBuf::from(".security/release-0.0.4.json");
+        let err = ensure_staged(
+            &[".security/README.md".to_string(), "PRLOG.md".to_string()],
+            &[record.as_path()],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("release-0.0.4.json"),
+            "must name the record that is missing: {err}"
+        );
+        assert!(
+            err.contains(".security/README.md"),
+            "must show what WAS staged, or the reader cannot tell why: {err}"
+        );
     }
 
     #[test]
