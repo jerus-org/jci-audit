@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- docs-record the 0.0.3 attestation gap(pr [#38])
+
 ### Fixed
 
 - stage the record relative to the repository(pr [#37])
@@ -92,6 +96,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#33]: https://github.com/jerus-org/jci-audit/pull/33
 [#34]: https://github.com/jerus-org/jci-audit/pull/34
 [#37]: https://github.com/jerus-org/jci-audit/pull/37
+[#38]: https://github.com/jerus-org/jci-audit/pull/38
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...HEAD
 [0.0.2]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
