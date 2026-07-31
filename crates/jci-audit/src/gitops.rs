@@ -26,7 +26,7 @@
 //! `rsa` leaves the graph. Tracked upstream as jerus-org/pcu#1028, which would let
 //! this crate take pcu's git surface without `rsa` at all.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
 
@@ -121,18 +121,69 @@ pub fn import_signing_key(names: &SignEnvNames) -> Result<bool> {
     Ok(true)
 }
 
+/// Express `path` the way git matches it: relative to the repository root.
+///
+/// git resolves the entries handed to the index as pathspecs against the working
+/// directory, and a pathspec matching nothing is **not** an error. So an absolute
+/// path stages nothing, silently, and the commit that follows is empty. Release
+/// 0.0.3 pushed exactly such a commit and reported success.
+pub fn relative_to_repo(root: &Path, path: &Path) -> Result<PathBuf> {
+    if path.is_relative() {
+        return Ok(path.to_path_buf());
+    }
+    path.strip_prefix(root).map(Path::to_path_buf).map_err(|_| {
+        anyhow::anyhow!(
+            "'{}' is outside the repository at '{}', so git cannot stage it",
+            path.display(),
+            root.display()
+        )
+    })
+}
+
+/// Refuse to commit when staging produced nothing.
+///
+/// Without this, every way of staging nothing — a path git cannot match, a file
+/// already committed, an ignore rule — ends in an empty commit that is pushed and
+/// announced as though the record had been stored.
+fn ensure_staged(count: usize, paths: &[&Path]) -> Result<()> {
+    if count > 0 {
+        return Ok(());
+    }
+    let wanted = paths
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    bail!(
+        "nothing was staged, so there is no record to commit (expected: {wanted}).\n\n\
+         The file was written but git matched nothing to add. Check that the path \
+         is inside the repository and not excluded by .gitignore. Committing now \
+         would push an empty commit and report a record that does not exist."
+    )
+}
+
 /// Stage the given paths, commit them, and optionally push.
+///
+/// `root` is the repository root: the paths are made relative to it before
+/// staging, because git will otherwise match none of them.
 ///
 /// Signs when an identity is supplied. The identity is passed explicitly rather
 /// than read from git config, which is not reliably visible to pcu's repo handle
 /// in CI.
 pub fn commit_and_push(
+    root: &Path,
     paths: &[&Path],
     message: &str,
     identity: Option<&SigningIdentity>,
     push: bool,
 ) -> Result<()> {
     use pcu::GitOps;
+
+    let relative = paths
+        .iter()
+        .map(|p| relative_to_repo(root, p))
+        .collect::<Result<Vec<_>>>()?;
+    let relative: Vec<&Path> = relative.iter().map(PathBuf::as_path).collect();
 
     let config = pcu_config()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -143,8 +194,15 @@ pub fn commit_and_push(
         .map_err(|e| anyhow::anyhow!("could not create the pcu client: {e}"))?;
 
     client
-        .stage_paths(paths)
+        .stage_paths(&relative)
         .map_err(|e| anyhow::anyhow!("failed to stage the record: {e}"))?;
+
+    // Staging reports success whether or not it matched anything, so ask git what
+    // is actually in the index before making a commit that claims to carry it.
+    let staged = client
+        .repo_files_staged()
+        .map_err(|e| anyhow::anyhow!("could not read the staged files: {e}"))?;
+    ensure_staged(staged.len(), &relative)?;
 
     let sign = match identity {
         Some(id) => pcu::SignConfig::new(pcu::Sign::Gpg)
@@ -234,6 +292,51 @@ mod tests {
             ..SignEnvNames::default()
         };
         assert!(!import_signing_key(&names).unwrap());
+    }
+
+    #[test]
+    fn paths_are_made_relative_to_the_repository() {
+        // git matches the entries given to the index as pathspecs resolved from
+        // the working directory. An absolute path matches nothing — and matching
+        // nothing is not an error — so it stages silently and commits nothing.
+        let rel = relative_to_repo(
+            Path::new("/home/ci/project"),
+            Path::new("/home/ci/project/.security/release-0.0.3.json"),
+        )
+        .unwrap();
+        assert_eq!(rel, PathBuf::from(".security/release-0.0.3.json"));
+        assert!(rel.is_relative(), "must be relative for git to match it");
+    }
+
+    #[test]
+    fn an_already_relative_path_is_left_alone() {
+        let rel =
+            relative_to_repo(Path::new("/home/ci/project"), Path::new(".security/x.json")).unwrap();
+        assert_eq!(rel, PathBuf::from(".security/x.json"));
+    }
+
+    #[test]
+    fn a_path_outside_the_repository_is_refused() {
+        let err = relative_to_repo(Path::new("/home/ci/project"), Path::new("/etc/passwd"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("outside the repository"), "got: {err}");
+    }
+
+    #[test]
+    fn committing_nothing_is_refused() {
+        // The guard that matters. Release 0.0.3 staged nothing, committed an
+        // empty commit, pushed it, and reported "committed the record and
+        // pushed" — a silent success claiming work it had not done. Whatever the
+        // cause, an empty stage must stop the release rather than decorate it.
+        let path = PathBuf::from(".security/release-0.0.3.json");
+        let err = ensure_staged(0, &[path.as_path()]).unwrap_err().to_string();
+        assert!(err.contains("nothing was staged"), "got: {err}");
+        assert!(
+            err.contains(".security/release-0.0.3.json"),
+            "must name what it expected to stage: {err}"
+        );
+        assert!(ensure_staged(1, &[path.as_path()]).is_ok());
     }
 
     #[test]
