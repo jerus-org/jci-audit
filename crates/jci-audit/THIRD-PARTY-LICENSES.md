@@ -7754,7 +7754,7 @@ SOFTWARE.
 
 Used by:
 
-- jci-audit 0.0.3
+- jci-audit 0.0.4
 
 ```text
 MIT License

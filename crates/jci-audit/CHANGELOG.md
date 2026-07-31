@@ -5,9 +5,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-07-31
+
+Summary: Fixed[4]
+
+### Fixed
+
+ - fix: pin the attribution for the two vendored-source crates
+ - fix: make the record commit idempotent
+ - fix: check the record is staged, not that something is
+ - fix: stage the record relative to the repository
+
 ## [0.0.3] - 2026-07-30
 
-Summary: Added[5], Fixed[6]
+Summary: Added[5], Chore[1], Fixed[6]
 
 ### Added
 
@@ -53,7 +64,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
 
