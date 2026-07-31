@@ -36,3 +36,33 @@ accepted = ["LGPL-2.0-or-later"]
 # MPL-2.0 (file-level copyleft): transitive config/dirs helper.
 [option-ext]
 accepted = ["MPL-2.0"]
+
+# Pin the attribution for the two crates that vendor C libraries.
+#
+# Both declare "MIT OR Apache-2.0" and ship the correct text at their crate root,
+# but they also vendor upstream sources carrying license files of their own —
+# libgit2 and its bundled deps, libssh2. Left to discovery, cargo-about can reach
+# a nested file instead of the crate root and attribute the crate to the wrong
+# party entirely: libgit2-sys to llhttp's author via
+# `libgit2/deps/llhttp/LICENSE-MIT`, and libssh2-sys to an unfilled SPDX template
+# in `libssh2/LICENSES/MIT.txt` that reads "Copyright (c) [year] [fullname]" —
+# an attribution naming nobody.
+#
+# Which file wins varied between this workstation and the release container on
+# identical inputs and the same cargo-about version, so the notices were not
+# reproducible. Naming the file settles it. `checksum` makes the pin fail loudly
+# if the file changes rather than silently attributing to something else.
+#
+# Taken under MIT — one arm of the OR, which is the choice these notices publish.
+
+[libgit2-sys.clarify]
+license = "MIT"
+[[libgit2-sys.clarify.files]]
+path = "LICENSE-MIT"
+checksum = "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+
+[libssh2-sys.clarify]
+license = "MIT"
+[[libssh2-sys.clarify.files]]
+path = "LICENSE-MIT"
+checksum = "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
