@@ -5,9 +5,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.4] - 2026-07-31
+## [0.0.5] - 2026-07-31
 
 Summary: Fixed[4]
+
+### Fixed
+
+ - fix(deps): update rust crate sha2 to 0.11.0
+ - fix(deps): update rust crate tokio to 1.53.1
+ - fix(deps): update rust crate pcu to 0.6.30
+ - fix: let verify reach commits it has not seen yet
+
+## [0.0.4] - 2026-07-31
+
+Summary: Chore[1], Fixed[4]
 
 ### Fixed
 
@@ -64,7 +75,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...HEAD
+[0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/jerus-org/jci-audit/releases/tag/v0.0.1
