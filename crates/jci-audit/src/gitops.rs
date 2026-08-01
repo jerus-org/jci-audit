@@ -18,13 +18,8 @@
 //!    `PCU_PRIVATE_KEY` are present, which is what lands a commit on such a
 //!    branch. A deploy key cannot, so `git push` is not an option here.
 //!
-//! pcu brings `rsa` into the graph through `openidconnect`, which carries
-//! RUSTSEC-2023-0071. That advisory concerns private-key operations whose timing is
-//! observable over a network: the git path never enters OIDC or sigstore, and a CLI
-//! in CI is not a decryption oracle. It is suppressed in `deny.toml` with that
-//! reasoning, and [`crate::prune`] will report the suppression as stale the moment
-//! `rsa` leaves the graph. Tracked upstream as jerus-org/pcu#1028, which would let
-//! this crate take pcu's git surface without `rsa` at all.
+//! Only pcu's git surface is used; see `Cargo.toml` for why its default features
+//! are off.
 
 use std::path::{Path, PathBuf};
 
