@@ -24,14 +24,9 @@ accepted = [
 ignore-dev-dependencies = true
 
 # The weak-copyleft crates, matching deny.toml's [[licenses.exceptions]] one for
-# one. All three arrive through pcu.
-
-# LGPL-2.0-or-later: the OpenPGP stack that signs the record commit.
-[buffered-reader]
-accepted = ["LGPL-2.0-or-later"]
-
-[sequoia-openpgp]
-accepted = ["LGPL-2.0-or-later"]
+# one. The LGPL-2.0-or-later pair went with pcu's OpenPGP stack at 0.6.30 and was
+# removed from both files together — they state one policy, so they go stale
+# together too.
 
 # MPL-2.0 (file-level copyleft): transitive config/dirs helper.
 [option-ext]
