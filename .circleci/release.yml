@@ -60,8 +60,11 @@ jobs:
             # main's rules reject a direct push, so pcu pushes with the GitHub App
             # credentials from the pcu-app context — a deploy key cannot bypass
             # them however much write access it carries.
+            # -v: the tools' full output is opt-in now, and a CI log is exactly
+            # where the detail should stay.
             jci-audit release \
               --version "${VERSION}" \
+              --verbose \
               --commit \
               --push \
               --gpg-key-env BOT_GPG_KEY \

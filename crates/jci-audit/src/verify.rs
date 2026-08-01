@@ -61,6 +61,8 @@ pub struct VerifyOutcome {
     pub unverified: Vec<String>,
     /// Inputs that did not match the record.
     pub mismatches: Vec<String>,
+    /// Warnings the gate reported, for `--deny-warnings`.
+    pub warnings: Vec<crate::diagnostics::WarningCount>,
 }
 
 impl VerifyOutcome {
@@ -155,6 +157,7 @@ pub fn verify_with<R: CommandRunner>(
     version: &str,
     db_root: &Path,
     work_dir: &Path,
+    verbose: bool,
 ) -> Result<VerifyOutcome> {
     let (deny_path, _audit_path) = locate_paths(start)?;
     let root = deny_path
@@ -272,8 +275,7 @@ pub fn verify_with<R: CommandRunner>(
     }
 
     let gate = gate?;
-    print!("{}", gate.stdout);
-    eprint!("{}", gate.stderr);
+    let warnings = crate::diagnostics::emit(&gate.stdout, &gate.stderr, verbose);
 
     let recorded_pass = record
         .get("checks")
@@ -288,6 +290,7 @@ pub fn verify_with<R: CommandRunner>(
         reproduced: gate.success == recorded_pass,
         unverified,
         mismatches,
+        warnings,
     })
 }
 
@@ -503,6 +506,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap();
         assert!(out.is_ok(), "should reproduce: {out:?}");
@@ -523,6 +527,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap();
 
@@ -564,6 +569,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap();
 
@@ -592,6 +598,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap();
 
@@ -619,6 +626,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap();
 
@@ -656,6 +664,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         );
         let restored = runner
             .calls
@@ -682,6 +691,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap();
         assert!(!out.is_ok(), "a failing gate must not verify");
@@ -703,6 +713,7 @@ mod tests {
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap();
         assert!(!out.is_ok());
@@ -726,6 +737,7 @@ mod tests {
             "9.9.9",
             db.path(),
             &repo.path().join("w"),
+            false,
         )
         .unwrap_err();
         assert!(err.to_string().contains("release record"), "got: {err}");

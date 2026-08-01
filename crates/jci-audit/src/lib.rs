@@ -19,6 +19,7 @@
 //! shelling subcommand runs first.
 
 pub mod check;
+pub mod diagnostics;
 pub mod gitops;
 pub mod init;
 pub mod preflight;
@@ -50,6 +51,19 @@ pub struct Cli {
     command: Commands,
 }
 
+/// Flags shared by the subcommands that run cargo-deny / cargo-audit.
+#[derive(Debug, clap::Args)]
+struct ToolOutput {
+    /// Show the tools' full output. Off by default: each warning trails a
+    /// dependency tree, which buries the summary. The counts are always printed.
+    #[arg(short = 'v', long)]
+    verbose: bool,
+
+    /// Fail if the tools report any warning.
+    #[arg(long)]
+    deny_warnings: bool,
+}
+
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan;
@@ -58,6 +72,9 @@ enum Commands {
         /// Path to the Cargo.toml (or its directory) to check.
         #[arg(long, default_value = ".")]
         manifest_path: std::path::PathBuf,
+
+        #[command(flatten)]
+        output: ToolOutput,
     },
     /// Release gate: reproducible validation against a pinned advisory-db
     /// commit (deny + audit offline), then a non-blocking live audit. Records
@@ -111,6 +128,9 @@ enum Commands {
         /// Env var NAME holding the GPG signing key id (default GPG_SIGN_KEY).
         #[arg(long)]
         sign_key_env: Option<String>,
+
+        #[command(flatten)]
+        output: ToolOutput,
     },
     /// Derive `.cargo/audit.toml` from the canonical `deny.toml`
     /// `[advisories].ignore`. Makes deny.toml the single source of truth.
@@ -138,6 +158,9 @@ enum Commands {
         /// commit beneath it. Defaults to ~/.cargo/advisory-db.
         #[arg(long)]
         advisory_db: Option<std::path::PathBuf>,
+
+        #[command(flatten)]
+        output: ToolOutput,
     },
     /// Scaffold a standard `deny.toml` template and a derived
     /// `.cargo/audit.toml`.
@@ -152,7 +175,10 @@ impl Cli {
     /// Execute the selected subcommand.
     pub fn run(&self) -> Result<()> {
         match &self.command {
-            Commands::Check { manifest_path } => run_check(manifest_path),
+            Commands::Check {
+                manifest_path,
+                output,
+            } => run_check(manifest_path, output),
             Commands::Release {
                 version,
                 version_env,
@@ -164,6 +190,7 @@ impl Cli {
                 user_name_env,
                 user_email_env,
                 sign_key_env,
+                output,
             } => {
                 let names = gitops::SignEnvNames {
                     gpg_key: gpg_key_env
@@ -188,23 +215,32 @@ impl Cli {
                         .as_deref()
                         .unwrap_or(release::DEFAULT_VERSION_ENV),
                 )?;
-                run_release(&version, advisory_db.as_deref(), *commit, *push, &names)
+                run_release(
+                    &version,
+                    advisory_db.as_deref(),
+                    *commit,
+                    *push,
+                    &names,
+                    output,
+                )
             }
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
             Commands::Verify {
                 version,
                 advisory_db,
-            } => run_verify(version, advisory_db.as_deref()),
+                output,
+            } => run_verify(version, advisory_db.as_deref(), output),
             Commands::Init { force } => run_init(*force),
         }
     }
 }
 
-fn run_check(manifest_path: &std::path::Path) -> Result<()> {
+fn run_check(manifest_path: &std::path::Path, output: &ToolOutput) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     tracing::info!(?manifest_path, "check");
-    let report = check::check_with(&check::SystemRunner, manifest_path)?;
+    let report = check::check_with(&check::SystemRunner, manifest_path, output.verbose)?;
+    diagnostics::enforce(&report.warnings, output.deny_warnings)?;
     if report.success() {
         println!("security check passed (cargo deny + cargo audit)");
         Ok(())
@@ -219,6 +255,7 @@ fn run_release(
     commit: bool,
     push: bool,
     sign_names: &gitops::SignEnvNames,
+    output: &ToolOutput,
 ) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     let cwd = std::env::current_dir()?;
@@ -230,7 +267,14 @@ fn run_release(
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "release");
 
-    let outcome = release::release_with(&check::SystemRunner, &cwd, version, &db_root, &work);
+    let outcome = release::release_with(
+        &check::SystemRunner,
+        &cwd,
+        version,
+        &db_root,
+        &work,
+        output.verbose,
+    );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -281,7 +325,9 @@ fn run_release(
             ),
         }
     }
-    Ok(())
+    // Last: the record is written and committed either way, so a --deny-warnings
+    // failure reports the warnings without discarding the work.
+    diagnostics::enforce(&outcome.warnings, output.deny_warnings)
 }
 
 fn run_sync(check: bool) -> Result<()> {
@@ -338,7 +384,11 @@ fn run_prune(check: bool) -> Result<()> {
     Ok(())
 }
 
-fn run_verify(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()> {
+fn run_verify(
+    version: &str,
+    advisory_db: Option<&std::path::Path>,
+    output: &ToolOutput,
+) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny])?;
     let cwd = std::env::current_dir()?;
     let db_root = advisory_db
@@ -347,7 +397,14 @@ fn run_verify(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "verify");
 
-    let outcome = verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work);
+    let outcome = verify::verify_with(
+        &check::SystemRunner,
+        &cwd,
+        version,
+        &db_root,
+        &work,
+        output.verbose,
+    );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -363,7 +420,7 @@ fn run_verify(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()
     }
     if outcome.is_ok() {
         println!("reproduced: the release passes the gate against its recorded snapshot");
-        Ok(())
+        diagnostics::enforce(&outcome.warnings, output.deny_warnings)
     } else if !outcome.mismatches.is_empty() {
         bail!("verification failed: inputs do not match the record")
     } else {
@@ -387,8 +444,13 @@ mod tests {
     fn parse_check_defaults_manifest_to_cwd() {
         let cli = Cli::try_parse_from(["jci-audit", "check"]).expect("check parses");
         match cli.command {
-            Commands::Check { manifest_path } => {
+            Commands::Check {
+                manifest_path,
+                output,
+            } => {
                 assert_eq!(manifest_path, std::path::PathBuf::from("."));
+                assert!(!output.verbose, "the tools' full output is opt-in");
+                assert!(!output.deny_warnings, "warnings are reported, not fatal");
             }
             other => panic!("expected Check, got {other:?}"),
         }
