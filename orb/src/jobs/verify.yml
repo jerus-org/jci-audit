@@ -8,6 +8,10 @@ parameters:
     type: string
     description: Advisory-db root; cargo-deny's checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db
     default: ''
+  verbose:
+    type: boolean
+    description: 'Show the tools'' full output. Off by default: each warning trails a dependency tree, which buries the summary. The counts are always printed --deny-warnings              Fail if the tools report any warning'
+    default: false
   attach_workspace:
     type: boolean
     description: Attach a workspace before running the command (use when the binary was built in a prior job).
@@ -31,3 +35,4 @@ steps:
 - verify:
     version: << parameters.version >>
     advisory_db: << parameters.advisory_db >>
+    verbose: << parameters.verbose >>
