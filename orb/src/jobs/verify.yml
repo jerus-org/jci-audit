@@ -1,16 +1,13 @@
 description: Run verify command in a dedicated job.
 executor: default
 parameters:
-  version:
-    type: string
-    description: The released version to verify (e.g. "1.2.0")
-  advisory_db:
-    type: string
-    description: Advisory-db root; cargo-deny's checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db
-    default: ''
   verbose:
     type: boolean
-    description: 'Show the tools'' full output. Off by default: each warning trails a dependency tree, which buries the summary. The counts are always printed --deny-warnings              Fail if the tools report any warning'
+    description: '...                 Increase logging verbosity --version <VERSION>          The released version to verify (e.g. "1.2.0") --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny''s checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db'
+    default: false
+  quiet:
+    type: boolean
+    description: '...                   Decrease logging verbosity --deny-warnings              Fail if the tools report any warning'
     default: false
   attach_workspace:
     type: boolean
@@ -33,6 +30,5 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - verify:
-    version: << parameters.version >>
-    advisory_db: << parameters.advisory_db >>
     verbose: << parameters.verbose >>
+    quiet: << parameters.quiet >>
