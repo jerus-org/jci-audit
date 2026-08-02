@@ -8,4 +8,5 @@ set -- jci-audit release
 [[ -n "${USER_NAME_ENV:-}" ]] && set -- "$@" --user-name-env "${USER_NAME_ENV}"
 [[ -n "${USER_EMAIL_ENV:-}" ]] && set -- "$@" --user-email-env "${USER_EMAIL_ENV}"
 [[ -n "${SIGN_KEY_ENV:-}" ]] && set -- "$@" --sign-key-env "${SIGN_KEY_ENV}"
+[[ "${VERBOSE:-false}" = "true" ]] && set -- "$@" --verbose
 "$@"

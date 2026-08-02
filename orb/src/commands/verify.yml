@@ -7,7 +7,17 @@ parameters:
     type: string
     description: Advisory-db root; cargo-deny's checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db
     default: ''
+  verbose:
+    type: boolean
+    description: 'Show the tools'' full output. Off by default: each warning trails a dependency tree, which buries the summary. The counts are always printed --deny-warnings              Fail if the tools report any warning'
+    default: false
 steps:
+- when:
+    condition: << parameters.verbose >>
+    steps:
+    - run:
+        name: Set VERBOSE flag
+        command: echo 'export VERBOSE=true' >> "$BASH_ENV"
 - run:
     name: Re-verify a past release against the advisory snapshot it was locked to, using the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag
     command: <<include(scripts/verify.sh)>>
