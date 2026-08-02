@@ -6,7 +6,11 @@ parameters:
     default: .
   verbose:
     type: boolean
-    description: 'Show the tools'' full output. Off by default: each warning trails a dependency tree, which buries the summary. The counts are always printed --deny-warnings                  Fail if the tools report any warning'
+    description: '...                     Increase logging verbosity --deny-warnings                  Fail if the tools report any warning'
+    default: false
+  quiet:
+    type: boolean
+    description: '...                       Decrease logging verbosity'
     default: false
 steps:
 - when:
@@ -15,6 +19,12 @@ steps:
     - run:
         name: Set VERBOSE flag
         command: echo 'export VERBOSE=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.quiet >>
+    steps:
+    - run:
+        name: Set QUIET flag
+        command: echo 'export QUIET=true' >> "$BASH_ENV"
 - run:
     name: 'PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan; both blocking. Aggregates exit codes and surfaces stderr'
     command: <<include(scripts/check.sh)>>

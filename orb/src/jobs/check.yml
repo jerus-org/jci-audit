@@ -7,7 +7,11 @@ parameters:
     default: .
   verbose:
     type: boolean
-    description: 'Show the tools'' full output. Off by default: each warning trails a dependency tree, which buries the summary. The counts are always printed --deny-warnings                  Fail if the tools report any warning'
+    description: '...                     Increase logging verbosity --deny-warnings                  Fail if the tools report any warning'
+    default: false
+  quiet:
+    type: boolean
+    description: '...                       Decrease logging verbosity'
     default: false
   attach_workspace:
     type: boolean
@@ -32,3 +36,4 @@ steps:
 - check:
     manifest_path: << parameters.manifest_path >>
     verbose: << parameters.verbose >>
+    quiet: << parameters.quiet >>
