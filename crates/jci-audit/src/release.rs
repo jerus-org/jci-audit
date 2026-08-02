@@ -242,7 +242,7 @@ pub fn release_with<R: CommandRunner>(
     version: &str,
     db_root: &Path,
     work_dir: &Path,
-    verbose: bool,
+    detail: crate::diagnostics::Detail,
 ) -> Result<ReleaseOutcome> {
     let (deny_path, _audit_path) = locate_paths(start)?;
     let root = deny_path
@@ -276,7 +276,7 @@ pub fn release_with<R: CommandRunner>(
     ];
     deny_args.extend_from_slice(DENY_CHECKS);
     let deny = runner.run("cargo-deny", &deny_args, &root)?;
-    let warnings = crate::diagnostics::emit(&deny.stdout, &deny.stderr, verbose);
+    let warnings = crate::diagnostics::emit(&deny.stdout, &deny.stderr, detail);
 
     // Read the commit AFTER the gate, so it reflects the refreshed copy.
     let checkout = discover_db_checkout(db_root)?;
@@ -656,7 +656,15 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         let (repo, db) = scenario();
         let work = repo.path().join("work");
         let runner = MockRunner::new(true, clean_audit_json());
-        let outcome = release_with(&runner, repo.path(), "1.2.0", db.path(), &work, false).unwrap();
+        let outcome = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
 
         assert!(outcome.deny_passed);
         assert_eq!(outcome.db_commit, "abc1234def");
@@ -681,7 +689,15 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         let (repo, db) = scenario();
         let work = repo.path().join("work");
         let runner = MockRunner::new(true, clean_audit_json());
-        release_with(&runner, repo.path(), "1.2.0", db.path(), &work, false).unwrap();
+        release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
 
         let gate = runner
             .ran("cargo-deny")
@@ -708,7 +724,15 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         let (repo, db) = scenario();
         let work = repo.path().join("work");
         let runner = MockRunner::new(false, clean_audit_json());
-        let err = release_with(&runner, repo.path(), "1.2.0", db.path(), &work, false).unwrap_err();
+        let err = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("release gate failed"),
             "got: {err}"
@@ -726,7 +750,15 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         let live = r#"{"vulnerabilities":{"count":1,"found":true,"list":[
              {"advisory":{"id":"RUSTSEC-2099-0001"}}]},"warnings":{}}"#;
         let runner = MockRunner::new(true, live);
-        let outcome = release_with(&runner, repo.path(), "1.2.0", db.path(), &work, false).unwrap();
+        let outcome = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
 
         assert_eq!(outcome.live_findings, vec!["RUSTSEC-2099-0001"]);
         // Non-blocking: the release still succeeds and the record is written.
@@ -741,10 +773,26 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         let (repo, db) = scenario();
         let work = repo.path().join("work");
         let runner = MockRunner::new(true, clean_audit_json());
-        release_with(&runner, repo.path(), "1.2.0", db.path(), &work, false).unwrap();
+        release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
         let first =
             std::fs::read_to_string(repo.path().join(".security/release-1.2.0.json")).unwrap();
-        release_with(&runner, repo.path(), "1.2.0", db.path(), &work, false).unwrap();
+        release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
         let second =
             std::fs::read_to_string(repo.path().join(".security/release-1.2.0.json")).unwrap();
         assert_eq!(
@@ -765,7 +813,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "1.2.0",
             db.path(),
             &repo.path().join("w"),
-            false,
+            crate::diagnostics::Detail::Summary,
         )
         .unwrap_err();
         assert!(err.to_string().contains("Cargo.lock"), "got: {err}");

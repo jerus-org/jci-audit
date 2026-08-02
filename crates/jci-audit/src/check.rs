@@ -93,14 +93,18 @@ const AUDIT_ARGS: &[&str] = &["audit"];
 /// Run both tools in `cwd`, surfacing each one's output, and return the
 /// aggregated report. Both always run — a failing cargo-deny does not skip
 /// cargo-audit.
-pub fn check_with<R: CommandRunner>(runner: &R, cwd: &Path, verbose: bool) -> Result<CheckReport> {
+pub fn check_with<R: CommandRunner>(
+    runner: &R,
+    cwd: &Path,
+    detail: crate::diagnostics::Detail,
+) -> Result<CheckReport> {
     let mut steps = Vec::with_capacity(2);
 
     let deny = runner.run("cargo-deny", DENY_ARGS, cwd)?;
     let mut warnings = surface(
         "cargo-deny check advisories bans licenses sources",
         &deny,
-        verbose,
+        detail,
     );
     steps.push(CheckStep {
         label: "cargo deny".to_string(),
@@ -110,7 +114,7 @@ pub fn check_with<R: CommandRunner>(runner: &R, cwd: &Path, verbose: bool) -> Re
     // Always run cargo-audit too — never short-circuit on cargo-deny's result,
     // so both tools' findings are surfaced in one pass.
     let audit = runner.run("cargo-audit", AUDIT_ARGS, cwd)?;
-    warnings.extend(surface("cargo-audit audit", &audit, verbose));
+    warnings.extend(surface("cargo-audit audit", &audit, detail));
     steps.push(CheckStep {
         label: "cargo audit".to_string(),
         success: audit.success,
@@ -120,9 +124,13 @@ pub fn check_with<R: CommandRunner>(runner: &R, cwd: &Path, verbose: bool) -> Re
 }
 
 /// Print a tool's output under a labelled command header, returning its warnings.
-fn surface(label: &str, out: &ToolOutput, verbose: bool) -> Vec<crate::diagnostics::WarningCount> {
+fn surface(
+    label: &str,
+    out: &ToolOutput,
+    detail: crate::diagnostics::Detail,
+) -> Vec<crate::diagnostics::WarningCount> {
     println!("$ {label}");
-    crate::diagnostics::emit(&out.stdout, &out.stderr, verbose)
+    crate::diagnostics::emit(&out.stdout, &out.stderr, detail)
 }
 
 #[cfg(test)]
@@ -178,7 +186,12 @@ mod tests {
     #[test]
     fn both_pass_is_success_and_invokes_expected_commands() {
         let runner = MockRunner::new(vec![ok(), ok()]);
-        let report = check_with(&runner, &PathBuf::from("."), false).unwrap();
+        let report = check_with(
+            &runner,
+            &PathBuf::from("."),
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
         assert!(report.success());
 
         let calls = runner.calls.borrow();
@@ -203,7 +216,12 @@ mod tests {
     fn deny_failure_still_runs_audit_and_fails_overall() {
         // cargo deny fails; cargo audit passes. Both must run (no short-circuit).
         let runner = MockRunner::new(vec![fail("license denied"), ok()]);
-        let report = check_with(&runner, &PathBuf::from("."), false).unwrap();
+        let report = check_with(
+            &runner,
+            &PathBuf::from("."),
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(runner.calls.borrow().len(), 2, "audit must still run");
         assert_eq!(report.failures(), vec!["cargo deny"]);
@@ -212,7 +230,12 @@ mod tests {
     #[test]
     fn audit_failure_fails_overall() {
         let runner = MockRunner::new(vec![ok(), fail("RUSTSEC-2024-0001")]);
-        let report = check_with(&runner, &PathBuf::from("."), false).unwrap();
+        let report = check_with(
+            &runner,
+            &PathBuf::from("."),
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo audit"]);
     }
@@ -220,7 +243,12 @@ mod tests {
     #[test]
     fn both_failing_reports_both() {
         let runner = MockRunner::new(vec![fail("policy"), fail("advisory")]);
-        let report = check_with(&runner, &PathBuf::from("."), false).unwrap();
+        let report = check_with(
+            &runner,
+            &PathBuf::from("."),
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo deny", "cargo audit"]);
     }

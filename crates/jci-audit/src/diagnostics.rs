@@ -17,17 +17,9 @@ pub type WarningCount = (String, usize);
 pub fn count_warnings(stderr: &str) -> Vec<WarningCount> {
     let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
     for line in stderr.lines() {
-        let bare = strip_ansi(line);
-        let Some(rest) = bare.strip_prefix("warning[") else {
-            continue;
-        };
-        let Some((code, after)) = rest.split_once(']') else {
-            continue;
-        };
-        if !after.starts_with(':') || code.is_empty() {
-            continue;
+        if let Some(code) = warning_code(&strip_ansi(line)) {
+            *counts.entry(code).or_default() += 1;
         }
-        *counts.entry(code.to_string()).or_default() += 1;
     }
     let mut out: Vec<WarningCount> = counts.into_iter().collect();
     out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
@@ -50,26 +42,68 @@ pub fn render_summary(counts: &[WarningCount]) -> Option<String> {
         .collect::<Vec<_>>()
         .join(", ");
     Some(format!(
-        "  {} warning(s): {codes} (-v for detail)",
+        "  {} warning(s): {codes} (-v to list, -vv for full output)",
         total(counts)
     ))
+}
+
+/// How much of a tool's output to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Detail {
+    /// Counts by code.
+    Summary,
+    /// Each warning's headline, without its dependency tree.
+    List,
+    /// Everything the tool printed.
+    Full,
+}
+
+impl Detail {
+    /// Map a logging level onto how much to show.
+    ///
+    /// The middle step is the useful one: which warnings, without the thousands
+    /// of lines of tree that justify them.
+    pub fn from_level(level: tracing::level_filters::LevelFilter) -> Self {
+        use tracing::level_filters::LevelFilter as L;
+        if level >= L::TRACE {
+            Detail::Full
+        } else if level >= L::DEBUG {
+            Detail::List
+        } else {
+            Detail::Summary
+        }
+    }
+}
+
+/// The headline of each warning, without the dependency tree beneath it.
+pub fn warning_lines(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .map(strip_ansi)
+        .filter(|l| is_warning(l))
+        .collect()
 }
 
 /// Print a tool's output and return its warning counts.
 ///
 /// The tool's stdout is always shown — it is the one-line verdict. Its stderr
-/// carries the warnings and a dependency tree for each, which is the bulk of the
-/// output and is shown only under `verbose`; the summary stands in for it.
-pub fn emit(stdout: &str, stderr: &str, verbose: bool) -> Vec<WarningCount> {
+/// carries the warnings and a dependency tree for each, so how much of it appears
+/// depends on `detail`.
+pub fn emit(stdout: &str, stderr: &str, detail: Detail) -> Vec<WarningCount> {
     if !stdout.trim().is_empty() {
         print!("{stdout}");
     }
-    if verbose && !stderr.trim().is_empty() {
+    if detail == Detail::Full && !stderr.trim().is_empty() {
         eprint!("{stderr}");
     }
     let counts = count_warnings(stderr);
     if let Some(line) = render_summary(&counts) {
         println!("{line}");
+    }
+    if detail == Detail::List {
+        for line in warning_lines(stderr) {
+            println!("    {line}");
+        }
     }
     counts
 }
@@ -83,6 +117,22 @@ pub fn enforce(counts: &[WarningCount], deny_warnings: bool) -> anyhow::Result<(
         );
     }
     Ok(())
+}
+
+/// The code of a warning diagnostic, if this line opens one.
+///
+/// Only the `warning[code]:` prefix at the start of a line counts. A tree line or
+/// a sentence mentioning a warning must not register, or the summary overstates
+/// what happened and stops being worth printing.
+fn warning_code(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("warning[")?;
+    let (code, after) = rest.split_once(']')?;
+    (after.starts_with(':') && !code.is_empty()).then(|| code.to_string())
+}
+
+/// Whether the line opens a warning diagnostic.
+fn is_warning(line: &str) -> bool {
+    warning_code(line).is_some()
 }
 
 /// Drop ANSI escapes so colourised output is still matched.
@@ -152,6 +202,32 @@ warning[no-license-field]: license expression was not specified
     }
 
     #[test]
+    fn the_warning_headlines_are_listed_without_their_trees() {
+        // -v wants to know WHICH warnings, not the several thousand lines of
+        // dependency tree that justify them.
+        let lines = warning_lines(STDERR);
+        assert_eq!(lines.len(), 5, "one per warning: {lines:?}");
+        assert!(lines[0].starts_with("warning[license-exception-not-encountered]"));
+        assert!(
+            lines.iter().any(|l| l.contains("base64")),
+            "keeps the message: {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("┌─")),
+            "no tree lines: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn detail_steps_up_with_verbosity() {
+        use tracing::level_filters::LevelFilter as L;
+        assert_eq!(Detail::from_level(L::INFO), Detail::Summary);
+        assert_eq!(Detail::from_level(L::WARN), Detail::Summary);
+        assert_eq!(Detail::from_level(L::DEBUG), Detail::List);
+        assert_eq!(Detail::from_level(L::TRACE), Detail::Full);
+    }
+
+    #[test]
     fn deny_warnings_only_fails_when_both_hold() {
         let counts = count_warnings(STDERR);
         assert!(enforce(&counts, false).is_ok(), "reporting is the default");
@@ -165,6 +241,9 @@ warning[no-license-field]: license expression was not specified
         let out = render_summary(&count_warnings(STDERR)).expect("warnings present");
         assert!(out.contains('5'), "the total: {out}");
         assert!(out.contains("duplicate"), "{out}");
-        assert!(out.contains("-v"), "must say how to see the detail: {out}");
+        assert!(
+            out.contains("-v to list") && out.contains("-vv"),
+            "must say how to reach both levels of detail: {out}"
+        );
     }
 }

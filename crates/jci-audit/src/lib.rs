@@ -170,23 +170,19 @@ enum Commands {
 }
 
 impl Cli {
-    /// Whether to forward the tools' full output.
-    ///
-    /// Each warning trails a dependency tree — thousands of lines — so the detail
-    /// belongs a step below the default. `-v` reaches it; the warning summary is
-    /// printed either way.
-    fn verbose(&self) -> bool {
-        self.logging.tracing_level_filter() >= tracing::level_filters::LevelFilter::DEBUG
+    /// How much of the tools' output to show, from the logging level.
+    fn detail(&self) -> diagnostics::Detail {
+        diagnostics::Detail::from_level(self.logging.tracing_level_filter())
     }
 
     /// Execute the selected subcommand.
     pub fn run(&self) -> Result<()> {
-        let verbose = self.verbose();
+        let detail = self.detail();
         match &self.command {
             Commands::Check {
                 manifest_path,
                 output,
-            } => run_check(manifest_path, output, verbose),
+            } => run_check(manifest_path, output, detail),
             Commands::Release {
                 version,
                 version_env,
@@ -230,7 +226,7 @@ impl Cli {
                     *push,
                     &names,
                     output,
-                    verbose,
+                    detail,
                 )
             }
             Commands::Sync { check } => run_sync(*check),
@@ -239,16 +235,20 @@ impl Cli {
                 version,
                 advisory_db,
                 output,
-            } => run_verify(version, advisory_db.as_deref(), output, verbose),
+            } => run_verify(version, advisory_db.as_deref(), output, detail),
             Commands::Init { force } => run_init(*force),
         }
     }
 }
 
-fn run_check(manifest_path: &std::path::Path, output: &ToolOutput, verbose: bool) -> Result<()> {
+fn run_check(
+    manifest_path: &std::path::Path,
+    output: &ToolOutput,
+    detail: diagnostics::Detail,
+) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     tracing::info!(?manifest_path, "check");
-    let report = check::check_with(&check::SystemRunner, manifest_path, verbose)?;
+    let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
     diagnostics::enforce(&report.warnings, output.deny_warnings)?;
     if report.success() {
         println!("security check passed (cargo deny + cargo audit)");
@@ -265,7 +265,7 @@ fn run_release(
     push: bool,
     sign_names: &gitops::SignEnvNames,
     output: &ToolOutput,
-    verbose: bool,
+    detail: diagnostics::Detail,
 ) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     let cwd = std::env::current_dir()?;
@@ -277,14 +277,8 @@ fn run_release(
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "release");
 
-    let outcome = release::release_with(
-        &check::SystemRunner,
-        &cwd,
-        version,
-        &db_root,
-        &work,
-        verbose,
-    );
+    let outcome =
+        release::release_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -398,7 +392,7 @@ fn run_verify(
     version: &str,
     advisory_db: Option<&std::path::Path>,
     output: &ToolOutput,
-    verbose: bool,
+    detail: diagnostics::Detail,
 ) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny])?;
     let cwd = std::env::current_dir()?;
@@ -408,14 +402,7 @@ fn run_verify(
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "verify");
 
-    let outcome = verify::verify_with(
-        &check::SystemRunner,
-        &cwd,
-        version,
-        &db_root,
-        &work,
-        verbose,
-    );
+    let outcome = verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -454,7 +441,10 @@ mod tests {
     #[test]
     fn parse_check_defaults_manifest_to_cwd() {
         let cli = Cli::try_parse_from(["jci-audit", "check"]).expect("check parses");
-        assert!(!cli.verbose(), "the tools' full output is opt-in");
+        assert!(
+            cli.detail() == diagnostics::Detail::Summary,
+            "the tools' full output is opt-in"
+        );
         match cli.command {
             Commands::Check {
                 manifest_path,
@@ -475,9 +465,9 @@ mod tests {
         let quiet = Cli::try_parse_from(["jci-audit", "-q", "check"]).expect("parses");
         let default = Cli::try_parse_from(["jci-audit", "check"]).expect("parses");
         let verbose = Cli::try_parse_from(["jci-audit", "-v", "check"]).expect("parses");
-        assert!(!quiet.verbose());
-        assert!(!default.verbose());
-        assert!(verbose.verbose());
+        assert_eq!(quiet.detail(), diagnostics::Detail::Summary);
+        assert_eq!(default.detail(), diagnostics::Detail::Summary);
+        assert_eq!(verbose.detail(), diagnostics::Detail::List);
     }
 
     #[test]
