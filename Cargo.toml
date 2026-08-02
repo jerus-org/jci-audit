@@ -14,6 +14,9 @@ categories = ["development-tools", "command-line-utilities"]
 [workspace.dependencies]
 # CLI
 clap = { version = "4.6.4", features = ["derive"] }
+# Verbosity flags, as the organisation's other CLIs declare them. The tracing
+# feature rather than the default log one, to match this crate's logging stack.
+clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 
 # Error Handling
 anyhow = "1.0.104"

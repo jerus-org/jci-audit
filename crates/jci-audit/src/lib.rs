@@ -47,6 +47,9 @@ use crate::preflight::Tool;
         scaffolds a standard deny.toml."
 )]
 pub struct Cli {
+    #[command(flatten)]
+    pub logging: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -54,11 +57,6 @@ pub struct Cli {
 /// Flags shared by the subcommands that run cargo-deny / cargo-audit.
 #[derive(Debug, clap::Args)]
 struct ToolOutput {
-    /// Show the tools' full output. Off by default: each warning trails a
-    /// dependency tree, which buries the summary. The counts are always printed.
-    #[arg(short = 'v', long)]
-    verbose: bool,
-
     /// Fail if the tools report any warning.
     #[arg(long)]
     deny_warnings: bool,
@@ -172,13 +170,23 @@ enum Commands {
 }
 
 impl Cli {
+    /// Whether to forward the tools' full output.
+    ///
+    /// Each warning trails a dependency tree — thousands of lines — so the detail
+    /// belongs a step below the default. `-v` reaches it; the warning summary is
+    /// printed either way.
+    fn verbose(&self) -> bool {
+        self.logging.tracing_level_filter() >= tracing::level_filters::LevelFilter::DEBUG
+    }
+
     /// Execute the selected subcommand.
     pub fn run(&self) -> Result<()> {
+        let verbose = self.verbose();
         match &self.command {
             Commands::Check {
                 manifest_path,
                 output,
-            } => run_check(manifest_path, output),
+            } => run_check(manifest_path, output, verbose),
             Commands::Release {
                 version,
                 version_env,
@@ -222,6 +230,7 @@ impl Cli {
                     *push,
                     &names,
                     output,
+                    verbose,
                 )
             }
             Commands::Sync { check } => run_sync(*check),
@@ -230,16 +239,16 @@ impl Cli {
                 version,
                 advisory_db,
                 output,
-            } => run_verify(version, advisory_db.as_deref(), output),
+            } => run_verify(version, advisory_db.as_deref(), output, verbose),
             Commands::Init { force } => run_init(*force),
         }
     }
 }
 
-fn run_check(manifest_path: &std::path::Path, output: &ToolOutput) -> Result<()> {
+fn run_check(manifest_path: &std::path::Path, output: &ToolOutput, verbose: bool) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     tracing::info!(?manifest_path, "check");
-    let report = check::check_with(&check::SystemRunner, manifest_path, output.verbose)?;
+    let report = check::check_with(&check::SystemRunner, manifest_path, verbose)?;
     diagnostics::enforce(&report.warnings, output.deny_warnings)?;
     if report.success() {
         println!("security check passed (cargo deny + cargo audit)");
@@ -256,6 +265,7 @@ fn run_release(
     push: bool,
     sign_names: &gitops::SignEnvNames,
     output: &ToolOutput,
+    verbose: bool,
 ) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     let cwd = std::env::current_dir()?;
@@ -273,7 +283,7 @@ fn run_release(
         version,
         &db_root,
         &work,
-        output.verbose,
+        verbose,
     );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
@@ -388,6 +398,7 @@ fn run_verify(
     version: &str,
     advisory_db: Option<&std::path::Path>,
     output: &ToolOutput,
+    verbose: bool,
 ) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny])?;
     let cwd = std::env::current_dir()?;
@@ -403,7 +414,7 @@ fn run_verify(
         version,
         &db_root,
         &work,
-        output.verbose,
+        verbose,
     );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
@@ -443,17 +454,30 @@ mod tests {
     #[test]
     fn parse_check_defaults_manifest_to_cwd() {
         let cli = Cli::try_parse_from(["jci-audit", "check"]).expect("check parses");
+        assert!(!cli.verbose(), "the tools' full output is opt-in");
         match cli.command {
             Commands::Check {
                 manifest_path,
                 output,
             } => {
                 assert_eq!(manifest_path, std::path::PathBuf::from("."));
-                assert!(!output.verbose, "the tools' full output is opt-in");
                 assert!(!output.deny_warnings, "warnings are reported, not fatal");
             }
             other => panic!("expected Check, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn verbosity_flags_control_the_tools_detail() {
+        // -v reaches the tools' output; the default and -q stay above it. Uses the
+        // organisation's clap-verbosity-flag, so -q/-vv behave as in the sibling
+        // CLIs rather than being a local invention.
+        let quiet = Cli::try_parse_from(["jci-audit", "-q", "check"]).expect("parses");
+        let default = Cli::try_parse_from(["jci-audit", "check"]).expect("parses");
+        let verbose = Cli::try_parse_from(["jci-audit", "-v", "check"]).expect("parses");
+        assert!(!quiet.verbose());
+        assert!(!default.verbose());
+        assert!(verbose.verbose());
     }
 
     #[test]

@@ -22,6 +22,7 @@ exclude = ["about.toml", "about.hbs"]
 [dependencies]
 # CLI
 clap.workspace = true
+clap-verbosity-flag.workspace = true
 
 # Error Handling
 anyhow.workspace = true
