@@ -28,7 +28,7 @@ description: >
   GPG_SIGN_KEY). Signing is skipped when no key is present, which is usually what
   you want locally and rarely what you want in CI.
 
-  Supply the version either as the `version` parameter, or by exporting it (the
+  Supply the version either as the `release_version` parameter, or by exporting it (the
   `version_env` parameter names the variable, default SEMVER) when your pipeline
   computes it at runtime.
 usage:
@@ -42,7 +42,7 @@ usage:
             name: record-release
             # Explicit version. Omit this and export SEMVER instead when the
             # version is calculated during the pipeline.
-            version: "1.2.0"
+            release_version: "1.2.0"
             # Hand the record on as a FILE. A push job that checks out afresh
             # would discard a commit made here.
             post-steps:

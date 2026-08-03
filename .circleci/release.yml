@@ -63,7 +63,7 @@ jobs:
             # -v: the tools' full output is opt-in now, and a CI log is exactly
             # where the detail should stay.
             jci-audit release \
-              --version "${VERSION}" \
+              --release-version "${VERSION}" \
               --verbose \
               --commit \
               --push \

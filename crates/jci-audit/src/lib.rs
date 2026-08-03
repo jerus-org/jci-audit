@@ -81,8 +81,8 @@ enum Commands {
         /// The release version being validated (e.g. "1.2.0"). When omitted it
         /// is read from the environment variable named by --version-env, since
         /// release pipelines compute the version at runtime.
-        #[arg(long)]
-        version: Option<String>,
+        #[arg(long, value_name = "VERSION")]
+        release_version: Option<String>,
 
         /// Env var NAME holding the release version when --version is not given
         /// (default SEMVER).
@@ -149,8 +149,8 @@ enum Commands {
     /// from a checkout of the released tag.
     Verify {
         /// The released version to verify (e.g. "1.2.0").
-        #[arg(long)]
-        version: String,
+        #[arg(long, value_name = "VERSION")]
+        release_version: String,
 
         /// Advisory-db root; cargo-deny's checkout is moved to the recorded
         /// commit beneath it. Defaults to ~/.cargo/advisory-db.
@@ -184,7 +184,7 @@ impl Cli {
                 output,
             } => run_check(manifest_path, output, detail),
             Commands::Release {
-                version,
+                release_version,
                 version_env,
                 advisory_db,
                 commit,
@@ -214,7 +214,7 @@ impl Cli {
                         .unwrap_or_else(|| gitops::SignEnvNames::default().sign_key),
                 };
                 let version = release::resolve_version(
-                    version.as_deref(),
+                    release_version.as_deref(),
                     version_env
                         .as_deref()
                         .unwrap_or(release::DEFAULT_VERSION_ENV),
@@ -232,10 +232,10 @@ impl Cli {
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
             Commands::Verify {
-                version,
+                release_version,
                 advisory_db,
                 output,
-            } => run_verify(version, advisory_db.as_deref(), output, detail),
+            } => run_verify(release_version, advisory_db.as_deref(), output, detail),
             Commands::Init { force } => run_init(*force),
         }
     }
@@ -475,12 +475,23 @@ mod tests {
         // Release pipelines compute the version at runtime, so it is resolved
         // from the environment rather than being required on the command line.
         assert!(Cli::try_parse_from(["jci-audit", "release"]).is_ok());
-        let cli =
-            Cli::try_parse_from(["jci-audit", "release", "--version", "1.2.0"]).expect("parses");
+        let cli = Cli::try_parse_from(["jci-audit", "release", "--release-version", "1.2.0"])
+            .expect("parses");
         match cli.command {
-            Commands::Release { version, .. } => assert_eq!(version.as_deref(), Some("1.2.0")),
+            Commands::Release {
+                release_version, ..
+            } => assert_eq!(release_version.as_deref(), Some("1.2.0")),
             other => panic!("expected Release, got {other:?}"),
         }
+
+        // --version is the tool's own version, and must stay that way: naming the
+        // release version the same thing made one flag mean two things depending
+        // on where it sat.
+        let err = Cli::try_parse_from(["jci-audit", "release", "--version", "1.2.0"]).unwrap_err();
+        assert!(
+            !err.to_string().contains("1.2.0"),
+            "--version must not be taken as a release version: {err}"
+        );
     }
 
     #[test]
