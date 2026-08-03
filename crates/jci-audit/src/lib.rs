@@ -19,6 +19,7 @@
 //! shelling subcommand runs first.
 
 pub mod check;
+pub mod diagnostics;
 pub mod gitops;
 pub mod init;
 pub mod preflight;
@@ -46,8 +47,19 @@ use crate::preflight::Tool;
         scaffolds a standard deny.toml."
 )]
 pub struct Cli {
+    #[command(flatten)]
+    pub logging: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
+
     #[command(subcommand)]
     command: Commands,
+}
+
+/// Flags shared by the subcommands that run cargo-deny / cargo-audit.
+#[derive(Debug, clap::Args)]
+struct ToolOutput {
+    /// Fail if the tools report any warning.
+    #[arg(long)]
+    deny_warnings: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -58,6 +70,9 @@ enum Commands {
         /// Path to the Cargo.toml (or its directory) to check.
         #[arg(long, default_value = ".")]
         manifest_path: std::path::PathBuf,
+
+        #[command(flatten)]
+        output: ToolOutput,
     },
     /// Release gate: reproducible validation against a pinned advisory-db
     /// commit (deny + audit offline), then a non-blocking live audit. Records
@@ -66,8 +81,8 @@ enum Commands {
         /// The release version being validated (e.g. "1.2.0"). When omitted it
         /// is read from the environment variable named by --version-env, since
         /// release pipelines compute the version at runtime.
-        #[arg(long)]
-        version: Option<String>,
+        #[arg(long, value_name = "VERSION")]
+        release_version: Option<String>,
 
         /// Env var NAME holding the release version when --version is not given
         /// (default SEMVER).
@@ -111,6 +126,9 @@ enum Commands {
         /// Env var NAME holding the GPG signing key id (default GPG_SIGN_KEY).
         #[arg(long)]
         sign_key_env: Option<String>,
+
+        #[command(flatten)]
+        output: ToolOutput,
     },
     /// Derive `.cargo/audit.toml` from the canonical `deny.toml`
     /// `[advisories].ignore`. Makes deny.toml the single source of truth.
@@ -131,13 +149,16 @@ enum Commands {
     /// from a checkout of the released tag.
     Verify {
         /// The released version to verify (e.g. "1.2.0").
-        #[arg(long)]
-        version: String,
+        #[arg(long, value_name = "VERSION")]
+        release_version: String,
 
         /// Advisory-db root; cargo-deny's checkout is moved to the recorded
         /// commit beneath it. Defaults to ~/.cargo/advisory-db.
         #[arg(long)]
         advisory_db: Option<std::path::PathBuf>,
+
+        #[command(flatten)]
+        output: ToolOutput,
     },
     /// Scaffold a standard `deny.toml` template and a derived
     /// `.cargo/audit.toml`.
@@ -149,12 +170,21 @@ enum Commands {
 }
 
 impl Cli {
+    /// How much of the tools' output to show, from the logging level.
+    fn detail(&self) -> diagnostics::Detail {
+        diagnostics::Detail::from_level(self.logging.tracing_level_filter())
+    }
+
     /// Execute the selected subcommand.
     pub fn run(&self) -> Result<()> {
+        let detail = self.detail();
         match &self.command {
-            Commands::Check { manifest_path } => run_check(manifest_path),
+            Commands::Check {
+                manifest_path,
+                output,
+            } => run_check(manifest_path, output, detail),
             Commands::Release {
-                version,
+                release_version,
                 version_env,
                 advisory_db,
                 commit,
@@ -164,6 +194,7 @@ impl Cli {
                 user_name_env,
                 user_email_env,
                 sign_key_env,
+                output,
             } => {
                 let names = gitops::SignEnvNames {
                     gpg_key: gpg_key_env
@@ -183,28 +214,42 @@ impl Cli {
                         .unwrap_or_else(|| gitops::SignEnvNames::default().sign_key),
                 };
                 let version = release::resolve_version(
-                    version.as_deref(),
+                    release_version.as_deref(),
                     version_env
                         .as_deref()
                         .unwrap_or(release::DEFAULT_VERSION_ENV),
                 )?;
-                run_release(&version, advisory_db.as_deref(), *commit, *push, &names)
+                run_release(
+                    &version,
+                    advisory_db.as_deref(),
+                    *commit,
+                    *push,
+                    &names,
+                    output,
+                    detail,
+                )
             }
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
             Commands::Verify {
-                version,
+                release_version,
                 advisory_db,
-            } => run_verify(version, advisory_db.as_deref()),
+                output,
+            } => run_verify(release_version, advisory_db.as_deref(), output, detail),
             Commands::Init { force } => run_init(*force),
         }
     }
 }
 
-fn run_check(manifest_path: &std::path::Path) -> Result<()> {
+fn run_check(
+    manifest_path: &std::path::Path,
+    output: &ToolOutput,
+    detail: diagnostics::Detail,
+) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     tracing::info!(?manifest_path, "check");
-    let report = check::check_with(&check::SystemRunner, manifest_path)?;
+    let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
+    diagnostics::enforce(&report.warnings, output.deny_warnings)?;
     if report.success() {
         println!("security check passed (cargo deny + cargo audit)");
         Ok(())
@@ -219,6 +264,8 @@ fn run_release(
     commit: bool,
     push: bool,
     sign_names: &gitops::SignEnvNames,
+    output: &ToolOutput,
+    detail: diagnostics::Detail,
 ) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
     let cwd = std::env::current_dir()?;
@@ -230,7 +277,8 @@ fn run_release(
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "release");
 
-    let outcome = release::release_with(&check::SystemRunner, &cwd, version, &db_root, &work);
+    let outcome =
+        release::release_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -281,7 +329,9 @@ fn run_release(
             ),
         }
     }
-    Ok(())
+    // Last: the record is written and committed either way, so a --deny-warnings
+    // failure reports the warnings without discarding the work.
+    diagnostics::enforce(&outcome.warnings, output.deny_warnings)
 }
 
 fn run_sync(check: bool) -> Result<()> {
@@ -338,7 +388,12 @@ fn run_prune(check: bool) -> Result<()> {
     Ok(())
 }
 
-fn run_verify(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()> {
+fn run_verify(
+    version: &str,
+    advisory_db: Option<&std::path::Path>,
+    output: &ToolOutput,
+    detail: diagnostics::Detail,
+) -> Result<()> {
     preflight::ensure_available(&[Tool::CargoDeny])?;
     let cwd = std::env::current_dir()?;
     let db_root = advisory_db
@@ -347,7 +402,7 @@ fn run_verify(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "verify");
 
-    let outcome = verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work);
+    let outcome = verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -363,7 +418,7 @@ fn run_verify(version: &str, advisory_db: Option<&std::path::Path>) -> Result<()
     }
     if outcome.is_ok() {
         println!("reproduced: the release passes the gate against its recorded snapshot");
-        Ok(())
+        diagnostics::enforce(&outcome.warnings, output.deny_warnings)
     } else if !outcome.mismatches.is_empty() {
         bail!("verification failed: inputs do not match the record")
     } else {
@@ -386,12 +441,33 @@ mod tests {
     #[test]
     fn parse_check_defaults_manifest_to_cwd() {
         let cli = Cli::try_parse_from(["jci-audit", "check"]).expect("check parses");
+        assert!(
+            cli.detail() == diagnostics::Detail::Summary,
+            "the tools' full output is opt-in"
+        );
         match cli.command {
-            Commands::Check { manifest_path } => {
+            Commands::Check {
+                manifest_path,
+                output,
+            } => {
                 assert_eq!(manifest_path, std::path::PathBuf::from("."));
+                assert!(!output.deny_warnings, "warnings are reported, not fatal");
             }
             other => panic!("expected Check, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn verbosity_flags_control_the_tools_detail() {
+        // -v reaches the tools' output; the default and -q stay above it. Uses the
+        // organisation's clap-verbosity-flag, so -q/-vv behave as in the sibling
+        // CLIs rather than being a local invention.
+        let quiet = Cli::try_parse_from(["jci-audit", "-q", "check"]).expect("parses");
+        let default = Cli::try_parse_from(["jci-audit", "check"]).expect("parses");
+        let verbose = Cli::try_parse_from(["jci-audit", "-v", "check"]).expect("parses");
+        assert_eq!(quiet.detail(), diagnostics::Detail::Summary);
+        assert_eq!(default.detail(), diagnostics::Detail::Summary);
+        assert_eq!(verbose.detail(), diagnostics::Detail::List);
     }
 
     #[test]
@@ -399,12 +475,23 @@ mod tests {
         // Release pipelines compute the version at runtime, so it is resolved
         // from the environment rather than being required on the command line.
         assert!(Cli::try_parse_from(["jci-audit", "release"]).is_ok());
-        let cli =
-            Cli::try_parse_from(["jci-audit", "release", "--version", "1.2.0"]).expect("parses");
+        let cli = Cli::try_parse_from(["jci-audit", "release", "--release-version", "1.2.0"])
+            .expect("parses");
         match cli.command {
-            Commands::Release { version, .. } => assert_eq!(version.as_deref(), Some("1.2.0")),
+            Commands::Release {
+                release_version, ..
+            } => assert_eq!(release_version.as_deref(), Some("1.2.0")),
             other => panic!("expected Release, got {other:?}"),
         }
+
+        // --version is the tool's own version, and must stay that way: naming the
+        // release version the same thing made one flag mean two things depending
+        // on where it sat.
+        let err = Cli::try_parse_from(["jci-audit", "release", "--version", "1.2.0"]).unwrap_err();
+        assert!(
+            !err.to_string().contains("1.2.0"),
+            "--version must not be taken as a release version: {err}"
+        );
     }
 
     #[test]

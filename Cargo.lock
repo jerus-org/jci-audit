@@ -459,6 +459,7 @@ checksum = "9d92b1fab272fe943881b77cc6e920d6543e5b1bfadbd5ed81c7c5a755742394"
 dependencies = [
  "clap",
  "log",
+ "tracing-core",
 ]
 
 [[package]]
@@ -1717,6 +1718,7 @@ version = "0.0.5"
 dependencies = [
  "anyhow",
  "clap",
+ "clap-verbosity-flag",
  "config",
  "pcu",
  "serde_json",

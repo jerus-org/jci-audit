@@ -1,4 +1,5 @@
 set -- jci-audit verify
-set -- "$@" --version "${VERSION}"
-[[ -n "${ADVISORY_DB:-}" ]] && set -- "$@" --advisory-db "${ADVISORY_DB}"
+set -- "$@" --release-version "${RELEASE_VERSION}"
+[[ "${VERBOSE:-false}" = "true" ]] && set -- "$@" --verbose
+[[ "${QUIET:-false}" = "true" ]] && set -- "$@" --quiet
 "$@"

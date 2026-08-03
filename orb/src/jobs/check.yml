@@ -5,6 +5,14 @@ parameters:
     type: string
     description: Path to the Cargo.toml (or its directory) to check
     default: .
+  verbose:
+    type: boolean
+    description: '...                     Increase logging verbosity --deny-warnings                  Fail if the tools report any warning'
+    default: false
+  quiet:
+    type: boolean
+    description: '...                       Decrease logging verbosity'
+    default: false
   attach_workspace:
     type: boolean
     description: Attach a workspace before running the command (use when the binary was built in a prior job).
@@ -27,3 +35,5 @@ steps:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - check:
     manifest_path: << parameters.manifest_path >>
+    verbose: << parameters.verbose >>
+    quiet: << parameters.quiet >>
