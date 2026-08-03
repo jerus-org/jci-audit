@@ -1,9 +1,12 @@
 description: Run verify command in a dedicated job.
 executor: default
 parameters:
+  release_version:
+    type: string
+    description: The released version to verify (e.g. "1.2.0")
   verbose:
     type: boolean
-    description: '...                 Increase logging verbosity --version <VERSION>          The released version to verify (e.g. "1.2.0") --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny''s checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db'
+    description: '...                 Increase logging verbosity --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny''s checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db'
     default: false
   quiet:
     type: boolean
@@ -30,5 +33,6 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - verify:
+    release_version: << parameters.release_version >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>

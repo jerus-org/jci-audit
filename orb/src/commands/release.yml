@@ -1,8 +1,12 @@
 description: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
 parameters:
+  release_version:
+    type: string
+    description: The release version being validated (e.g. "1.2.0"). When omitted it is read from the environment variable named by --version-env, since release pipelines compute the version at runtime
+    default: ''
   verbose:
     type: boolean
-    description: '... Increase logging verbosity --version <VERSION> The release version being validated (e.g. "1.2.0"). When omitted it is read from the environment variable named by --version-env, since release pipelines compute the version at runtime'
+    description: '... Increase logging verbosity'
     default: false
   quiet:
     type: boolean
@@ -24,3 +28,5 @@ steps:
 - run:
     name: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
     command: <<include(scripts/release.sh)>>
+    environment:
+      RELEASE_VERSION: << parameters.release_version >>

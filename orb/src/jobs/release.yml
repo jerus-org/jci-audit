@@ -1,9 +1,13 @@
 description: Run release command in a dedicated job.
 executor: default
 parameters:
+  release_version:
+    type: string
+    description: The release version being validated (e.g. "1.2.0"). When omitted it is read from the environment variable named by --version-env, since release pipelines compute the version at runtime
+    default: ''
   verbose:
     type: boolean
-    description: '... Increase logging verbosity --version <VERSION> The release version being validated (e.g. "1.2.0"). When omitted it is read from the environment variable named by --version-env, since release pipelines compute the version at runtime'
+    description: '... Increase logging verbosity'
     default: false
   quiet:
     type: boolean
@@ -30,5 +34,6 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - release:
+    release_version: << parameters.release_version >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
