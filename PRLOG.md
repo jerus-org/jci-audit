@@ -10,6 +10,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - take pcu without its attestation features(pr [#47])
 
+### Fixed
+
+- deps: lock file maintenance(pr [#50])
+
 ## [0.0.4] - 2026-07-31
 
 ### Changed
@@ -128,6 +132,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#41]: https://github.com/jerus-org/jci-audit/pull/41
 [#46]: https://github.com/jerus-org/jci-audit/pull/46
 [#47]: https://github.com/jerus-org/jci-audit/pull/47
+[#50]: https://github.com/jerus-org/jci-audit/pull/50
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...HEAD
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
