@@ -1,4 +1,4 @@
-FROM rust:1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS builder
+FROM rust:1-slim-trixie@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd AS builder
 ARG CRATE_VERSION
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -18,7 +18,7 @@ RUN apt-get update \
 RUN cargo install cargo-binstall --locked \
     && cargo binstall --no-confirm cargo-audit cargo-deny
 
-FROM rust:1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c
+FROM rust:1-slim-trixie@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     ca-certificates \
