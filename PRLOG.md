@@ -14,6 +14,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: lock file maintenance(pr [#50])
 - deps: update dependency toolkit to v7.1.0(pr [#52])
+- deps: lock file maintenance(pr [#51])
 
 ## [0.0.4] - 2026-07-31
 
@@ -135,6 +136,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#47]: https://github.com/jerus-org/jci-audit/pull/47
 [#50]: https://github.com/jerus-org/jci-audit/pull/50
 [#52]: https://github.com/jerus-org/jci-audit/pull/52
+[#51]: https://github.com/jerus-org/jci-audit/pull/51
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...HEAD
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
