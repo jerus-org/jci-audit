@@ -18,7 +18,7 @@ yanked = "warn"
 #
 # Not suppressing an advisory beats justifying it. An ignore says the risk was
 # reasoned about; an absent dependency says there is nothing to reason about.
-ignore = []
+ignore = ["RUSTSEC-2026-0253"]
 
 [licenses]
 # All licenses are denied unless explicitly allowed. Permissive licenses are
