@@ -13,14 +13,14 @@ categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
 # CLI
-clap = { version = "4.6.4", features = ["derive"] }
+clap = { version = "4.6.6", features = ["derive"] }
 # Verbosity flags, as the organisation's other CLIs declare them. The tracing
 # feature rather than the default log one, to match this crate's logging stack.
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 
 # Error Handling
 anyhow = "1.0.104"
-thiserror = "2.0.19"
+thiserror = "2.0.20"
 
 # Logging
 tracing = "0.1.44"
@@ -45,7 +45,7 @@ sha2 = "0.11.0"
 # default-features = false drops the attestation surface (openidconnect, sigstore
 # and with them rsa/RUSTSEC-2023-0071), none of which the git path uses. An
 # auditor should not have to suppress an advisory to run an auditing tool.
-pcu = { version = "0.6.30", default-features = false }
+pcu = { version = "0.6.31", default-features = false }
 tokio = { version = "1.53.1", features = ["rt", "macros"] }
 
 # Testing

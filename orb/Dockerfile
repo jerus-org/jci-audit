@@ -1,4 +1,4 @@
-FROM rust:1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS builder
+FROM rust:1-slim-trixie@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd AS builder
 ARG CRATE_VERSION
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -9,16 +9,26 @@ RUN apt-get update \
     libssl-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/* \
-    && { n=0; until cargo install jci-audit --version "${CRATE_VERSION}" --locked; do \
+    && { err=/tmp/cargo-install.err; n=0; \
+       until cargo install jci-audit --locked \
+             --version "${CRATE_VERSION}" 2>"$err"; do \
+         cat "$err" >&2; \
+         grep -q "failed to compile" "$err" \
+           && echo "build failed, not an index delay" >&2 && exit 1; \
          n=$((n+1)); \
-         [ "$n" -ge 20 ] && echo "crates.io index never served ${CRATE_VERSION}" >&2 && exit 1; \
-         echo "waiting for crates.io index to propagate ${CRATE_VERSION} (attempt $n)"; \
+         [ "$n" -ge 40 ] \
+           && echo "crates.io index never served ${CRATE_VERSION}" >&2 \
+           && exit 1; \
+         echo "waiting for crates.io index: ${CRATE_VERSION} (try $n)"; \
+         rm -rf "${CARGO_HOME:-/usr/local/cargo}"/registry/index/*/.cache; \
          sleep 15; \
        done; }
 RUN cargo install cargo-binstall --locked \
-    && cargo binstall --no-confirm cargo-audit cargo-deny
+    && cargo binstall --no-confirm \
+    cargo-audit \
+    cargo-deny
 
-FROM rust:1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c
+FROM rust:1-slim-trixie@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     ca-certificates \

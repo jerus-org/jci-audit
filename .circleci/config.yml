@@ -6,12 +6,12 @@ parameters:
     default: "1.89"
 
 orbs:
-  toolkit: jerus-org/circleci-toolkit@7.0.0
+  toolkit: jerus-org/circleci-toolkit@7.1.0
 
-  orb-tools: circleci/orb-tools@12.4.0
+  orb-tools: circleci/orb-tools@12.5.0
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.4
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.6
   # <<< gen-circleci-orb
 jobs:
   # An unaccepted licence stops the release in its pre-release hook — after the
@@ -69,6 +69,7 @@ workflows:
               ignore: main
 
       - toolkit/idiomatic_rust:
+          clippy_report: true
           filters:
             branches:
               ignore: main
@@ -91,6 +92,9 @@ workflows:
 
       - toolkit/security:
           name: security with sonarcloud
+          clippy_report: true
+          requires:
+            - toolkit/idiomatic_rust
           context: SonarCloud
           filters:
             branches:
@@ -108,7 +112,7 @@ workflows:
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
           package: jci-audit
-          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:36aacfbf82036d7ae47c004f2844220a7fe7d9882b13a4bf741af99d7ded97b6
+          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:ac7fa7e1e811f24211f70ac0ebe87c7a27db118535582ef3bb70557f233ab28a
       - gen-circleci-orb/generate:
           name: regenerate-orb
           binary: jci-audit

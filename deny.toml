@@ -14,7 +14,10 @@ yanked = "warn"
 # used to sit here: it arrived through pcu's OIDC/attestation surface, which
 # could not be excluded because pcu had no feature gates. jerus-org/pcu#1028
 # added them, and taking pcu with `default-features = false` removes `rsa`,
-# `openidconnect` and `sigstore` from the graph outright.
+# `openidconnect` and `sigstore` from the graph outright. RUSTSEC-2026-0253
+# (`lru`) followed the same pattern: it arrived via pcu's bsky surface
+# (bsky-sdk -> atrium), and jerus-org/pcu#1035 gated that behind the same
+# flag.
 #
 # Not suppressing an advisory beats justifying it. An ignore says the risk was
 # reasoned about; an absent dependency says there is nothing to reason about.

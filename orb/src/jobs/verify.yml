@@ -6,11 +6,19 @@ parameters:
     description: The released version to verify (e.g. "1.2.0")
   verbose:
     type: boolean
-    description: '...                 Increase logging verbosity --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny''s checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db'
+    description: Increase logging verbosity
     default: false
+  advisory_db:
+    type: string
+    description: Advisory-db root; cargo-deny's checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db
+    default: ''
   quiet:
     type: boolean
-    description: '...                   Decrease logging verbosity --deny-warnings              Fail if the tools report any warning'
+    description: Decrease logging verbosity
+    default: false
+  deny_warnings:
+    type: boolean
+    description: Fail if the tools report any warning
     default: false
   attach_workspace:
     type: boolean
@@ -35,4 +43,6 @@ steps:
 - verify:
     release_version: << parameters.release_version >>
     verbose: << parameters.verbose >>
+    advisory_db: << parameters.advisory_db >>
     quiet: << parameters.quiet >>
+    deny_warnings: << parameters.deny_warnings >>

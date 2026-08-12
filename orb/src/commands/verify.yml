@@ -5,11 +5,19 @@ parameters:
     description: The released version to verify (e.g. "1.2.0")
   verbose:
     type: boolean
-    description: '...                 Increase logging verbosity --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny''s checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db'
+    description: Increase logging verbosity
     default: false
+  advisory_db:
+    type: string
+    description: Advisory-db root; cargo-deny's checkout is moved to the recorded commit beneath it. Defaults to ~/.cargo/advisory-db
+    default: ''
   quiet:
     type: boolean
-    description: '...                   Decrease logging verbosity --deny-warnings              Fail if the tools report any warning'
+    description: Decrease logging verbosity
+    default: false
+  deny_warnings:
+    type: boolean
+    description: Fail if the tools report any warning
     default: false
 steps:
 - when:
@@ -24,8 +32,15 @@ steps:
     - run:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.deny_warnings >>
+    steps:
+    - run:
+        name: Set DENY_WARNINGS flag
+        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
     name: Re-verify a past release against the advisory snapshot it was locked to, using the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag
     command: <<include(scripts/verify.sh)>>
     environment:
       RELEASE_VERSION: << parameters.release_version >>
+      ADVISORY_DB: << parameters.advisory_db >>

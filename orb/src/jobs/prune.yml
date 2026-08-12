@@ -7,11 +7,11 @@ parameters:
     default: false
   verbose:
     type: boolean
-    description: '...  Increase logging verbosity'
+    description: Increase logging verbosity
     default: false
   quiet:
     type: boolean
-    description: '...    Decrease logging verbosity'
+    description: Decrease logging verbosity
     default: false
   attach_workspace:
     type: boolean

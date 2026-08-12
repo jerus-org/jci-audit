@@ -7,11 +7,15 @@ parameters:
     default: .
   verbose:
     type: boolean
-    description: '...                     Increase logging verbosity --deny-warnings                  Fail if the tools report any warning'
+    description: Increase logging verbosity
+    default: false
+  deny_warnings:
+    type: boolean
+    description: Fail if the tools report any warning
     default: false
   quiet:
     type: boolean
-    description: '...                       Decrease logging verbosity'
+    description: Decrease logging verbosity
     default: false
   attach_workspace:
     type: boolean
@@ -36,4 +40,5 @@ steps:
 - check:
     manifest_path: << parameters.manifest_path >>
     verbose: << parameters.verbose >>
+    deny_warnings: << parameters.deny_warnings >>
     quiet: << parameters.quiet >>
