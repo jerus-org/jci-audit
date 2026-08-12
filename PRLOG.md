@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - take pcu without its attestation features(pr [#47])
+- summarise the tools' warnings in our own output(pr [#48])
 
 ### Fixed
 
@@ -151,6 +152,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#57]: https://github.com/jerus-org/jci-audit/pull/57
 [#58]: https://github.com/jerus-org/jci-audit/pull/58
 [#60]: https://github.com/jerus-org/jci-audit/pull/60
+[#48]: https://github.com/jerus-org/jci-audit/pull/48
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...HEAD
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
