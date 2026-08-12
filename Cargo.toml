@@ -42,7 +42,7 @@ sha2 = "0.11.0"
 # default-features = false drops the attestation surface (openidconnect, sigstore
 # and with them rsa/RUSTSEC-2023-0071), none of which the git path uses. An
 # auditor should not have to suppress an advisory to run an auditing tool.
-pcu = { version = "0.6.30", default-features = false }
+pcu = { version = "0.6.31", default-features = false }
 tokio = { version = "1.53.1", features = ["rt", "macros"] }
 
 # Testing
