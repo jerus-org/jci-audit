@@ -5,6 +5,14 @@ parameters:
     type: boolean
     description: Fail (non-zero) when a stale ignore is found. For CI
     default: false
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
   attach_workspace:
     type: boolean
     description: Attach a workspace before running the command (use when the binary was built in a prior job).
@@ -27,3 +35,5 @@ steps:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - prune:
     check: << parameters.check >>
+    verbose: << parameters.verbose >>
+    quiet: << parameters.quiet >>

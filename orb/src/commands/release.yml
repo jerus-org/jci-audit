@@ -1,9 +1,17 @@
 description: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
 parameters:
-  version:
+  release_version:
     type: string
     description: The release version being validated (e.g. "1.2.0"). When omitted it is read from the environment variable named by --version-env, since release pipelines compute the version at runtime
     default: ''
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
   advisory_db:
     type: string
     description: Path to a checked-out advisory-db at the pinned commit. When omitted, the pinned commit is resolved from configuration
@@ -36,7 +44,23 @@ parameters:
     type: string
     description: Env var NAME holding the GPG signing key id (default GPG_SIGN_KEY)
     default: ''
+  deny_warnings:
+    type: boolean
+    description: Fail if the tools report any warning
+    default: false
 steps:
+- when:
+    condition: << parameters.verbose >>
+    steps:
+    - run:
+        name: Set VERBOSE flag
+        command: echo 'export VERBOSE=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.quiet >>
+    steps:
+    - run:
+        name: Set QUIET flag
+        command: echo 'export QUIET=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.commit >>
     steps:
@@ -49,11 +73,17 @@ steps:
     - run:
         name: Set PUSH flag
         command: echo 'export PUSH=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.deny_warnings >>
+    steps:
+    - run:
+        name: Set DENY_WARNINGS flag
+        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
     name: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
     command: <<include(scripts/release.sh)>>
     environment:
-      VERSION: << parameters.version >>
+      RELEASE_VERSION: << parameters.release_version >>
       ADVISORY_DB: << parameters.advisory_db >>
       GPG_KEY_ENV: << parameters.gpg_key_env >>
       GPG_TRUST_ENV: << parameters.gpg_trust_env >>

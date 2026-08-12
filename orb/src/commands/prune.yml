@@ -4,6 +4,14 @@ parameters:
     type: boolean
     description: Fail (non-zero) when a stale ignore is found. For CI
     default: false
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
 steps:
 - when:
     condition: << parameters.check >>
@@ -11,6 +19,18 @@ steps:
     - run:
         name: Set CHECK flag
         command: echo 'export CHECK=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.verbose >>
+    steps:
+    - run:
+        name: Set VERBOSE flag
+        command: echo 'export VERBOSE=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.quiet >>
+    steps:
+    - run:
+        name: Set QUIET flag
+        command: echo 'export QUIET=true' >> "$BASH_ENV"
 - run:
     name: 'Stale-ignore detector: run audit/deny against the naked advisory-db and report ignores that no longer fire'
     command: <<include(scripts/prune.sh)>>

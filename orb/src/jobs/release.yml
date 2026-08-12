@@ -1,10 +1,18 @@
 description: Run release command in a dedicated job.
 executor: default
 parameters:
-  version:
+  release_version:
     type: string
     description: The release version being validated (e.g. "1.2.0"). When omitted it is read from the environment variable named by --version-env, since release pipelines compute the version at runtime
     default: ''
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
   advisory_db:
     type: string
     description: Path to a checked-out advisory-db at the pinned commit. When omitted, the pinned commit is resolved from configuration
@@ -37,6 +45,10 @@ parameters:
     type: string
     description: Env var NAME holding the GPG signing key id (default GPG_SIGN_KEY)
     default: ''
+  deny_warnings:
+    type: boolean
+    description: Fail if the tools report any warning
+    default: false
   attach_workspace:
     type: boolean
     description: Attach a workspace before running the command (use when the binary was built in a prior job).
@@ -58,7 +70,9 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - release:
-    version: << parameters.version >>
+    release_version: << parameters.release_version >>
+    verbose: << parameters.verbose >>
+    quiet: << parameters.quiet >>
     advisory_db: << parameters.advisory_db >>
     commit: << parameters.commit >>
     push: << parameters.push >>
@@ -67,3 +81,4 @@ steps:
     user_name_env: << parameters.user_name_env >>
     user_email_env: << parameters.user_email_env >>
     sign_key_env: << parameters.sign_key_env >>
+    deny_warnings: << parameters.deny_warnings >>
