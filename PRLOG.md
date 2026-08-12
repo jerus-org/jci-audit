@@ -21,6 +21,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate clap to 4.6.6(pr [#56])
 - deps: update rust crate thiserror to 2.0.20(pr [#57])
 - deps: update dependency orb-tools to v12.5.0(pr [#58])
+- deps: update rust crate pcu to 0.6.31(pr [#60])
 
 ## [0.0.4] - 2026-07-31
 
@@ -149,6 +150,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#56]: https://github.com/jerus-org/jci-audit/pull/56
 [#57]: https://github.com/jerus-org/jci-audit/pull/57
 [#58]: https://github.com/jerus-org/jci-audit/pull/58
+[#60]: https://github.com/jerus-org/jci-audit/pull/60
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...HEAD
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
