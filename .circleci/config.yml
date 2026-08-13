@@ -68,11 +68,11 @@ workflows:
             branches:
               ignore: main
 
+      # Unfiltered: `security with sonarcloud` requires this job and runs on
+      # main, and CircleCI never schedules a job whose `requires` dependency
+      # was itself filtered out on that branch (#59).
       - toolkit/idiomatic_rust:
           clippy_report: true
-          filters:
-            branches:
-              ignore: main
 
       - toolkit/common_tests:
           min_rust_version: << pipeline.parameters.min_rust_version >>
@@ -93,6 +93,7 @@ workflows:
       - toolkit/security:
           name: security with sonarcloud
           clippy_report: true
+          no_sonarcloud_on_main: false
           requires:
             - toolkit/idiomatic_rust
           context: SonarCloud
