@@ -4,6 +4,12 @@ All notable pull requests merged into this workspace are recorded here. This log
 tracks workspace-level changes (`v<VERSION>` tags); per-crate code changes are
 tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
+## [Unreleased]
+
+### Fixed
+
+- schedule sonarcloud scan on main(pr [#61])
+
 ## [0.0.5] - 2026-08-12
 
 ### Added
@@ -153,6 +159,8 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#58]: https://github.com/jerus-org/jci-audit/pull/58
 [#60]: https://github.com/jerus-org/jci-audit/pull/60
 [#48]: https://github.com/jerus-org/jci-audit/pull/48
+[#61]: https://github.com/jerus-org/jci-audit/pull/61
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...HEAD
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
