@@ -181,6 +181,26 @@ pub fn extract_license_policy(deny_toml: &str) -> Result<LicensePolicy> {
     Ok(LicensePolicy { allow, exceptions })
 }
 
+/// Build a TOML array with one element per line, trailing comma included —
+/// matching this repo's existing hand-authored style (the same shape
+/// `render_audit_toml` produces for `.cargo/audit.toml`, by hand-formatting a
+/// string there since that file is rendered from scratch; here the array is
+/// inserted into an existing document via `toml_edit`, so the formatting has
+/// to be set on the `Array`/`Value` decor directly instead).
+fn multiline_array<I: IntoIterator<Item = String>>(items: I) -> Array {
+    let mut arr = Array::new();
+    for item in items {
+        let mut v = Value::from(item);
+        v.decor_mut().set_prefix("\n    ");
+        arr.push_formatted(v);
+    }
+    if !arr.is_empty() {
+        arr.set_trailing("\n");
+    }
+    arr.set_trailing_comma(true);
+    arr
+}
+
 /// Merge a crate's precise, already-scoped license set into its existing
 /// `about.toml` document, preserving everything the derivation doesn't own:
 /// hand-authored `[crate.clarify]` attribution pins, comments, and
@@ -197,11 +217,12 @@ pub fn merge_about_toml(
     } else {
         existing
             .parse::<DocumentMut>()
-            .context("failed to parse about.toml")?
+            .context("failed to parse existing about.toml content")?
     };
 
-    let accepted: Array = scope.accepted.iter().cloned().map(Value::from).collect();
-    doc["accepted"] = Item::Value(Value::Array(accepted));
+    doc["accepted"] = Item::Value(Value::Array(multiline_array(
+        scope.accepted.iter().cloned(),
+    )));
 
     for (name, allow_list) in &policy.exceptions {
         if !scope.reachable_exception_crates.contains(name) {
@@ -211,8 +232,7 @@ pub fn merge_about_toml(
         let table = entry
             .as_table_mut()
             .with_context(|| format!("'{name}' in about.toml is not a table"))?;
-        let arr: Array = allow_list.iter().cloned().map(Value::from).collect();
-        table["accepted"] = Item::Value(Value::Array(arr));
+        table["accepted"] = Item::Value(Value::Array(multiline_array(allow_list.iter().cloned())));
     }
 
     let qualifying: BTreeSet<&str> = policy
@@ -391,7 +411,12 @@ pub fn sync_about_toml_at<R: crate::check::CommandRunner>(
         )?;
         let existing = std::fs::read_to_string(&about_path)
             .with_context(|| format!("failed to read '{}'", about_path.display()))?;
-        let desired = merge_about_toml(&existing, &scope, &policy)?;
+        // merge_about_toml only sees the content, not the path (it's tested
+        // against fixture strings) — name which crate's about.toml failed
+        // here, at the one call site that knows, since a workspace can hold
+        // more than one.
+        let desired = merge_about_toml(&existing, &scope, &policy)
+            .with_context(|| format!("while deriving '{}'", about_path.display()))?;
 
         let outcome = match decide_and_write(&about_path, Some(&existing), &desired, check)? {
             WriteDecision::InSync => SyncOutcome::InSync,
@@ -646,6 +671,22 @@ allow = ["MPL-2.0"]
             .filter_map(Value::as_str)
             .collect();
         assert_eq!(accepted, vec!["MIT"]);
+    }
+
+    #[test]
+    fn merge_about_toml_renders_accepted_one_per_line() {
+        // Matches this repo's existing hand-authored about.toml style — a
+        // single long line is what prompted this test (review feedback).
+        let out = merge_about_toml(
+            "",
+            &scope(&["MIT", "Apache-2.0"], &[]),
+            &LicensePolicy::default(),
+        )
+        .unwrap();
+        assert!(
+            out.contains("accepted = [\n    \"Apache-2.0\",\n    \"MIT\",\n]\n"),
+            "expected one license per line, got:\n{out}"
+        );
     }
 
     #[test]

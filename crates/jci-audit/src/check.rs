@@ -94,9 +94,16 @@ const DENY_ARGS: &[&str] = &["check", "advisories", "bans", "licenses", "sources
 /// `cargo-audit` does not scan).
 const AUDIT_ARGS: &[&str] = &["audit"];
 
-/// Run cargo-deny, cargo-audit, and the about.toml drift check in `cwd`,
+/// Run cargo-deny and cargo-audit in `cwd` (the workspace root — both need to
+/// find `deny.toml`/`Cargo.lock` there), then the about.toml drift check,
 /// surfacing each one's output, and return the aggregated report. All three
 /// always run — a failing check never skips the others.
+///
+/// The drift check isn't scoped to `cwd`: `deny.toml` is located by walking
+/// up from `cwd`, but each crate's `cargo metadata` call runs with *that
+/// crate's own directory* as its working directory (resolved from its
+/// `about.toml`'s path — see [`crate::license_scope::scope_for_crate`]), not
+/// `cwd` itself, since a workspace can hold more than one crate.
 pub fn check_with<R: CommandRunner>(
     runner: &R,
     cwd: &Path,

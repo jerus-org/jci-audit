@@ -248,7 +248,9 @@ fn run_check(
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
-    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
+    // Tool::Cargo: the about.toml step shells out to `cargo metadata` per
+    // crate, unlike the other two (standalone binaries, work cargo-less).
+    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit, Tool::Cargo])?;
     tracing::info!(?manifest_path, "check");
     let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
     diagnostics::enforce(&report.warnings, output.deny_warnings)?;
@@ -269,11 +271,16 @@ fn run_release(
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
-    // cargo-about is only needed for the license-policy resolution check,
-    // but release_with always runs it unconditionally alongside deny/audit —
-    // so it fails loudly here rather than as a raw subprocess-spawn error
-    // partway through the gate.
-    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit, Tool::CargoAbout])?;
+    // cargo-about and (bare) cargo are only needed for the license-policy
+    // checks, but release_with always runs them unconditionally alongside
+    // deny/audit — so a missing one fails loudly here rather than as a raw
+    // subprocess-spawn error partway through the gate.
+    preflight::ensure_available(&[
+        Tool::CargoDeny,
+        Tool::CargoAudit,
+        Tool::CargoAbout,
+        Tool::Cargo,
+    ])?;
     let cwd = std::env::current_dir()?;
     let db_root = advisory_db
         .map(std::path::Path::to_path_buf)
@@ -362,6 +369,8 @@ fn report_sync_outcome(path: &str, outcome: &sync::SyncOutcome, noun: &str) -> b
 }
 
 fn run_sync(check: bool) -> Result<()> {
+    // The about.toml half shells out to `cargo metadata` per crate.
+    preflight::ensure_available(&[Tool::Cargo])?;
     let cwd = std::env::current_dir()?;
     tracing::info!(check, dir = %cwd.display(), "sync");
 

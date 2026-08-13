@@ -51,7 +51,11 @@ pub struct CrateLicenseScope {
 
 /// Compute the license scope for the crate at `manifest_path`, given
 /// `deny.toml`'s global allow set and the full (workspace-wide) set of
-/// exception crate names.
+/// exception crate names. `manifest_path` must be an absolute path — the
+/// subprocess runs with the crate's own directory (`manifest_path`'s parent)
+/// as its working directory, matching how `release.rs` invokes `cargo-about`
+/// per crate, rather than the caller's own directory (which need not have
+/// any relationship to the crate being resolved).
 pub fn scope_for_crate<R: CommandRunner>(
     runner: &R,
     manifest_path: &Path,
@@ -59,6 +63,9 @@ pub fn scope_for_crate<R: CommandRunner>(
     exception_crates: &BTreeSet<String>,
 ) -> Result<CrateLicenseScope> {
     let manifest = manifest_path.to_string_lossy();
+    let crate_dir = manifest_path
+        .parent()
+        .context("manifest_path has no parent directory")?;
     let out = runner.run(
         "cargo",
         &[
@@ -69,7 +76,7 @@ pub fn scope_for_crate<R: CommandRunner>(
             "1",
             "--all-features",
         ],
-        Path::new("."),
+        crate_dir,
     )?;
     if !out.success {
         bail!("cargo metadata failed for '{manifest}': {}", out.stderr);
@@ -363,6 +370,43 @@ mod tests {
         assert!(
             scope.is_ok(),
             "an unparseable license must not fail the whole scope: {scope:?}"
+        );
+    }
+
+    /// Records the `cwd` the `cargo metadata` subprocess call was made with.
+    struct CwdRecordingRunner {
+        recorded_cwd: std::cell::RefCell<Option<std::path::PathBuf>>,
+    }
+
+    impl CommandRunner for CwdRecordingRunner {
+        fn run(
+            &self,
+            _program: &str,
+            _args: &[&str],
+            cwd: &Path,
+        ) -> Result<crate::check::ToolOutput> {
+            *self.recorded_cwd.borrow_mut() = Some(cwd.to_path_buf());
+            Ok(crate::check::ToolOutput {
+                success: true,
+                stdout: METADATA_JSON.to_string(),
+                stderr: String::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn scope_for_crate_runs_cargo_metadata_in_the_crates_own_directory() {
+        // Not the caller's directory (review feedback: "what is cwd" — the
+        // answer must be "the crate being resolved", not wherever the
+        // process invoking scope_for_crate happens to be).
+        let runner = CwdRecordingRunner {
+            recorded_cwd: std::cell::RefCell::new(None),
+        };
+        let manifest_path = Path::new("/workspace/crates/demo/Cargo.toml");
+        scope_for_crate(&runner, manifest_path, &BTreeSet::new(), &BTreeSet::new()).unwrap();
+        assert_eq!(
+            runner.recorded_cwd.into_inner(),
+            Some(std::path::PathBuf::from("/workspace/crates/demo"))
         );
     }
 }
