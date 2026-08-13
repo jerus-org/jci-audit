@@ -31,10 +31,20 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use toml_edit::{DocumentMut, Item, value};
 
-use crate::{check::CommandRunner, sync::locate_paths};
+use crate::{
+    check::CommandRunner,
+    sync::{SyncOutcome, about_toml_digest, locate_paths, sync_about_toml_at},
+};
 
 /// Schema version of the emitted record, so consumers can evolve with it.
-pub const RECORD_SCHEMA_VERSION: u64 = 3;
+///
+/// v4 adds `policy.about_toml_sha256`: the release gate now also verifies
+/// each crate's `about.toml` still matches `deny.toml`'s license policy and
+/// that `cargo-about` can resolve every reachable dependency's license,
+/// before the record is written. `verify` treats a missing
+/// `about_toml_sha256` on a v3-or-earlier record as "not checked," not a
+/// failure.
+pub const RECORD_SCHEMA_VERSION: u64 = 4;
 
 /// The cargo-deny checks the release gate enforces.
 pub const DENY_CHECKS: &[&str] = &["advisories", "bans", "licenses", "sources"];
@@ -179,6 +189,7 @@ pub fn build_record(
     audit_version: &str,
     dependencies_sha256: &str,
     deny_toml_sha256: &str,
+    about_toml_sha256: Option<&str>,
 ) -> Value {
     json!({
         "schema_version": RECORD_SCHEMA_VERSION,
@@ -192,7 +203,10 @@ pub fn build_record(
         // The policy digest makes the record self-verifying: it proves WHICH
         // exception set (deny.toml ignores, licenses, bans, sources) was in
         // force, rather than trusting git history to supply it.
-        "policy": { "deny_toml_sha256": deny_toml_sha256 },
+        // about_toml_sha256 is the same guarantee for license policy, only
+        // present once the drift + policy-resolution checks have passed —
+        // `None` (-> null) when the workspace has no about.toml at all.
+        "policy": { "deny_toml_sha256": deny_toml_sha256, "about_toml_sha256": about_toml_sha256 },
         "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
     })
 }
@@ -253,6 +267,68 @@ pub fn release_with<R: CommandRunner>(
     let lock_text = std::fs::read_to_string(&lockfile)
         .with_context(|| format!("no Cargo.lock found at '{}'", lockfile.display()))?;
     let dependencies_sha256 = dependency_set_digest(&lock_text)?;
+
+    // License-policy checks, before the expensive advisory-db refresh below —
+    // the same "catch it before the expensive part" pattern this org uses for
+    // release version calculation. Pure derivation first (cheap, no
+    // cargo-about needed): does every crate's about.toml still match
+    // deny.toml's policy?
+    let about_sync = sync_about_toml_at(runner, start, true)?;
+    let drifted: Vec<String> = about_sync
+        .iter()
+        .filter(|r| r.outcome == SyncOutcome::Drift)
+        .map(|r| r.about_toml_path.display().to_string())
+        .collect();
+    if !drifted.is_empty() {
+        bail!(
+            "release gate failed: about.toml is out of sync with deny.toml ({}); \
+             run `jci-audit sync` (no record written)",
+            drifted.join(", ")
+        );
+    }
+
+    // Then policy resolvability: can cargo-about actually attribute every
+    // reachable dependency's license, not just is about.toml internally
+    // consistent with deny.toml? Cache-independent (`--output-file /dev/null`
+    // discards the rendered text — see `scripts/licenses.sh`'s own comment on
+    // why the rendered bytes are not reproducible across machines). Aggregated
+    // across every crate before bailing, matching the drift check above —
+    // one release attempt should surface every unresolvable crate, not just
+    // whichever happened to sort first.
+    let mut unresolved = Vec::new();
+    for result in &about_sync {
+        let crate_dir = result
+            .about_toml_path
+            .parent()
+            .context("about.toml path has no parent directory")?;
+        let resolve = runner.run(
+            "cargo-about",
+            &[
+                "generate",
+                "--locked",
+                "about.hbs",
+                "--output-file",
+                "/dev/null",
+            ],
+            crate_dir,
+        )?;
+        if !resolve.success {
+            unresolved.push(format!(
+                "{}: {}",
+                crate_dir.display(),
+                resolve.stderr.trim()
+            ));
+        }
+    }
+    if !unresolved.is_empty() {
+        bail!(
+            "release gate failed: cargo-about could not resolve licences for {} crate(s) \
+             (no record written):\n{}",
+            unresolved.len(),
+            unresolved.join("\n")
+        );
+    }
+    let about_toml_sha256 = about_toml_digest(&root)?;
 
     // Derived config: only db-path is overridden, so the repo's deny.toml stays
     // the single source of truth for every actual policy decision.
@@ -330,6 +406,7 @@ pub fn release_with<R: CommandRunner>(
         &audit_version,
         &dependencies_sha256,
         &deny_toml_sha256,
+        about_toml_sha256.as_deref(),
     );
     let path = record_path(&root, version);
     if let Some(parent) = path.parent() {
@@ -504,6 +581,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "cargo-audit 0.22.0",
             "deps1",
             "p1",
+            Some("a1"),
         );
         let b = build_record(
             "1.2.0",
@@ -512,14 +590,21 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "cargo-audit 0.22.0",
             "deps1",
             "p1",
+            Some("a1"),
         );
         assert_eq!(render_record(&a).unwrap(), render_record(&b).unwrap());
-        // The policy digest proves which exception set was in force.
+        // Both policy digests prove which exception set was in force.
         assert!(
             render_record(&a)
                 .unwrap()
                 .contains("\"deny_toml_sha256\": \"p1\""),
             "record must carry the policy digest"
+        );
+        assert!(
+            render_record(&a)
+                .unwrap()
+                .contains("\"about_toml_sha256\": \"a1\""),
+            "record must carry the license-policy digest"
         );
 
         let rendered = render_record(&a).unwrap();
@@ -587,10 +672,19 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
 
     use crate::check::ToolOutput;
 
+    /// A trivial `cargo metadata` graph: one root package, no dependencies.
+    /// Yields an empty crate-scoped `accepted` set, so an about.toml
+    /// committed with `accepted = []` and no exceptions is already in sync.
+    fn trivial_metadata_json() -> String {
+        r#"{"packages":[{"name":"demo","version":"0.0.0","id":"path+file:///demo#0.0.0","license":null}],"resolve":{"root":"path+file:///demo#0.0.0","nodes":[{"id":"path+file:///demo#0.0.0","deps":[]}]}}"#.to_string()
+    }
+
     /// Dispatches on (program, first arg) so each tool can be scripted.
     struct MockRunner {
         deny_ok: bool,
         live_json: String,
+        metadata_json: String,
+        about_ok: bool,
         calls: RefCell<Vec<Vec<String>>>,
     }
 
@@ -599,8 +693,14 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             Self {
                 deny_ok,
                 live_json: live_json.to_string(),
+                metadata_json: trivial_metadata_json(),
+                about_ok: true,
                 calls: RefCell::new(Vec::new()),
             }
+        }
+        fn with_about_ok(mut self, ok: bool) -> Self {
+            self.about_ok = ok;
+            self
         }
         fn ran(&self, program: &str) -> Vec<Vec<String>> {
             self.calls
@@ -632,6 +732,16 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
                     stdout: "advisories ok\n".to_string(),
                     stderr: String::new(),
                 },
+                ("cargo", Some("metadata")) => ok(&self.metadata_json),
+                ("cargo-about", _) => ToolOutput {
+                    success: self.about_ok,
+                    stdout: String::new(),
+                    stderr: if self.about_ok {
+                        String::new()
+                    } else {
+                        "unresolved licence".to_string()
+                    },
+                },
                 _ => ok(""),
             })
         }
@@ -649,6 +759,23 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
 
     fn clean_audit_json() -> &'static str {
         r#"{"vulnerabilities":{"count":0,"found":false,"list":[]},"warnings":{}}"#
+    }
+
+    /// Adds `crates/demo/{Cargo.toml, about.toml}` to a `scenario()` repo,
+    /// with the about.toml already in sync with an empty license policy (the
+    /// exact content `merge_about_toml` would derive, computed rather than
+    /// hand-typed so the fixture can't drift from the real format).
+    fn add_in_sync_crate(repo: &Path) {
+        let crate_dir = repo.join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+        let in_sync = crate::sync::merge_about_toml(
+            "",
+            &crate::license_scope::CrateLicenseScope::default(),
+            &crate::sync::LicensePolicy::default(),
+        )
+        .unwrap();
+        std::fs::write(crate_dir.join("about.toml"), in_sync).unwrap();
     }
 
     #[test]
@@ -817,5 +944,116 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         )
         .unwrap_err();
         assert!(err.to_string().contains("Cargo.lock"), "got: {err}");
+    }
+
+    // ── release-gate integration with about.toml (about_toml_digest itself
+    // is unit-tested in sync.rs, where it now lives) ─────────────────────
+
+    #[test]
+    fn release_records_the_about_toml_digest_when_in_sync() {
+        let (repo, db) = scenario();
+        add_in_sync_crate(repo.path());
+        let work = repo.path().join("work");
+        let runner = MockRunner::new(true, clean_audit_json());
+        let outcome = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
+
+        let written = std::fs::read_to_string(&outcome.record_path).unwrap();
+        assert!(
+            written.contains("\"about_toml_sha256\":"),
+            "got:\n{written}"
+        );
+        assert!(
+            !written.contains("\"about_toml_sha256\": null"),
+            "an in-sync about.toml must produce a real digest, not null:\n{written}"
+        );
+        // cargo-about was invoked (policy-resolution check ran).
+        assert_eq!(runner.ran("cargo-about").len(), 1);
+    }
+
+    #[test]
+    fn release_fails_when_about_toml_is_drifted() {
+        let (repo, db) = scenario();
+        let crate_dir = repo.path().join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+        // Drifted: asserts something the (empty) derived policy does not.
+        std::fs::write(crate_dir.join("about.toml"), "accepted = [\"MIT\"]\n").unwrap();
+        let work = repo.path().join("work");
+        let runner = MockRunner::new(true, clean_audit_json());
+
+        let err = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("out of sync"), "got: {err}");
+        assert!(
+            !repo.path().join(".security/release-1.2.0.json").exists(),
+            "a drifted about.toml must not leave a record"
+        );
+        // The expensive cargo-deny gate must not have run — caught earlier.
+        assert!(runner.ran("cargo-deny").is_empty());
+    }
+
+    #[test]
+    fn release_fails_when_cargo_about_cannot_resolve() {
+        let (repo, db) = scenario();
+        add_in_sync_crate(repo.path());
+        let work = repo.path().join("work");
+        let runner = MockRunner::new(true, clean_audit_json()).with_about_ok(false);
+
+        let err = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("cargo-about could not resolve"),
+            "got: {err}"
+        );
+        assert!(
+            !repo.path().join(".security/release-1.2.0.json").exists(),
+            "an unresolvable licence must not leave a record"
+        );
+        // The expensive cargo-deny gate must not have run — caught earlier.
+        assert!(runner.ran("cargo-deny").is_empty());
+    }
+
+    #[test]
+    fn release_with_no_about_toml_records_a_null_digest() {
+        // scenario() alone has no crates/ directory at all.
+        let (repo, db) = scenario();
+        let work = repo.path().join("work");
+        let runner = MockRunner::new(true, clean_audit_json());
+        let outcome = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
+        let written = std::fs::read_to_string(&outcome.record_path).unwrap();
+        assert!(
+            written.contains("\"about_toml_sha256\": null"),
+            "got:\n{written}"
+        );
     }
 }

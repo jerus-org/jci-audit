@@ -12,12 +12,10 @@ gen-changelog generate \
 # Runs from the crate directory, where about.toml / about.hbs live and where
 # THIRD-PARTY-LICENSES.md is packaged.
 #
-# Guarded until cargo-about is guaranteed in the release container — i.e. the
-# ci-rust image that toolkit/release_crate runs this hook in (once cargo-about
-# ships in ci-container and this repo bumps its rust_image). Once it always is,
-# drop the guard so a missing tool fails the release.
-if command -v cargo-about >/dev/null 2>&1; then
-    cargo about generate about.hbs --output-file THIRD-PARTY-LICENSES.md
-else
-    echo "WARN: cargo-about not installed; skipping THIRD-PARTY-LICENSES.md refresh" >&2
-fi
+# Unguarded: `jci-audit release` (record-release, earlier in this same
+# pipeline) already ran cargo-about's policy-resolution check as a hard gate,
+# so its presence and the policy's resolvability are already guaranteed here.
+# A failure at this point means the environment changed between the two
+# steps, which should fail the release loudly, not warn and ship stale
+# notices.
+cargo about generate about.hbs --output-file THIRD-PARTY-LICENSES.md

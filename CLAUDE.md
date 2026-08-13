@@ -26,9 +26,13 @@ crates/jci-audit/
 └── tests/cmd/*.trycmd  # CLI snapshot tests (trycmd)
 ```
 
-- **`deny.toml`** (workspace root) is the **single source of truth** for advisory
-  ignores; **`.cargo/audit.toml`** is DERIVED from it by `jci-audit sync` — never
-  edit `.cargo/audit.toml` by hand.
+- **`deny.toml`** (workspace root) is the **single source of truth** for both
+  advisory ignores and license policy. **`.cargo/audit.toml`** and every
+  **`crates/*/about.toml`**'s `accepted` lists are DERIVED from it by `jci-audit
+  sync` — never edit either by hand. `about.toml`'s license lists are scoped to
+  each crate's own dependency graph (not a copy of the workspace-wide policy);
+  everything else in `about.toml` (comments, `.clarify` attribution pins) is
+  hand-authored and untouched by `sync`.
 - `jci-audit` shells out to the tools; every shelling subcommand runs
   `preflight::ensure_available` first so a missing `cargo audit` / `cargo deny`
   fails loudly and actionably rather than silently no-opping.

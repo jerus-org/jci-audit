@@ -25,6 +25,7 @@ RUN apt-get update \
        done; }
 RUN cargo install cargo-binstall --locked \
     && cargo binstall --no-confirm \
+    cargo-about \
     cargo-audit \
     cargo-deny
 
@@ -38,6 +39,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -ms /bin/bash circleci
 COPY --from=builder /usr/local/cargo/bin/jci-audit /usr/local/bin/jci-audit
+COPY --from=builder /usr/local/cargo/bin/cargo-about /usr/local/bin/cargo-about
 COPY --from=builder /usr/local/cargo/bin/cargo-audit /usr/local/bin/cargo-audit
 COPY --from=builder /usr/local/cargo/bin/cargo-deny /usr/local/bin/cargo-deny
 USER circleci

@@ -14,7 +14,8 @@ prerequisites.
 
 - `cargo audit` gives **fresh, live** advisories; `cargo deny` gives **policy**
   (advisories, bans, licenses, sources) with **file-based, justified** ignores.
-- `deny.toml` is the single source of truth; `.cargo/audit.toml` is derived from it.
+- `deny.toml` is the single source of truth; `.cargo/audit.toml` and every crate's
+  `about.toml` are derived from it.
 - **Release** validation is reproducible: both tools run offline against a
   **pinned advisory-db commit**, with a live audit as a non-blocking warning.
 

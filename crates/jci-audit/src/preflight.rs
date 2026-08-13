@@ -19,6 +19,9 @@ pub enum Tool {
     /// `cargo deny` — policy enforcement: advisories, bans, licenses, sources
     /// (cargo-deny crate).
     CargoDeny,
+    /// `cargo about` — license attribution/resolution (cargo-about crate).
+    /// Only the release gate shells out to it (the policy-resolution check).
+    CargoAbout,
 }
 
 impl Tool {
@@ -27,6 +30,7 @@ impl Tool {
         match self {
             Tool::CargoAudit => "audit",
             Tool::CargoDeny => "deny",
+            Tool::CargoAbout => "about",
         }
     }
 
@@ -35,6 +39,7 @@ impl Tool {
         match self {
             Tool::CargoAudit => "cargo audit",
             Tool::CargoDeny => "cargo deny",
+            Tool::CargoAbout => "cargo about",
         }
     }
 
@@ -43,6 +48,7 @@ impl Tool {
         match self {
             Tool::CargoAudit => "cargo-audit",
             Tool::CargoDeny => "cargo-deny",
+            Tool::CargoAbout => "cargo-about",
         }
     }
 
@@ -127,5 +133,12 @@ mod tests {
         assert_eq!(missing, vec![Tool::CargoDeny]);
         assert_eq!(Tool::CargoDeny.crate_name(), "cargo-deny");
         assert_eq!(Tool::CargoDeny.invocation(), "cargo deny");
+    }
+
+    #[test]
+    fn cargo_about_is_a_probeable_tool() {
+        assert_eq!(Tool::CargoAbout.crate_name(), "cargo-about");
+        assert_eq!(Tool::CargoAbout.invocation(), "cargo about");
+        assert_eq!(Tool::CargoAbout.subcommand(), "about");
     }
 }

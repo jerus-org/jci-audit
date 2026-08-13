@@ -38,6 +38,11 @@ serde_json = "1.0.151"
 # Hashing — records which Cargo.lock a release was validated against
 sha2 = "0.11.0"
 
+# SPDX license expression parsing/evaluation for the about.toml derivation
+# (license_scope) — the same crate cargo-deny itself uses internally, rather
+# than reimplementing expression evaluation by hand.
+spdx = "0.13.5"
+
 # Signed commit and App-authenticated push. pcu is the organisation's CI git
 # client; using it here keeps this tool consistent with the others and, crucially,
 # gives the push a credential that protected-branch rules accept.

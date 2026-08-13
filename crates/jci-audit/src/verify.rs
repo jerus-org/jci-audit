@@ -34,7 +34,7 @@ use crate::{
         DENY_CHECKS, dependency_set_digest, discover_db_checkout, lockfile_digest, record_path,
         with_db_path,
     },
-    sync::locate_paths,
+    sync::{about_toml_digest, locate_paths},
 };
 
 /// Digests computed from the checked-out tree, compared against the record.
@@ -46,6 +46,9 @@ pub struct CheckoutDigests {
     pub lockfile_raw: String,
     /// Digest of deny.toml — the exception set in force.
     pub deny_toml: String,
+    /// Digest of every crate's about.toml (schema 4+). `None` when the
+    /// checked-out workspace has no about.toml at all.
+    pub about_toml: Option<String>,
 }
 
 /// What a verification concluded.
@@ -147,6 +150,30 @@ pub fn compare_inputs(record: &Value, digests: &CheckoutDigests) -> (Vec<String>
         ),
     }
 
+    match record
+        .get("policy")
+        .and_then(|p| p.get("about_toml_sha256"))
+        .and_then(Value::as_str)
+    {
+        Some(recorded) if Some(recorded) == digests.about_toml.as_deref() => {}
+        Some(recorded) => mismatches.push(format!(
+            "about.toml does not match the record (recorded {recorded}, found {}) \
+             — the license policy differs from the one in force at release",
+            digests.about_toml.as_deref().unwrap_or("none")
+        )),
+        // schema_version 3 and earlier predate this digest; a schema_version
+        // 4+ record with an explicit null means the workspace had no
+        // about.toml at release time. Neither is a mismatch — mirrors the
+        // deny_toml_sha256 v1 case above, so an auditor sees exactly what
+        // wasn't checked rather than a clean result implying more assurance
+        // than was actually attested.
+        None => unverified.push(
+            "record carries no about.toml digest (schema_version 3 or earlier, or no \
+             about.toml existed at release) — the license policy is not proven by the record"
+                .to_string(),
+        ),
+    }
+
     (mismatches, unverified)
 }
 
@@ -177,6 +204,7 @@ pub fn verify_with<R: CommandRunner>(
         dependencies: dependency_set_digest(&lock_text)?,
         lockfile_raw: lockfile_digest(lock_text.as_bytes()),
         deny_toml: lockfile_digest(deny_toml.as_bytes()),
+        about_toml: about_toml_digest(&root)?,
     };
     let (mismatches, unverified) = compare_inputs(&record, &digests);
 
@@ -303,7 +331,20 @@ mod tests {
     use super::*;
     use crate::check::ToolOutput;
 
-    /// Current schema: digests the external dependency set.
+    /// Current schema: also digests each crate's about.toml.
+    fn record_v4(deps: &str, policy: &str, about: Option<&str>) -> Value {
+        json!({
+            "schema_version": 4,
+            "version": "1.2.0",
+            "advisory_db": { "commit": "abc1234def" },
+            "tools": { "cargo_deny": "cargo-deny 0.20.2", "cargo_audit": "cargo-audit 0.22.0" },
+            "lockfile": { "dependencies_sha256": deps },
+            "policy": { "deny_toml_sha256": policy, "about_toml_sha256": about },
+            "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
+        })
+    }
+
+    /// Predates the license-policy digest.
     fn record_v3(deps: &str, policy: &str) -> Value {
         json!({
             "schema_version": 3,
@@ -428,11 +469,13 @@ mod tests {
 
     #[test]
     fn matching_inputs_have_no_mismatches() {
-        let rec = record_v3("deps-sha", "policy-sha");
+        // v4, with every digest present and matching: nothing left unverified.
+        let rec = record_v4("deps-sha", "policy-sha", Some("about-sha"));
         let d = CheckoutDigests {
             dependencies: "deps-sha".into(),
             lockfile_raw: "raw".into(),
             deny_toml: "policy-sha".into(),
+            about_toml: Some("about-sha".to_string()),
         };
         let (mismatches, unverified) = compare_inputs(&rec, &d);
         assert!(mismatches.is_empty(), "got {mismatches:?}");
@@ -446,6 +489,7 @@ mod tests {
             dependencies: "DIFFERENT".into(),
             lockfile_raw: "raw".into(),
             deny_toml: "policy-sha".into(),
+            about_toml: None,
         };
         let (mismatches, _) = compare_inputs(&rec, &d);
         assert_eq!(mismatches.len(), 1);
@@ -462,10 +506,78 @@ mod tests {
             dependencies: "deps-sha".into(),
             lockfile_raw: "raw".into(),
             deny_toml: "DIFFERENT".into(),
+            about_toml: None,
         };
         let (mismatches, _) = compare_inputs(&rec, &d);
         assert_eq!(mismatches.len(), 1);
         assert!(mismatches[0].contains("deny.toml"), "got {mismatches:?}");
+    }
+
+    #[test]
+    fn about_toml_digest_mismatch_is_reported() {
+        let rec = record_v4("deps-sha", "policy-sha", Some("about-sha"));
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: Some("DIFFERENT".to_string()),
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d);
+        assert_eq!(mismatches.len(), 1);
+        assert!(mismatches[0].contains("about.toml"), "got {mismatches:?}");
+    }
+
+    #[test]
+    fn recorded_digest_but_no_about_toml_now_is_a_mismatch() {
+        // The record attests about.toml content that no longer exists at all.
+        let rec = record_v4("deps-sha", "policy-sha", Some("about-sha"));
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: None,
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d);
+        assert_eq!(mismatches.len(), 1);
+        assert!(mismatches[0].contains("about.toml"), "got {mismatches:?}");
+    }
+
+    #[test]
+    fn v3_record_has_no_about_toml_digest_and_is_reported_unverified() {
+        // No about_toml_sha256 field at all (schema_version 3) — not a
+        // mismatch, but flagged unverified, mirroring the v1 deny_toml_sha256
+        // case: not checked is not the same as verified clean.
+        let rec = record_v3("deps-sha", "policy-sha");
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: Some("anything".to_string()),
+        };
+        let (mismatches, unverified) = compare_inputs(&rec, &d);
+        assert!(mismatches.is_empty(), "got {mismatches:?}");
+        assert_eq!(unverified.len(), 1);
+        assert!(
+            unverified[0].contains("about.toml"),
+            "must say the license policy was not verified: {unverified:?}"
+        );
+    }
+
+    #[test]
+    fn v4_record_with_null_about_toml_digest_is_reported_unverified() {
+        // schema_version 4, but the workspace had no about.toml at release
+        // time (about_toml_sha256: null) — also not a mismatch, but still
+        // worth flagging: the checkout may have gained an about.toml since.
+        let rec = record_v4("deps-sha", "policy-sha", None);
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: Some("something-added-since".to_string()),
+        };
+        let (mismatches, unverified) = compare_inputs(&rec, &d);
+        assert!(mismatches.is_empty(), "got {mismatches:?}");
+        assert_eq!(unverified.len(), 1);
     }
 
     #[test]
@@ -475,13 +587,21 @@ mod tests {
             dependencies: "deps".into(),
             lockfile_raw: "raw-lock-sha".into(),
             deny_toml: "anything".into(),
+            about_toml: None,
         };
         let (mismatches, unverified) = compare_inputs(&rec, &d);
         assert!(mismatches.is_empty(), "v1 policy absence is not a mismatch");
-        assert_eq!(unverified.len(), 1);
+        // A v1 record predates both the deny.toml and the about.toml digest.
+        assert_eq!(unverified.len(), 2, "got {unverified:?}");
         assert!(
-            unverified[0].contains("deny.toml") || unverified[0].contains("policy"),
-            "must say the policy was not verified: {unverified:?}"
+            unverified
+                .iter()
+                .any(|u| u.contains("deny.toml") || u.contains("policy")),
+            "must say the advisory policy was not verified: {unverified:?}"
+        );
+        assert!(
+            unverified.iter().any(|u| u.contains("about.toml")),
+            "must say the license policy was not verified: {unverified:?}"
         );
         // …but a v1 lockfile mismatch is still caught, via the raw digest.
         let d = CheckoutDigests {
