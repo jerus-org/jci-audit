@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- derive about.toml license policy from deny.toml(pr [#64])
+
 ### Fixed
 
 - schedule sonarcloud scan on main(pr [#61])
@@ -160,6 +164,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#60]: https://github.com/jerus-org/jci-audit/pull/60
 [#48]: https://github.com/jerus-org/jci-audit/pull/48
 [#61]: https://github.com/jerus-org/jci-audit/pull/61
+[#64]: https://github.com/jerus-org/jci-audit/pull/64
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...HEAD
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
