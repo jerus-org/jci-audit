@@ -5,9 +5,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-08-13
+
+Summary: Added[1], Documentation[1], Fixed[1]
+
+### Added
+
+ - feat: derive about.toml license policy from deny.toml
+
+### Fixed
+
+ - fix: address review feedback on #64
+
 ## [0.0.6] - 2026-08-12
 
-Summary: Added[3], Changed[2], Fixed[2]
+Summary: Added[3], Changed[2], Chore[1], Fixed[2]
 
 ### Added
 
@@ -95,7 +107,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
