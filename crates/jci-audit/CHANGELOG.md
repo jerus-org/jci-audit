@@ -5,9 +5,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.6] - 2026-08-12
+
+Summary: Added[3], Changed[2], Fixed[2]
+
+### Added
+
+ - feat: list the warnings at debug, full output at trace
+ - feat: summarise the tools' warnings in our own output
+ - feat: take pcu without its attestation features
+
+### Fixed
+
+ - fix(deps): update rust crate pcu to 0.6.31
+ - fix(deps): update rust crate clap to 4.6.6
+
+### Changed
+
+ - refactor: rename the release version flag to --release-version
+ - refactor: use clap-verbosity-flag for the verbosity control
+
 ## [0.0.5] - 2026-07-31
 
-Summary: Fixed[4]
+Summary: Chore[1], Fixed[4]
 
 ### Fixed
 
@@ -75,7 +95,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/jerus-org/jci-audit/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/jerus-org/jci-audit/compare/v0.0.1...v0.0.2
