@@ -9,9 +9,10 @@ strengths of each and validating security **reproducibly at release time**.
 - **`cargo deny`** — policy enforcement (advisories, bans, licenses, sources)
   with **file-based** ignores that carry written justifications.
 
-`deny.toml` is the single source of truth for advisory ignores; `.cargo/audit.toml`
-is derived from it. Release validation runs both tools **offline against a pinned
-advisory-db commit** for reproducibility, then a live audit as a non-blocking warning.
+`deny.toml` is the single source of truth for both advisory ignores and license
+policy; `.cargo/audit.toml` and every crate's `about.toml` are derived from it.
+Release validation runs both tools **offline against a pinned advisory-db commit**
+for reproducibility, then a live audit as a non-blocking warning.
 
 > **Status:** early development (0.1.x). The CLI surface is in place; subcommand
 > behaviour is landing incrementally (see the phased roadmap).
@@ -47,7 +48,8 @@ jci-audit check
 # Release gate: reproducible validation against a pinned advisory-db + live audit
 jci-audit release --version 1.2.0
 
-# Derive .cargo/audit.toml from the canonical deny.toml (CI: --check fails on drift)
+# Derive .cargo/audit.toml and every crate's about.toml from the canonical
+# deny.toml (CI: --check fails on drift)
 jci-audit sync [--check]
 
 # Report advisory ignores that no longer fire (stale-ignore detector)

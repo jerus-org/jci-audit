@@ -41,6 +41,10 @@ serde_json.workspace = true
 # Hashing: records which Cargo.lock a release was validated against
 sha2.workspace = true
 
+# SPDX license expression evaluation: which deny.toml-allowed identifier
+# satisfies a dependency's (possibly compound) declared license, per crate
+spdx.workspace = true
+
 # Signed commit + App-authenticated push of the release record
 pcu.workspace = true
 tokio.workspace = true

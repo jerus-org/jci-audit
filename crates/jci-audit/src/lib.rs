@@ -9,10 +9,11 @@
 //! - **`cargo deny`** — policy enforcement (advisories, bans, licenses,
 //!   sources) with **file-based** ignores that carry written justifications.
 //!
-//! `deny.toml` is the single source of truth for advisory ignores;
-//! `.cargo/audit.toml` is derived from it via `jci-audit sync`. Release
-//! validation is **reproducible**: it runs both tools offline against a pinned
-//! advisory-db commit, then a live audit as a non-blocking warning.
+//! `deny.toml` is the single source of truth for both advisory ignores and
+//! license policy; `.cargo/audit.toml` and every crate's `about.toml` are
+//! derived from it via `jci-audit sync`. Release validation is
+//! **reproducible**: it runs both tools offline against a pinned advisory-db
+//! commit, then a live audit as a non-blocking warning.
 //!
 //! `jci-audit` shells out to the `cargo audit` and `cargo deny` binaries; it
 //! does not reimplement them. See [`preflight`] for the presence check every
@@ -22,6 +23,7 @@ pub mod check;
 pub mod diagnostics;
 pub mod gitops;
 pub mod init;
+pub mod license_scope;
 pub mod preflight;
 pub mod prune;
 pub mod release;
@@ -246,7 +248,9 @@ fn run_check(
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
-    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
+    // Tool::Cargo: the about.toml step shells out to `cargo metadata` per
+    // crate, unlike the other two (standalone binaries, work cargo-less).
+    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit, Tool::Cargo])?;
     tracing::info!(?manifest_path, "check");
     let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
     diagnostics::enforce(&report.warnings, output.deny_warnings)?;
@@ -267,7 +271,16 @@ fn run_release(
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
-    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit])?;
+    // cargo-about and (bare) cargo are only needed for the license-policy
+    // checks, but release_with always runs them unconditionally alongside
+    // deny/audit — so a missing one fails loudly here rather than as a raw
+    // subprocess-spawn error partway through the gate.
+    preflight::ensure_available(&[
+        Tool::CargoDeny,
+        Tool::CargoAudit,
+        Tool::CargoAbout,
+        Tool::Cargo,
+    ])?;
     let cwd = std::env::current_dir()?;
     let db_root = advisory_db
         .map(std::path::Path::to_path_buf)
@@ -334,24 +347,51 @@ fn run_release(
     diagnostics::enforce(&outcome.warnings, output.deny_warnings)
 }
 
-fn run_sync(check: bool) -> Result<()> {
-    let cwd = std::env::current_dir()?;
-    tracing::info!(check, dir = %cwd.display(), "sync");
-    match sync::sync_at(&cwd, check)? {
+/// Print one derived file's sync outcome and report whether it drifted.
+/// `.cargo/audit.toml` and each crate's `about.toml` differ only in their
+/// path and what a `Wrote` count means (`noun`), so `run_sync` shares this
+/// rather than repeating the match per file.
+fn report_sync_outcome(path: &str, outcome: &sync::SyncOutcome, noun: &str) -> bool {
+    match outcome {
         sync::SyncOutcome::InSync => {
-            println!(".cargo/audit.toml is in sync with deny.toml");
-            Ok(())
+            println!("{path} is in sync with deny.toml");
+            false
         }
         sync::SyncOutcome::Wrote(n) => {
-            println!("wrote .cargo/audit.toml ({n} ignore(s)) derived from deny.toml");
-            Ok(())
+            println!("wrote {path} ({n} {noun}) derived from deny.toml");
+            false
         }
         sync::SyncOutcome::Drift => {
-            bail!(
-                ".cargo/audit.toml is out of sync with deny.toml — run `jci-audit sync` to regenerate"
-            )
+            eprintln!("{path} is out of sync with deny.toml");
+            true
         }
     }
+}
+
+fn run_sync(check: bool) -> Result<()> {
+    // The about.toml half shells out to `cargo metadata` per crate.
+    preflight::ensure_available(&[Tool::Cargo])?;
+    let cwd = std::env::current_dir()?;
+    tracing::info!(check, dir = %cwd.display(), "sync");
+
+    let mut drifted = report_sync_outcome(
+        ".cargo/audit.toml",
+        &sync::sync_at(&cwd, check)?,
+        "ignore(s)",
+    );
+
+    let about_results = sync::sync_about_toml_at(&check::SystemRunner, &cwd, check)?;
+    for result in &about_results {
+        let path = result.about_toml_path.display().to_string();
+        drifted |= report_sync_outcome(&path, &result.outcome, "accepted licence(s)");
+    }
+
+    if drifted {
+        bail!(
+            "one or more files are out of sync with deny.toml — run `jci-audit sync` to regenerate"
+        );
+    }
+    Ok(())
 }
 
 fn run_prune(check: bool) -> Result<()> {

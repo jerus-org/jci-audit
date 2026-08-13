@@ -1,32 +1,47 @@
 //! Preflight tool-presence detection.
 //!
-//! `jci-audit` orchestrates the `cargo audit` and `cargo deny` binaries as
-//! subprocesses; it does not link them as libraries. A tool whose purpose is to
-//! detect *missing* security coverage must itself detect the absence of the
-//! very binaries it depends on — and fail loudly and actionably rather than
-//! silently no-op (the failure mode the CI-diagnostics discipline warns
-//! against). Every subcommand that shells out runs this preflight first.
+//! `jci-audit` orchestrates the `cargo audit`, `cargo deny`, and `cargo about`
+//! binaries as subprocesses; it does not link them as libraries. A tool whose
+//! purpose is to detect *missing* security coverage must itself detect the
+//! absence of the very binaries it depends on — and fail loudly and
+//! actionably rather than silently no-op (the failure mode the CI-diagnostics
+//! discipline warns against). Every subcommand that shells out runs this
+//! preflight first.
+//!
+//! `cargo-audit`/`cargo-deny`/`cargo-about` are invoked as standalone
+//! binaries (not via `cargo <sub>`), so they work in a cargo-less executor
+//! image. The license-policy derivation is the one exception: it shells out
+//! to `cargo metadata`, a built-in cargo subcommand, so it needs a full `cargo`
+//! on `PATH` — [`Tool::Cargo`] exists to preflight that separately, since its
+//! absence needs different install guidance than "cargo binstall" gives the
+//! other three.
 
 use std::process::Command;
 
 use anyhow::{Result, bail};
 
-/// An external cargo subcommand that `jci-audit` orchestrates.
+/// An external tool that `jci-audit` shells out to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     /// `cargo audit` — live advisory scanning (cargo-audit crate).
     CargoAudit,
-    /// `cargo deny` — policy enforcement: advisories, bans, licenses, sources
-    /// (cargo-deny crate).
+    /// `cargo deny` — policy enforcement (cargo-deny crate).
     CargoDeny,
+    /// `cargo about` — license attribution (cargo-about crate).
+    CargoAbout,
+    /// Bare `cargo`, needed for `cargo metadata`. Not `cargo binstall`-able,
+    /// so its install guidance differs from the other three.
+    Cargo,
 }
 
 impl Tool {
-    /// The cargo subcommand name, e.g. `audit` for `cargo audit`.
-    pub fn subcommand(&self) -> &'static str {
+    /// The binary this tool probes and invokes.
+    fn binary(&self) -> &'static str {
         match self {
-            Tool::CargoAudit => "audit",
-            Tool::CargoDeny => "deny",
+            Tool::CargoAudit => "cargo-audit",
+            Tool::CargoDeny => "cargo-deny",
+            Tool::CargoAbout => "cargo-about",
+            Tool::Cargo => "cargo",
         }
     }
 
@@ -35,20 +50,29 @@ impl Tool {
         match self {
             Tool::CargoAudit => "cargo audit",
             Tool::CargoDeny => "cargo deny",
+            Tool::CargoAbout => "cargo about",
+            Tool::Cargo => "cargo",
         }
     }
 
-    /// The crate that provides the binary, for install guidance.
-    pub fn crate_name(&self) -> &'static str {
+    /// Human-facing install guidance for one missing tool.
+    fn install_hint(&self) -> String {
         match self {
-            Tool::CargoAudit => "cargo-audit",
-            Tool::CargoDeny => "cargo-deny",
+            Tool::Cargo => "part of a Rust toolchain, not a `cargo install`-able crate — \
+                 install one via rustup (https://rustup.rs), or use an image \
+                 that already has one"
+                .to_string(),
+            _ => format!(
+                "provided by the `{}` crate — `cargo binstall {}`",
+                self.binary(),
+                self.binary()
+            ),
         }
     }
 
-    /// Probe whether the tool's standalone binary responds to `--version`.
+    /// Probe whether the tool's binary responds to `--version`.
     fn is_present(&self) -> bool {
-        probe_version(self.crate_name())
+        probe_version(self.binary())
     }
 }
 
@@ -80,15 +104,11 @@ pub fn ensure_available(tools: &[Tool]) -> Result<()> {
     let mut msg = String::from("required tool(s) not found on PATH:\n");
     for t in &missing {
         msg.push_str(&format!(
-            "  - `{}` (provided by the `{}` crate)\n",
+            "  - `{}` ({})\n",
             t.invocation(),
-            t.crate_name()
+            t.install_hint()
         ));
     }
-    msg.push_str(
-        "\nRun jci-audit inside the `jerusdp/ci-rust:audit` image (which ships both), \
-         or install locally with `cargo binstall cargo-audit cargo-deny`.",
-    );
     bail!(msg)
 }
 
@@ -125,7 +145,25 @@ mod tests {
         // contract instead: an all-absent probe yields both tools.
         let missing = missing_tools(&[Tool::CargoDeny], |_| false);
         assert_eq!(missing, vec![Tool::CargoDeny]);
-        assert_eq!(Tool::CargoDeny.crate_name(), "cargo-deny");
         assert_eq!(Tool::CargoDeny.invocation(), "cargo deny");
+    }
+
+    #[test]
+    fn cargo_about_is_a_probeable_tool() {
+        assert_eq!(Tool::CargoAbout.invocation(), "cargo about");
+        assert!(Tool::CargoAbout.install_hint().contains("cargo-about"));
+    }
+
+    #[test]
+    fn bare_cargo_gets_toolchain_install_guidance_not_binstall() {
+        // cargo itself isn't `cargo binstall`-able — its guidance must say so,
+        // not repeat the same "provided by the `cargo` crate" phrasing the
+        // other three tools get.
+        let hint = Tool::Cargo.install_hint();
+        assert!(hint.contains("rustup"), "got: {hint}");
+        assert!(
+            !hint.contains("cargo binstall"),
+            "cargo cannot install itself: {hint}"
+        );
     }
 }

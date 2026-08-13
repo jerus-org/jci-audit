@@ -53,14 +53,15 @@ write)
 
 cargo-about could not resolve the licences of this dependency graph.
 
-This is what aborts a release: the pre-release hook regenerates the notices, and
-a licence the policy does not accept stops it there — after the approval gate and
-the build, at the most expensive point in the pipeline.
+'jci-audit release' runs this same check earlier, before the approval gate and
+the build — so this is caught here at PR time, not there at the most expensive
+point in the pipeline.
 
 A dependency has almost certainly arrived carrying a licence that is not accepted
-yet. Grant it in BOTH deny.toml and $CRATE_DIR/about.toml, which state one policy
-in two files and are kept in step by hand. Scope it to the crate that carries it
-rather than adding it globally, so the next such dependency also stops here.
+yet. Grant it in deny.toml, then run 'jci-audit sync' to derive the matching
+$CRATE_DIR/about.toml entry — deny.toml is the single source of truth, about.toml
+is derived from it. Scope it to the crate that carries it rather than adding it
+globally, so the next such dependency also stops here.
 MSG
         exit 1
     fi
