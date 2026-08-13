@@ -675,8 +675,7 @@ allow = ["MPL-2.0"]
 
     #[test]
     fn merge_about_toml_renders_accepted_one_per_line() {
-        // Matches this repo's existing hand-authored about.toml style — a
-        // single long line is what prompted this test (review feedback).
+        // Matches this repo's existing hand-authored about.toml style.
         let out = merge_about_toml(
             "",
             &scope(&["MIT", "Apache-2.0"], &[]),

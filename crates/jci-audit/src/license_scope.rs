@@ -396,9 +396,7 @@ mod tests {
 
     #[test]
     fn scope_for_crate_runs_cargo_metadata_in_the_crates_own_directory() {
-        // Not the caller's directory (review feedback: "what is cwd" — the
-        // answer must be "the crate being resolved", not wherever the
-        // process invoking scope_for_crate happens to be).
+        // Not the caller's directory — the crate being resolved.
         let runner = CwdRecordingRunner {
             recorded_cwd: std::cell::RefCell::new(None),
         };

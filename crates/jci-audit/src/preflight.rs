@@ -25,16 +25,12 @@ use anyhow::{Result, bail};
 pub enum Tool {
     /// `cargo audit` — live advisory scanning (cargo-audit crate).
     CargoAudit,
-    /// `cargo deny` — policy enforcement: advisories, bans, licenses, sources
-    /// (cargo-deny crate).
+    /// `cargo deny` — policy enforcement (cargo-deny crate).
     CargoDeny,
-    /// `cargo about` — license attribution/resolution (cargo-about crate).
-    /// Only the release gate shells out to it (the policy-resolution check).
+    /// `cargo about` — license attribution (cargo-about crate).
     CargoAbout,
-    /// Bare `cargo` — needed for `cargo metadata`, which the license-policy
-    /// derivation (`sync`/`check`/`release`'s about.toml step) shells out to
-    /// per crate. Unlike the other three, this isn't a `cargo binstall`-able
-    /// crate; it comes from a Rust toolchain installation.
+    /// Bare `cargo`, needed for `cargo metadata`. Not `cargo binstall`-able,
+    /// so its install guidance differs from the other three.
     Cargo,
 }
 

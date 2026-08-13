@@ -37,13 +37,6 @@ use crate::{
 };
 
 /// Schema version of the emitted record, so consumers can evolve with it.
-///
-/// v4 adds `policy.about_toml_sha256`: the release gate now also verifies
-/// each crate's `about.toml` still matches `deny.toml`'s license policy and
-/// that `cargo-about` can resolve every reachable dependency's license,
-/// before the record is written. `verify` treats a missing
-/// `about_toml_sha256` on a v3-or-earlier record as "not checked," not a
-/// failure.
 pub const RECORD_SCHEMA_VERSION: u64 = 4;
 
 /// The cargo-deny checks the release gate enforces.

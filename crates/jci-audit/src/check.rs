@@ -131,13 +131,9 @@ pub fn check_with<R: CommandRunner>(
         success: audit.success,
     });
 
-    // Pure derivation, not a subprocess by itself (though it shells out to
-    // `cargo metadata` per crate) — no reason to let it be skipped by either
-    // tool above failing. A hard error here (e.g. a crate's `cargo metadata`
-    // failing) is caught rather than propagated with `?`, so it becomes this
-    // step's own failure instead of discarding the deny/audit results already
-    // computed above — the module doc promises all three are aggregated, not
-    // short-circuited by whichever one errors first.
+    // A hard error here (e.g. a crate's `cargo metadata` failing) is caught
+    // rather than propagated with `?`, so it becomes this step's own failure
+    // instead of discarding the deny/audit results already computed above.
     println!("$ about.toml license policy (deny.toml -> about.toml)");
     let about_ok = match sync::sync_about_toml_at(runner, cwd, true) {
         Ok(about_results) => {
