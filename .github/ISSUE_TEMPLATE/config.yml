@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 jerusdp
+# SPDX-License-Identifier: MIT OR Apache-2.0
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/jerus-org/jci-audit/security/advisories/new
+    about: Please report security vulnerabilities privately, not as a public issue. See SECURITY.md.
+  - name: Question or discussion
+    url: https://github.com/jerus-org/jci-audit/issues
+    about: For general questions, search existing issues first.
