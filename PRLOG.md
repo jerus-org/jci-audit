@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - docs-add GOVERNANCE.md and issue/PR templates(pr [#65])
 - docs-add SECURITY.md and assurance case(pr [#66])
+- docs-add ROADMAP.md, architecture and design docs(pr [#67])
 
 ## [0.0.6] - 2026-08-13
 
@@ -174,6 +175,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#64]: https://github.com/jerus-org/jci-audit/pull/64
 [#65]: https://github.com/jerus-org/jci-audit/pull/65
 [#66]: https://github.com/jerus-org/jci-audit/pull/66
+[#67]: https://github.com/jerus-org/jci-audit/pull/67
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
