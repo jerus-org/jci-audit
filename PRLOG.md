@@ -12,6 +12,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - docs-add SECURITY.md and assurance case(pr [#66])
 - docs-add ROADMAP.md, architecture and design docs(pr [#67])
 
+### Fixed
+
+- deps: update rust:1-slim-trixie docker digest to 8e8cf8f(pr [#68])
+
 ## [0.0.6] - 2026-08-13
 
 ### Added
@@ -176,6 +180,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#65]: https://github.com/jerus-org/jci-audit/pull/65
 [#66]: https://github.com/jerus-org/jci-audit/pull/66
 [#67]: https://github.com/jerus-org/jci-audit/pull/67
+[#68]: https://github.com/jerus-org/jci-audit/pull/68
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
