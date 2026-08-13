@@ -17,12 +17,12 @@ custom_files = ["src/examples/record_release.yml"]
 # regeneration — the Dockerfile is rewritten from this config, so a digest
 # Renovate wrote into the Dockerfile would otherwise be stripped. Renovate keeps
 # these two values current via a customManager in renovate.json.
-builder_image = "rust:1-slim-trixie@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd"
+builder_image = "rust:1-slim-trixie@sha256:8e8cf8f7fd54a2d23d5a743b3a03f56e26b6c774276c33fa0595111704ebb15c"
 # The runtime needs a CARGO TOOLCHAIN, not just the tool binaries: cargo-deny
 # shells out to `cargo metadata` to build the crate graph, so on a bare
 # debian-slim runtime every check fails with "failed to start `cargo metadata`".
 # Same image and digest as the builder stage.
-base_image = "rust:1-slim-trixie@sha256:3b2879047d42784ca9403ad20c51ed3df361a50f1df96f5777d39b4e33aa65cd"
+base_image = "rust:1-slim-trixie@sha256:8e8cf8f7fd54a2d23d5a743b3a03f56e26b6c774276c33fa0595111704ebb15c"
 
 [ci]
 build_workflow = "validation"
