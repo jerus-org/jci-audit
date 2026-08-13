@@ -5,6 +5,10 @@ A context-aware Rust security gate that orchestrates
 [`cargo-deny`](https://crates.io/crates/cargo-deny) — using the complementary
 strengths of each and validating security **reproducibly at release time**.
 
+[![Crates.io](https://img.shields.io/crates/v/jci-audit.svg)](https://crates.io/crates/jci-audit)
+[![Documentation](https://docs.rs/jci-audit/badge.svg)](https://docs.rs/jci-audit)
+[![License](https://img.shields.io/crates/l/jci-audit.svg)](#license)
+
 This is a Cargo workspace. The published crate lives in
 [`crates/jci-audit`](crates/jci-audit) — see its
 [README](crates/jci-audit/README.md) for installation, usage, and the runtime
@@ -28,6 +32,24 @@ just msrv        # verify the declared MSRV builds
 just fmt         # nightly rustfmt (+ stable check)
 just licenses    # regenerate THIRD-PARTY-LICENSES.md (cargo-about)
 ```
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [crate README](crates/jci-audit/README.md) | Full usage guide, CLI reference, runtime prerequisites |
+| [docs/architecture.md](docs/architecture.md) | High-level architecture |
+| [docs/design.md](docs/design.md) | Detailed design document |
+| [docs/assurance-case.md](docs/assurance-case.md) | Security assurance case & threat model |
+| [ROADMAP.md](ROADMAP.md) | Planned direction |
+| [PRLOG.md](PRLOG.md) / [crate CHANGELOG](crates/jci-audit/CHANGELOG.md) | Release history |
+
+## Contributing & project information
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Governance](GOVERNANCE.md)
+- [Security policy](SECURITY.md)
 
 ## License
 
