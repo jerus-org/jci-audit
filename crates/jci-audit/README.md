@@ -21,8 +21,8 @@ what it does best rather than reimplementing either:
 
 jci-audit allows `deny.toml` to be the single source of truth for both advisory ignores and
 license policy; `.cargo/audit.toml` and every crate's `about.toml` are derived from it.
-Release validation runs both tools **offline against a pinned advisory-db commit**
-for reproducibility, then a live audit as a non-blocking warning.
+Release validation locks `cargo deny` to a **pinned advisory-db commit** and runs it offline
+for reproducibility; `cargo audit` keeps running live, as a non-blocking currency check.
 
 > **Status:** early development (0.1.x). The CLI surface is in place; subcommand
 > behaviour is landing incrementally (see the phased roadmap).
@@ -64,6 +64,10 @@ jci-audit sync [--check]
 
 # Report advisory ignores that no longer fire (stale-ignore detector)
 jci-audit prune [--check]
+
+# Re-verify a past release against the advisory snapshot it was locked to;
+# run from a checkout of the released tag
+jci-audit verify --release-version 1.2.0
 
 # Scaffold a standard deny.toml + derived .cargo/audit.toml
 jci-audit init

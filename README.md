@@ -35,8 +35,8 @@ See the [crate README](crates/jci-audit/README.md) for the full usage guide, and
   (advisories, bans, licenses, sources) with **file-based, justified** ignores.
 - `deny.toml` is the single source of truth; `.cargo/audit.toml` and every crate's
   `about.toml` are derived from it.
-- **Release** validation is reproducible: both tools run offline against a
-  **pinned advisory-db commit**, with a live audit as a non-blocking warning.
+- **Release** validation is reproducible: `cargo deny` locks to a **pinned advisory-db
+  commit** and runs offline; `cargo audit` keeps running live, as a non-blocking check.
 
 ## Development
 
@@ -53,6 +53,9 @@ just licenses    # regenerate THIRD-PARTY-LICENSES.md (cargo-about)
 | Document | Purpose |
 |----------|---------|
 | [crate README](crates/jci-audit/README.md) | Full usage guide, CLI reference, runtime prerequisites |
+| [docs/getting-started.md](docs/getting-started.md) | First-run walkthrough |
+| [docs/user-guide.md](docs/user-guide.md) | Every subcommand in depth |
+| [docs/configuration-guide.md](docs/configuration-guide.md) / [docs/advanced-configuration.md](docs/advanced-configuration.md) | `deny.toml`/`about.toml` reference; CI signing, advisory-db overrides, troubleshooting |
 | [docs/architecture.md](docs/architecture.md) | High-level architecture |
 | [docs/design.md](docs/design.md) | Detailed design document |
 | [docs/assurance-case.md](docs/assurance-case.md) | Security assurance case & threat model |
