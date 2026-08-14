@@ -8,11 +8,26 @@ strengths of each and validating security **reproducibly at release time**.
 [![Crates.io](https://img.shields.io/crates/v/jci-audit.svg)](https://crates.io/crates/jci-audit)
 [![Documentation](https://docs.rs/jci-audit/badge.svg)](https://docs.rs/jci-audit)
 [![License](https://img.shields.io/crates/l/jci-audit.svg)](#license)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14065/badge)](https://www.bestpractices.dev/projects/14065)
 
 This is a Cargo workspace. The published crate lives in
 [`crates/jci-audit`](crates/jci-audit) — see its
 [README](crates/jci-audit/README.md) for installation, usage, and the runtime
 prerequisites.
+
+## Quick start
+
+```bash
+cargo binstall jci-audit              # or: cargo install jci-audit
+cargo binstall cargo-audit cargo-deny # jci-audit orchestrates these; both must be on PATH
+
+jci-audit init                        # scaffold a standard deny.toml + derived .cargo/audit.toml
+jci-audit check                       # PR/dev gate: cargo-deny policy + a live cargo-audit scan
+jci-audit release --version 1.2.0     # release gate: reproducible, pinned-advisory-db validation
+```
+
+See the [crate README](crates/jci-audit/README.md) for the full usage guide, and the
+[Documentation](#documentation) table below for architecture, design, and release-signing guides.
 
 ## Why
 
@@ -42,6 +57,7 @@ just licenses    # regenerate THIRD-PARTY-LICENSES.md (cargo-about)
 | [docs/design.md](docs/design.md) | Detailed design document |
 | [docs/assurance-case.md](docs/assurance-case.md) | Security assurance case & threat model |
 | [docs/RELEASING.md](docs/RELEASING.md) | Release signing & how to verify a release |
+| [docs/openssf-badge.md](docs/openssf-badge.md) | OpenSSF Best Practices criterion → evidence mapping |
 | [ROADMAP.md](ROADMAP.md) | Planned direction |
 | [PRLOG.md](PRLOG.md) / [crate CHANGELOG](crates/jci-audit/CHANGELOG.md) | Release history |
 
@@ -54,6 +70,5 @@ just licenses    # regenerate THIRD-PARTY-LICENSES.md (cargo-about)
 
 ## License
 
-Licensed under either of Apache-2.0 or MIT at your option
-([LICENSE-APACHE](crates/jci-audit/LICENSE-APACHE) /
-[LICENSE-MIT](crates/jci-audit/LICENSE-MIT)).
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.

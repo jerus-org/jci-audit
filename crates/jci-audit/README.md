@@ -5,12 +5,22 @@ A context-aware Rust security gate that orchestrates
 [`cargo-deny`](https://crates.io/crates/cargo-deny), using the complementary
 strengths of each and validating security **reproducibly at release time**.
 
+[![Crates.io](https://img.shields.io/crates/v/jci-audit.svg)](https://crates.io/crates/jci-audit)
+[![Documentation](https://docs.rs/jci-audit/badge.svg)](https://docs.rs/jci-audit)
+[![License](https://img.shields.io/crates/l/jci-audit.svg)](https://github.com/jerus-org/jci-audit#license)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14065/badge)](https://www.bestpractices.dev/projects/14065)
+
+## Why
+
+`cargo audit` and `cargo deny` have complementary strengths, and jci-audit uses each for
+what it does best rather than reimplementing either:
+
 - **`cargo audit`** — fresh, *live* advisories from the RustSec database.
 - **`cargo deny`** — policy enforcement (advisories, bans, licenses, sources)
   with **file-based** ignores that carry written justifications.
 
-`deny.toml` is the single source of truth for both advisory ignores and license
-policy; `.cargo/audit.toml` and every crate's `about.toml` are derived from it.
+jci-audit allows `deny.toml` to be the single source of truth for both advisory ignores and
+license policy; `.cargo/audit.toml` and every crate's `about.toml` are derived from it.
 Release validation runs both tools **offline against a pinned advisory-db commit**
 for reproducibility, then a live audit as a non-blocking warning.
 
