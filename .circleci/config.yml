@@ -14,6 +14,22 @@ orbs:
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.6
   # <<< gen-circleci-orb
 jobs:
+  otterwise_coverage:
+    executor: toolkit/rust_env_rolling
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: Generate coverage report
+          command: |
+            cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - run:
+          name: Upload Coverage to OtterWise
+          command: |
+            bash <(curl -s https://raw.githubusercontent.com/getOtterWise/bash-uploader/main/uploader.sh) --repo-token $OTTERWISE_TOKEN
+
+  
+  # This is a separate job because it's a separate check.
   # An unaccepted licence stops the release in its pre-release hook — after the
   # approval gate and the build, at the most expensive point in the pipeline.
   # This asks the same question at PR time instead.
@@ -102,6 +118,20 @@ workflows:
               ignore:
                 - /pull\/[0-9]+/
 
+      - toolkit/idiomatic_rust:
+          clippy_report: true
+          requires:
+            - toolkit/security
+          filters:
+            branches:
+              ignore:
+                - /pull\/[0-9]+/
+      - otterwise_coverage:
+          context: Otterwise
+          filters:
+            branches:
+              ignore:
+                - /pull\/[0-9]+/
       - toolkit/code_coverage:
           context: SonarCloud
           filters:
