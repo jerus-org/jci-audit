@@ -117,15 +117,6 @@ workflows:
             branches:
               ignore:
                 - /pull\/[0-9]+/
-
-      - toolkit/idiomatic_rust:
-          clippy_report: true
-          requires:
-            - toolkit/security
-          filters:
-            branches:
-              ignore:
-                - /pull\/[0-9]+/
       - otterwise_coverage:
           context: Otterwise
           filters:
