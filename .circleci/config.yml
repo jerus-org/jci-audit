@@ -7,7 +7,7 @@ parameters:
 
 orbs:
   toolkit: jerus-org/circleci-toolkit@7.1.0
-
+  jq: circleci/jq@3.1.0
   orb-tools: circleci/orb-tools@12.5.0
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
@@ -19,10 +19,8 @@ jobs:
     resource_class: medium
     steps:
       - checkout
-      - run:
-          name: Install jq
-          command: |
-            sudo apt-get update && sudo apt-get install -y jq
+      - jq/install:
+           version: jq-1.7
       - run:
           name: Generate coverage report
           command: |
