@@ -12,8 +12,9 @@
 //! `deny.toml` is the single source of truth for both advisory ignores and
 //! license policy; `.cargo/audit.toml` and every crate's `about.toml` are
 //! derived from it via `jci-audit sync`. Release validation is
-//! **reproducible**: it runs both tools offline against a pinned advisory-db
-//! commit, then a live audit as a non-blocking warning.
+//! **reproducible**: `cargo deny` locks to a pinned advisory-db commit and
+//! runs offline; `cargo audit` keeps running live, as a non-blocking
+//! currency check.
 //!
 //! `jci-audit` shells out to the `cargo audit` and `cargo deny` binaries; it
 //! does not reimplement them. See [`preflight`] for the presence check every
@@ -21,7 +22,6 @@
 
 pub mod check;
 pub mod diagnostics;
-pub mod gitops;
 pub mod init;
 pub mod license_scope;
 pub mod preflight;
@@ -77,57 +77,26 @@ enum Commands {
         output: ToolOutput,
     },
     /// Release gate: reproducible validation against a pinned advisory-db
-    /// commit (deny + audit offline), then a non-blocking live audit. Records
-    /// the run to `.security/release-<VERSION>.json`.
+    /// commit (cargo-deny offline), then a non-blocking live cargo-audit.
+    /// Writes the record locally to `.security/release-<VERSION>.json`; see
+    /// jerus-org/jci-audit#75 for how it is distributed from there.
     Release {
-        /// The release version being validated (e.g. "1.2.0"). When omitted it
-        /// is read from the environment variable named by --version-env, since
-        /// release pipelines compute the version at runtime.
+        /// The release version being validated (e.g. "1.2.0"). Falls back to
+        /// an environment variable when omitted, since release pipelines
+        /// compute the version at runtime (see the other version flag below).
         #[arg(long, value_name = "VERSION")]
         release_version: Option<String>,
 
-        /// Env var NAME holding the release version when --version is not given
-        /// (default SEMVER).
+        /// Env var NAME holding the release version when --release-version is
+        /// not given (default SEMVER).
         #[arg(long)]
         version_env: Option<String>,
 
-        /// Path to a checked-out advisory-db at the pinned commit. When
-        /// omitted, the pinned commit is resolved from configuration.
+        /// Advisory-db root; cargo-deny's checkout is discovered/refreshed
+        /// beneath it and its commit becomes the pin. Defaults to
+        /// ~/.cargo/advisory-db.
         #[arg(long)]
         advisory_db: Option<std::path::PathBuf>,
-
-        /// Commit the record. Required when the release pipeline runs
-        /// cargo-release afterwards: cargo-release refuses to start on a dirty
-        /// tree, so the record must already be committed.
-        #[arg(long)]
-        commit: bool,
-
-        /// Push the commit. A protected branch accepts only a credential its
-        /// rules permit to bypass them, so supply PCU_APP_ID and PCU_PRIVATE_KEY
-        /// for a GitHub App token; a deploy key cannot bypass, whatever write
-        /// access it carries.
-        #[arg(long, requires = "commit")]
-        push: bool,
-
-        /// Env var NAME holding the base64 GPG signing key (default GPG_KEY).
-        #[arg(long)]
-        gpg_key_env: Option<String>,
-
-        /// Env var NAME holding the GPG ownertrust (default GPG_TRUST).
-        #[arg(long)]
-        gpg_trust_env: Option<String>,
-
-        /// Env var NAME holding the committer name (default GIT_USER_NAME).
-        #[arg(long)]
-        user_name_env: Option<String>,
-
-        /// Env var NAME holding the committer email (default GIT_USER_EMAIL).
-        #[arg(long)]
-        user_email_env: Option<String>,
-
-        /// Env var NAME holding the GPG signing key id (default GPG_SIGN_KEY).
-        #[arg(long)]
-        sign_key_env: Option<String>,
 
         #[command(flatten)]
         output: ToolOutput,
@@ -189,47 +158,15 @@ impl Cli {
                 release_version,
                 version_env,
                 advisory_db,
-                commit,
-                push,
-                gpg_key_env,
-                gpg_trust_env,
-                user_name_env,
-                user_email_env,
-                sign_key_env,
                 output,
             } => {
-                let names = gitops::SignEnvNames {
-                    gpg_key: gpg_key_env
-                        .clone()
-                        .unwrap_or_else(|| gitops::SignEnvNames::default().gpg_key),
-                    gpg_trust: gpg_trust_env
-                        .clone()
-                        .unwrap_or_else(|| gitops::SignEnvNames::default().gpg_trust),
-                    user_name: user_name_env
-                        .clone()
-                        .unwrap_or_else(|| gitops::SignEnvNames::default().user_name),
-                    user_email: user_email_env
-                        .clone()
-                        .unwrap_or_else(|| gitops::SignEnvNames::default().user_email),
-                    sign_key: sign_key_env
-                        .clone()
-                        .unwrap_or_else(|| gitops::SignEnvNames::default().sign_key),
-                };
                 let version = release::resolve_version(
                     release_version.as_deref(),
                     version_env
                         .as_deref()
                         .unwrap_or(release::DEFAULT_VERSION_ENV),
                 )?;
-                run_release(
-                    &version,
-                    advisory_db.as_deref(),
-                    *commit,
-                    *push,
-                    &names,
-                    output,
-                    detail,
-                )
+                run_release(&version, advisory_db.as_deref(), output, detail)
             }
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
@@ -265,9 +202,6 @@ fn run_check(
 fn run_release(
     version: &str,
     advisory_db: Option<&std::path::Path>,
-    commit: bool,
-    push: bool,
-    sign_names: &gitops::SignEnvNames,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -286,7 +220,9 @@ fn run_release(
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(release::default_db_root);
     // The derived cargo-deny config is ephemeral: deny.toml stays the single
-    // source of truth, so nothing derived is committed except the record.
+    // source of truth, so nothing derived persists beyond this run except the
+    // record itself, written locally only (see jerus-org/jci-audit#75 for how
+    // it's distributed from there).
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "release");
 
@@ -310,40 +246,6 @@ fn run_release(
         }
     }
 
-    if commit {
-        gitops::ensure_paths_exist(&[&outcome.record_path])?;
-        let signing = gitops::import_signing_key(sign_names)?;
-        let identity = if signing {
-            gitops::read_identity(sign_names)
-        } else {
-            None
-        };
-        if signing && identity.is_none() {
-            println!("  note: a signing key was imported but the committer identity is not set");
-        }
-        let committed = gitops::commit_and_push(
-            &cwd,
-            &[&outcome.record_path],
-            &gitops::record_commit_message(version),
-            identity.as_ref(),
-            push,
-        )?;
-        // Say what actually happened. A retry finds the record already committed
-        // — reporting that as a fresh commit would be the same class of untruth
-        // as reporting a commit that carried nothing.
-        match committed {
-            gitops::CommitOutcome::AlreadyPresent => {
-                println!("  the record is already committed; nothing to do")
-            }
-            gitops::CommitOutcome::Committed => println!(
-                "  committed the record{}{}",
-                if identity.is_some() { " (signed)" } else { "" },
-                if push { " and pushed" } else { "" }
-            ),
-        }
-    }
-    // Last: the record is written and committed either way, so a --deny-warnings
-    // failure reports the warnings without discarding the work.
     diagnostics::enforce(&outcome.warnings, output.deny_warnings)
 }
 
@@ -535,11 +437,19 @@ mod tests {
     }
 
     #[test]
-    fn push_requires_commit() {
-        // Pushing without committing would push whatever the job happened to
-        // have, which is never what was meant.
-        assert!(Cli::try_parse_from(["jci-audit", "release", "--push"]).is_err());
-        assert!(Cli::try_parse_from(["jci-audit", "release", "--commit", "--push"]).is_ok());
+    fn commit_and_push_flags_are_gone() {
+        // The record is no longer committed to git (jerus-org/jci-audit#75);
+        // these flags must not silently resurrect as unused no-ops.
+        for args in [
+            vec!["jci-audit", "release", "--commit"],
+            vec!["jci-audit", "release", "--push"],
+            vec!["jci-audit", "release", "--gpg-key-env", "X"],
+        ] {
+            assert!(
+                Cli::try_parse_from(&args).is_err(),
+                "{args:?} must be rejected"
+            );
+        }
     }
 
     #[test]

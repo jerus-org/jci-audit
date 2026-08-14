@@ -30,11 +30,10 @@ Releases run on CircleCI ([`.circleci/release.yml`](../.circleci/release.yml)):
 2. **Manual approval** gate — a reviewer approves the calculated version before anything is
    published.
 3. `build-binary` — builds the release binary from the commit being released.
-4. `record-release` — runs `jci-audit release --commit --push`: locks validation to a pinned
-   advisory-db commit, writes the signed `.security/release-<version>.json` record, and pushes
-   it as the commit the release tag will descend from (see
-   [design.md §5–6](design.md#5-reproducibility-the-release-record) for why this has to happen
-   before the next step).
+4. `record-release` — runs `jci-audit release`: locks validation to a pinned advisory-db commit
+   and writes `.security/release-<version>.json` locally (not committed — see
+   [design.md §5–6](design.md#5-reproducibility-the-release-record) and
+   [#75](https://github.com/jerus-org/jci-audit/issues/75) for how the record is distributed).
 5. `release-jci-audit` — builds and **GPG-signs** the release commit + tag, generates an
    **ephemeral minisign keypair**, **signs the tarball**, injects that keypair's public key into
    `Cargo.toml` (`[package.metadata.binstall.signing]`), publishes to **crates.io**, and produces

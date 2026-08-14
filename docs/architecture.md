@@ -32,7 +32,7 @@ flowchart LR
     subgraph "jci-audit"
         SYNC["sync\nderive .cargo/audit.toml +\nper-crate about.toml"]
         CHECK["check\ncargo-deny (policy) +\ncargo-audit (live)"]
-        RELEASE["release\npin advisory-db commit →\noffline deny+audit → record"]
+        RELEASE["release\npin advisory-db commit →\noffline deny + live audit → record"]
         VERIFY["verify\nre-derive record inputs\nfrom a checkout"]
         PRUNE["prune\nnaked-DB diff →\nstale ignores"]
     end
@@ -49,11 +49,10 @@ flowchart LR
 | `check.rs` | PR/dev gate: runs `cargo-deny` (policy) and `cargo-audit` (live advisories), aggregates results, never short-circuits on the first failure. Defines the `CommandRunner` trait used to mock subprocess calls in tests. |
 | `sync.rs` | Derives `.cargo/audit.toml` and every crate's `about.toml` from `deny.toml`'s canonical advisory-ignore and license policy. Writing is a `toml_edit` **merge**, not a rewrite — hand-authored comments and `.clarify` attribution blocks pass through untouched. `--check` reports drift without writing. |
 | `license_scope.rs` | Computes each crate's *own* license-acceptance list by walking `cargo metadata`'s reachable dependency graph (excluding dev-only edges) and evaluating each package's SPDX expression against `deny.toml`'s allow-list — a crate-scoped subset, not the whole workspace policy copied verbatim. |
-| `release.rs` | Release gate: locks `cargo-deny`/`cargo-audit` to a pinned `advisory-db` commit for reproducibility, runs a non-blocking live audit, and writes the signed `.security/release-<version>.json` record. |
+| `release.rs` | Release gate: locks `cargo-deny` to a pinned `advisory-db` commit and runs it offline for reproducibility; `cargo-audit` runs live as a non-blocking currency check; writes `.security/release-<version>.json` locally (see [#75](https://github.com/jerus-org/jci-audit/issues/75) for how it's distributed). |
 | `verify.rs` | Re-derives a past release's three recorded inputs (dependency-set digest, policy digest, advisory-db commit) from a real checkout and compares them against the record — answers "did it really pass, under the exceptions in force at the time?" |
 | `prune.rs` | Stale-ignore detector: runs the audit tool from outside the workspace (so no local ignore file is discovered) to get the **naked** result, and flags configured ignores that no longer fire. |
 | `init.rs` | Scaffolds the standard `deny.toml` policy template plus its derived `.cargo/audit.toml`. |
-| `gitops.rs` | Signs and pushes the release record via `pcu` — GPG import/signing and a GitHub App installation token for protected-branch bypass authority, reading only environment-variable *names*. |
 | `preflight.rs` | Presence-checks `cargo-audit`/`cargo-deny`/`cargo-about`/bare `cargo` before any subcommand shells out to them, with per-tool install guidance. |
 | `diagnostics.rs` | Parses `cargo-deny`'s `warning[code]:` stderr lines into counts, so a captured run still surfaces what needs attention. |
 
@@ -61,8 +60,8 @@ flowchart LR
 
 | Subcommand | Context | Purpose |
 |------------|---------|---------|
-| `check` | PR / dev gate | Both tools, both blocking, live data. |
-| `release --version X` | Release gate | Reproducible offline validation against a pinned advisory-db commit; writes the record. |
+| `check` | PR / dev gate | Both tools plus the about.toml drift check, all blocking, live data. |
+| `release --release-version X` | Release gate | Reproducible offline validation against a pinned advisory-db commit; writes the record locally. |
 | `sync [--check]` | PR + dev | Regenerate (or check drift of) `.cargo/audit.toml` and every `about.toml` from `deny.toml`. |
 | `prune [--check]` | PR + scheduled | Detect advisory ignores that no longer fire. |
 | `verify` | Audit / retrospective | Re-check a past release's record against a real checkout. |
@@ -73,8 +72,9 @@ flowchart LR
 - **Process execution** — shells out to exactly four fixed binaries: `cargo-audit`,
   `cargo-deny`, `cargo-about`, and bare `cargo` (for `cargo metadata`). Never a caller-supplied
   program — see [assurance-case.md](assurance-case.md).
-- **Git & network** — uses `pcu` (itself built on `git2`/libgit2) for GPG-signed commits and
-  pushing the release record over HTTPS with a GitHub App installation token.
+- **Git & network** — none at present. The release record is written locally only; see
+  [#75](https://github.com/jerus-org/jci-audit/issues/75) for its planned distribution as a
+  signed release asset.
 - **Its own orb** — the project dogfoods `gen-circleci-orb` to generate the orb published from
   this repository (`orb/`), and jci-audit's own CI runs `jci-audit check`/`release` on itself.
 

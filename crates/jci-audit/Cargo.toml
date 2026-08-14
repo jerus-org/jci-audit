@@ -45,9 +45,6 @@ sha2.workspace = true
 # satisfies a dependency's (possibly compound) declared license, per crate
 spdx.workspace = true
 
-# Signed commit + App-authenticated push of the release record
-pcu.workspace = true
-tokio.workspace = true
 config.workspace = true
 
 # NOTE: config, serde, thiserror are declared in the workspace dependency

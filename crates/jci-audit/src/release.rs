@@ -21,8 +21,9 @@
 //! repo's `deny.toml` is copied to an **ephemeral** derived config with only
 //! `[advisories].db-path` overridden. Every other policy — licenses, bans,
 //! sources, and the justified ignores — is inherited verbatim, keeping
-//! `deny.toml` the single source of truth (nothing derived is committed except
-//! the record itself).
+//! `deny.toml` the single source of truth. The record is written locally only;
+//! nothing here touches git (see jerus-org/jci-audit#75 for how it's
+//! distributed).
 
 use std::path::{Path, PathBuf};
 

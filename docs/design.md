@@ -231,26 +231,28 @@ or treated as a mismatch — the report says plainly how much assurance it actua
 
 ---
 
-## 6. Committing and pushing the record
+## 6. Distributing the record
 
-`jci-audit release --commit [--push]` writes the record *before* `cargo-release` runs, because
-`cargo-release` refuses to start on a dirty tree — a pre-created file would be rejected whether
-staged or not — and making the record its own commit puts it in the tagged tree, since the release
-commit descends from it.
+`jci-audit release` writes the record to `.security/release-<VERSION>.json` in the working
+directory and stops there — it is not committed to git. Earlier versions committed and
+GPG-signed it as a commit ancestor of the release tag, specifically to satisfy `cargo-release`'s
+refusal to start on a dirty tree; that dependency is gone now, since the record path is
+`.gitignore`'d and so never dirties the tree in the first place.
 
-Signing and pushing go through [`pcu`](https://crates.io/crates/pcu) rather than driving `git`/GPG
-directly, for two reasons:
+This changed for two reasons, from real operating experience rather than a hypothetical: a
+`.security/*.json` file lands on every release — including every minor release during a busy
+development stretch — accumulating in the repository (and its history) indefinitely, most of
+which has little standalone value once superseded; and an auditor validating one specific release
+had to clone the whole (and growing) repository just to fetch that release's record, when the
+tools and data needed to validate a release should come from the release itself, the same place
+the crate, tarball, and their signatures already come from.
 
-1. `pcu` already handles CI's awkward key encoding (base64 with literal `\n` escapes) forgivingly.
-2. **A protected branch accepts only a credential its rules permit to bypass them.** `pcu` mints a
-   GitHub App installation token when `PCU_APP_ID`/`PCU_PRIVATE_KEY` are present — a deploy key
-   cannot do this, so a plain `git push` is not an option here.
-
-Only variable *names* are configurable (`--gpg-key-env`, `--gpg-trust-env`, `--user-name-env`,
-`--user-email-env`, `--sign-key-env`, defaulting to `GPG_KEY`/`GPG_TRUST`/`GIT_USER_NAME`/
-`GIT_USER_EMAIL`/`GPG_SIGN_KEY`) — never values on the command line. `read_identity` requires the
-*full* identity to be present or returns `None`; a partial identity is never silently attributed to
-whatever git happens to have configured locally.
+Distribution as a signed release asset — alongside the crate's other signed artifacts — is
+tracked in [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75); this is a
+phased rollout, and that piece has not landed yet. Until it does, the record still gates every
+release exactly as before — a failing `jci-audit release` still blocks the release — but the
+passing record itself is not yet durably distributed anywhere beyond the CI job's own log/
+artifacts.
 
 ---
 

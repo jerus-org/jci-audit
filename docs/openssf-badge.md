@@ -66,7 +66,7 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | build_floss_tools | Met | Rust/Cargo toolchain is FLOSS |
 | test | Met | `cargo test --all` (incl. `--test cli_tests`); how-to in `CONTRIBUTING.md` / `justfile` |
 | test_invocation | Met | `cargo test` (standard) |
-| test_most | Met | **86.46% line coverage** (`cargo llvm-cov --all-features --summary-only`) |
+| test_most | Met | **89.27% line coverage** (`cargo llvm-cov --all-features --summary-only`) |
 | test_continuous_integration | Met | CircleCI on every PR |
 | test_policy | Met | `CONTRIBUTING.md` — testing policy (RED/GREEN TDD) |
 | tests_are_added | Met | Every PR adds tests (RED/GREEN TDD, enforced by convention and PR template) |
@@ -80,8 +80,8 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 |-----------|--------|----------|
 | know_secure_design | Met | `docs/assurance-case.md` §5 (secure-design principles) |
 | know_common_errors | Met | `docs/assurance-case.md` §4 (8-item threat model: fixed execution surface, derived-file tampering, credential leakage, supply chain, MITM, forged records, incorrect license scope, malformed input) |
-| crypto_published | Met | Only published algorithms — GPG, Sigstore, TLS (via `pcu`/`git2`) |
-| crypto_call | Met | No home-grown crypto; delegates to `pcu`/`git2`/GPG/Sigstore/`spdx` |
+| crypto_published | Met | Only published algorithms — GPG (release signing), Sigstore/minisign (attestation), TLS (crates.io/GitHub distribution) |
+| crypto_call | Met | No home-grown crypto; delegates to GPG/Sigstore/`rsign`/`spdx` |
 | crypto_floss | Met | All crypto via FLOSS libraries |
 | crypto_keylength | Met | Defaults from the underlying libraries meet NIST minimums |
 | crypto_working | Met | No broken algorithms selected |
@@ -89,7 +89,7 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | crypto_pfs | N/A | No key-agreement protocol implemented (delegated to TLS libs, which provide PFS) |
 | crypto_password_storage | N/A | The tool stores no passwords |
 | crypto_random | Met | No custom key/nonce generation; delegated to Sigstore/rsign (secure RNG) |
-| delivery_mitm | Met | Distribution over HTTPS (crates.io, GitHub); git over HTTPS via `pcu` |
+| delivery_mitm | Met | Distribution over HTTPS (crates.io, GitHub) |
 | delivery_unsigned | Met | Releases are signed (GPG tags, SLSA/Sigstore, minisign); every step verified against a real release in `docs/RELEASING.md` |
 | vulnerabilities_fixed_60_days | Met | `deny.toml [advisories].ignore` and the derived `.cargo/audit.toml` are both currently empty — no advisory is being suppressed |
 | vulnerabilities_critical_fixed | Met | No known critical vulnerabilities outstanding |
@@ -159,7 +159,7 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | interfaces_current | Met | No deprecated APIs relied upon |
 | automated_integration_testing | Met | CI runs the suite on every check-in |
 | regression_tests_added50 | Met | `CONTRIBUTING.md` mandates a regression test per bug fix (RED/GREEN TDD); followed in practice |
-| test_statement_coverage80 | Met | **86.46%** line coverage (`cargo llvm-cov --all-features`) |
+| test_statement_coverage80 | Met | **89.27%** line coverage (`cargo llvm-cov --all-features`) |
 | test_policy_mandated | Met | `CONTRIBUTING.md` testing policy |
 | tests_documented_added | Met | `CONTRIBUTING.md` + PR template |
 | warnings_strict | Met | `cargo clippy --all --tests --all-features -- -D warnings`, `RUSTDOCFLAGS="-D warnings"` |
@@ -169,11 +169,11 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 |-----------|--------|----------|
 | implement_secure_design | Met | `docs/assurance-case.md` §5 (secure-design principles) |
 | crypto_weaknesses | Met | No known-weak algorithms |
-| crypto_algorithm_agility | Met | Algorithms provided by updatable libraries (`pcu`/`git2`/GPG/Sigstore) |
-| crypto_credential_agility | Met | Signing keys/tokens via configurable env-var *names*; rotatable without recompiling |
-| crypto_used_network | Met | HTTPS by default via `pcu`/`git2`'s TLS stack; jci-audit performs no raw git/network calls of its own |
-| crypto_tls12 | Met | TLS ≥1.2 via `pcu`/`git2`/libgit2 |
-| crypto_certificate_verification | Met | libgit2 verifies TLS certificates by default |
+| crypto_algorithm_agility | Met | Algorithms provided by updatable libraries (GPG, Sigstore, `rsign`) |
+| crypto_credential_agility | Met | The crate's own release signing reads its key material via CI-context env vars, rotatable without recompiling; jci-audit's own code currently reads no credentials at all (`docs/assurance-case.md` T3) |
+| crypto_used_network | Met | HTTPS by default (crates.io, GitHub, the advisory-db fetch delegated to `cargo-deny`); jci-audit's own code makes no network calls of its own |
+| crypto_tls12 | Met | TLS ≥1.2 via the underlying HTTPS clients (cargo, `cargo-deny`) |
+| crypto_certificate_verification | Met | TLS certificates verified by default by the underlying HTTPS clients |
 | crypto_verification_private | Met | Credentials only sent over verified HTTPS |
 | signed_releases | Met | `docs/RELEASING.md` — GPG tags + SLSA/Sigstore attestation + minisign binary, with verification steps checked against a real release |
 | version_tags_signed | Met | `release.toml` `sign-tag = true` |
