@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- BREAKING: stop committing the release record to git(pr [#77])
+
 ### Changed
 
 - docs-add GOVERNANCE.md and issue/PR templates(pr [#65])
@@ -189,6 +193,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#70]: https://github.com/jerus-org/jci-audit/pull/70
 [#71]: https://github.com/jerus-org/jci-audit/pull/71
 [#72]: https://github.com/jerus-org/jci-audit/pull/72
+[#77]: https://github.com/jerus-org/jci-audit/pull/77
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
