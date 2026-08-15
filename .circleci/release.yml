@@ -64,9 +64,13 @@ jobs:
             jci-audit release \
               --release-version "${VERSION}" \
               --verbose
+            # Copy to a version-independent path: store_artifacts can't expand
+            # $VERSION in its `path`, and .security/ also holds the tracked
+            # README and historical records that don't need re-uploading here.
+            cp ".security/release-${VERSION}.json" /tmp/security-record.json
       - store_artifacts:
-          path: .security
-          destination: security-record
+          path: /tmp/security-record.json
+          destination: security-record.json
 
 workflows:
   release:

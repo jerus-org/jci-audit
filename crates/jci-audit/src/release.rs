@@ -218,9 +218,9 @@ fn first_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_string()
 }
 
-/// Default env var consulted for the release version when `--version` is not
-/// given. Release pipelines compute the version at runtime (nextsv), so it
-/// cannot always be supplied as a config-time orb parameter.
+/// Default env var consulted for the release version when `--release-version`
+/// is not given. Release pipelines compute the version at runtime (nextsv), so
+/// it cannot always be supplied as a config-time orb parameter.
 pub const DEFAULT_VERSION_ENV: &str = "SEMVER";
 
 /// Resolve the release version: the explicit value wins, otherwise the named
@@ -233,7 +233,7 @@ pub fn resolve_version(explicit: Option<&str>, env_name: &str) -> Result<String>
     match std::env::var(env_name) {
         Ok(v) if !v.trim().is_empty() => Ok(v.trim().to_string()),
         _ => bail!(
-            "no release version: pass --version, or export the variable named by \
+            "no release version: pass --release-version, or export the variable named by \
              --version-env (currently {env_name})"
         ),
     }

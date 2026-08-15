@@ -38,7 +38,6 @@ tarpaulin-report.html
 .DS_Store
 Thumbs.db
 
-# Release security records (jci-audit release) are no longer committed —
-# distributed as a signed release asset instead (jerus-org/jci-audit#75).
-# Historical records already committed under .security/ are untouched.
+# Release security records are no longer committed. Distribution as a signed
+# release asset is planned but not yet built — see jerus-org/jci-audit#75.
 .security/release-*.json

@@ -444,6 +444,10 @@ mod tests {
             vec!["jci-audit", "release", "--commit"],
             vec!["jci-audit", "release", "--push"],
             vec!["jci-audit", "release", "--gpg-key-env", "X"],
+            vec!["jci-audit", "release", "--gpg-trust-env", "X"],
+            vec!["jci-audit", "release", "--user-name-env", "X"],
+            vec!["jci-audit", "release", "--user-email-env", "X"],
+            vec!["jci-audit", "release", "--sign-key-env", "X"],
         ] {
             assert!(
                 Cli::try_parse_from(&args).is_err(),

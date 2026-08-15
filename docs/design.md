@@ -75,16 +75,12 @@ Both tool results and the drift check are aggregated — a failure in one does n
 
 ```mermaid
 flowchart TD
-    START["jci-audit release --version X"] --> DRIFT2["about.toml drift check"]
+    START["jci-audit release --release-version X"] --> DRIFT2["about.toml drift check"]
     DRIFT2 --> POLICY["cargo-about policy resolution\n(cache-independent --locked check)"]
     POLICY --> PIN["cargo-deny clones/refreshes\nadvisory-db, resolve HEAD commit"]
-    PIN --> OFFLINE["cargo deny --offline +\ncargo audit --db <pinned> --no-fetch"]
-    OFFLINE --> LIVE["live cargo audit\n(non-blocking warning)"]
-    OFFLINE --> RECORD["write .security/release-X.json"]
-    RECORD --> SIGN{"--commit?"}
-    SIGN -->|yes| GPG["pcu: import GPG key,\nsign commit"]
-    GPG --> PUSHQ{"--push?"}
-    PUSHQ -->|yes| PUSH["pcu: push via\nGitHub App token"]
+    PIN --> OFFLINE["cargo deny --offline check\n(pinned advisory-db)"]
+    OFFLINE --> LIVE["cargo audit\n(live database, non-blocking warning)"]
+    LIVE --> RECORD["write .security/release-X.json\n(local only — see #75)"]
 ```
 
 Both drift/policy checks run **before** the advisory-db refresh — the "catch it before the
