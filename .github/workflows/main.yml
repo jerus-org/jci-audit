@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -25,7 +25,7 @@ jobs:
       run: cargo install cargo-llvm-cov
     
     - name: Generate coverage
-      run: cargo llvm-cov --all-features --workspace --lcov --output-path coverage/lcov.info
+      run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
     
     - name: Upload Coverage to OtterWise
       uses: getOtterWise/github-action@v1
