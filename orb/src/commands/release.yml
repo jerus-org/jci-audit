@@ -1,8 +1,8 @@
-description: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
+description: 'Release gate: reproducible validation against a pinned advisory-db commit (cargo-deny offline), then a non-blocking live cargo-audit. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there'
 parameters:
   release_version:
     type: string
-    description: The release version being validated (e.g. "1.2.0"). When omitted it is read from the environment variable named by --version-env, since release pipelines compute the version at runtime
+    description: The release version being validated (e.g. "1.2.0"). Falls back to an environment variable when omitted, since release pipelines compute the version at runtime (see the other version flag below)
     default: ''
   verbose:
     type: boolean
@@ -14,35 +14,7 @@ parameters:
     default: false
   advisory_db:
     type: string
-    description: Path to a checked-out advisory-db at the pinned commit. When omitted, the pinned commit is resolved from configuration
-    default: ''
-  commit:
-    type: boolean
-    description: 'Commit the record. Required when the release pipeline runs cargo-release afterwards: cargo-release refuses to start on a dirty tree, so the record must already be committed'
-    default: false
-  push:
-    type: boolean
-    description: Push the commit. A protected branch accepts only a credential its rules permit to bypass them, so supply PCU_APP_ID and PCU_PRIVATE_KEY for a GitHub App token; a deploy key cannot bypass, whatever write access it carries
-    default: false
-  gpg_key_env:
-    type: string
-    description: Env var NAME holding the base64 GPG signing key (default GPG_KEY)
-    default: ''
-  gpg_trust_env:
-    type: string
-    description: Env var NAME holding the GPG ownertrust (default GPG_TRUST)
-    default: ''
-  user_name_env:
-    type: string
-    description: Env var NAME holding the committer name (default GIT_USER_NAME)
-    default: ''
-  user_email_env:
-    type: string
-    description: Env var NAME holding the committer email (default GIT_USER_EMAIL)
-    default: ''
-  sign_key_env:
-    type: string
-    description: Env var NAME holding the GPG signing key id (default GPG_SIGN_KEY)
+    description: Advisory-db root; cargo-deny's checkout is discovered/refreshed beneath it and its commit becomes the pin. Defaults to ~/.cargo/advisory-db
     default: ''
   deny_warnings:
     type: boolean
@@ -62,31 +34,14 @@ steps:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
 - when:
-    condition: << parameters.commit >>
-    steps:
-    - run:
-        name: Set COMMIT flag
-        command: echo 'export COMMIT=true' >> "$BASH_ENV"
-- when:
-    condition: << parameters.push >>
-    steps:
-    - run:
-        name: Set PUSH flag
-        command: echo 'export PUSH=true' >> "$BASH_ENV"
-- when:
     condition: << parameters.deny_warnings >>
     steps:
     - run:
         name: Set DENY_WARNINGS flag
         command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
-    name: 'Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`'
+    name: 'Release gate: reproducible validation against a pinned advisory-db commit (cargo-deny offline), then a non-blocking live cargo-audit. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there'
     command: <<include(scripts/release.sh)>>
     environment:
       RELEASE_VERSION: << parameters.release_version >>
       ADVISORY_DB: << parameters.advisory_db >>
-      GPG_KEY_ENV: << parameters.gpg_key_env >>
-      GPG_TRUST_ENV: << parameters.gpg_trust_env >>
-      USER_NAME_ENV: << parameters.user_name_env >>
-      USER_EMAIL_ENV: << parameters.user_email_env >>
-      SIGN_KEY_ENV: << parameters.sign_key_env >>

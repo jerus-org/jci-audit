@@ -37,3 +37,7 @@ tarpaulin-report.html
 # OS
 .DS_Store
 Thumbs.db
+
+# Release security records are no longer committed. Distribution as a signed
+# release asset is planned but not yet built — see jerus-org/jci-audit#75.
+.security/release-*.json

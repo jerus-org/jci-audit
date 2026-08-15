@@ -23,7 +23,7 @@ cargo binstall cargo-audit cargo-deny # jci-audit orchestrates these; both must 
 
 jci-audit init                        # scaffold a standard deny.toml + derived .cargo/audit.toml
 jci-audit check                       # PR/dev gate: cargo-deny policy + a live cargo-audit scan
-jci-audit release --version 1.2.0     # release gate: reproducible, pinned-advisory-db validation
+jci-audit release --release-version 1.2.0  # release gate: reproducible, pinned-advisory-db validation
 ```
 
 See the [crate README](crates/jci-audit/README.md) for the full usage guide, and the

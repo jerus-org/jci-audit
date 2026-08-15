@@ -3,7 +3,7 @@
 Each release records the security validation it passed, as
 `release-<VERSION>.json`. A record names the advisory-db commit the release was
 locked to, the versions of the tools that ran, and digests of the dependency set
-and of the policy (`deny.toml`) in force at the time. `jci-audit verify --version
+and of the policy (`deny.toml`) in force at the time. `jci-audit verify --release-version
 <VERSION>` re-runs the gate offline against that snapshot, so a past release can
 be checked later without trusting the pipeline that produced it.
 
@@ -11,11 +11,18 @@ Records are written only when the gate passes, and they are deterministic: no
 timestamps, and live-audit results excluded, so re-running produces a
 byte-identical file.
 
+**The records below (0.0.4–0.0.7) are historical.** Starting with the release
+that ships [#75](https://github.com/jerus-org/jci-audit/issues/75) phase 1,
+`jci-audit release` no longer commits the record here — it's written locally
+and left `.gitignore`'d, pending distribution as a signed release asset
+(tracked in the same issue). This directory won't gain new entries going
+forward; the files already here are kept as-is.
+
 ## 0.0.3 has no record
 
 **Version 0.0.3 is published and no record exists for it. This is permanent.**
 
-`jci-audit verify --version 0.0.3` will fail with `no release record at
+`jci-audit verify --release-version 0.0.3` will fail with `no release record at
 '.security/release-0.0.3.json'`. That failure is correct and should not be worked
 around: there is nothing to verify.
 

@@ -6,7 +6,7 @@ Usage: jci-audit [OPTIONS] <COMMAND>
 
 Commands:
   check    PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan; both blocking. Aggregates exit codes and surfaces stderr
-  release  Release gate: reproducible validation against a pinned advisory-db commit (deny + audit offline), then a non-blocking live audit. Records the run to `.security/release-<VERSION>.json`
+  release  Release gate: reproducible validation against a pinned advisory-db commit (cargo-deny offline), then a non-blocking live cargo-audit. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there
   sync     Derive `.cargo/audit.toml` from the canonical `deny.toml` `[advisories].ignore`. Makes deny.toml the single source of truth
   prune    Stale-ignore detector: run audit/deny against the naked advisory-db and report ignores that no longer fire
   verify   Re-verify a past release against the advisory snapshot it was locked to, using the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag

@@ -104,15 +104,12 @@ trust model is important to using it safely:
   policy checks to a **pinned advisory-db commit** (recorded in the release record)
   rather than trusting whatever the live database says at build time, so the same
   inputs produce the same result on re-verification (`jci-audit verify`).
-- **Credentials come from the environment, by name only.** The optional
-  `release --commit --push` step signs the release-record commit using a GPG key
-  and commits/pushes via [`pcu`](https://crates.io/crates/pcu), reading only
-  environment-variable **names** you configure (default `GPG_KEY`, `GPG_TRUST`,
-  `GIT_USER_NAME`, `GIT_USER_EMAIL`, `GPG_SIGN_KEY`) — never values on the command
-  line or in configuration files. Signing material is never written to generated
-  files or logged. Pushing to a protected branch uses a GitHub App installation
-  token (via `pcu`), not a deploy key or a personal access token with elevated
-  bypass authority.
+- **No credentials are read today.** `jci-audit release` writes its validation
+  record to a local file only; the tool does not sign, commit, or push it. See
+  [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) for
+  the planned distribution of that record as a signed release asset — when that
+  lands, any signing material it introduces will be read from environment
+  variables by *name* only, never on the command line or in configuration files.
 - **What is out of scope.** Vulnerabilities in `cargo-audit`, `cargo-deny`,
   `cargo-about`, the RustSec advisory database, or your own CI secrets management
   are outside this project's control. Report those to the relevant projects.

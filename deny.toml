@@ -43,18 +43,8 @@ allow = [
 
 # Weak-copyleft licences are NOT allowed globally: each is scoped to the specific
 # crate that carries it, so a NEW copyleft dependency fails the check until it has
-# been consciously reviewed.
-#
-# The LGPL-2.0-or-later pair (sequoia-openpgp, buffered-reader) was removed when
-# pcu 0.6.30 stopped bringing the OpenPGP stack into the graph. cargo-deny had
-# already started warning `license-exception-not-encountered` for both — the
-# licence equivalent of a stale advisory ignore, and the same reason to clear it:
-# an exception nobody can account for is one nobody will question later.
-
-# MPL-2.0 (file-level copyleft): transitive config/dirs helper.
-[[licenses.exceptions]]
-name = "option-ext"
-allow = ["MPL-2.0"]
+# been consciously reviewed. Remove an exception as soon as its dependency leaves
+# the graph — an exception nobody can account for is one nobody will question later.
 
 [bans]
 multiple-versions = "warn"

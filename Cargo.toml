@@ -43,16 +43,6 @@ sha2 = "0.11.0"
 # than reimplementing expression evaluation by hand.
 spdx = "0.13.5"
 
-# Signed commit and App-authenticated push. pcu is the organisation's CI git
-# client; using it here keeps this tool consistent with the others and, crucially,
-# gives the push a credential that protected-branch rules accept.
-#
-# default-features = false drops the attestation surface (openidconnect, sigstore
-# and with them rsa/RUSTSEC-2023-0071), none of which the git path uses. An
-# auditor should not have to suppress an advisory to run an auditing tool.
-pcu = { version = "0.6.31", default-features = false }
-tokio = { version = "1.53.1", features = ["rt", "macros"] }
-
 # Testing
 tempfile = "3.27.0"
 trycmd = "1.2.1"
