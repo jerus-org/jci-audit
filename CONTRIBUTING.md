@@ -43,6 +43,8 @@ Thanks for your interest in contributing! This project is maintained by
   changelog's Security section — put the advisory id in the subject).
 - First line under 50 characters.
 - **Sign off every commit** with the DCO: `git commit -s`.
+- Run `git config core.hooksPath .githooks` once per clone to enforce the two
+  rules above locally, before you push.
 
 ## Pull requests
 
