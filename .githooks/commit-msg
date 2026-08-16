@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# Enforces the commit-message rules from the user's global CLAUDE.md:
+# conventional-commit format, and a subject line under 50 characters.
+#
+# To use it: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+msg_file="$1"
+subject="$(head -n1 "$msg_file")"
+
+# Merge/revert commits are git- or GitHub-generated, not typed by a
+# developer, and don't follow Conventional Commits or the length rule.
+case "$subject" in
+  "Merge "*|"Revert "*) exit 0 ;;
+esac
+
+subject_len=${#subject}
+
+if [ "$subject_len" -gt 50 ]; then
+  echo "commit-msg: subject line is $subject_len characters, must be <=50" >&2
+  echo "  $subject" >&2
+  exit 1
+fi
+
+conventional_re='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9./-]+\))?!?: .+'
+if ! [[ "$subject" =~ $conventional_re ]]; then
+  echo "commit-msg: subject does not match Conventional Commits format" >&2
+  echo "  expected: <type>[(scope)][!]: <description>" >&2
+  echo "  got:      $subject" >&2
+  exit 1
+fi

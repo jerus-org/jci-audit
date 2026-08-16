@@ -1,4 +1,4 @@
-description: 'PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan; both blocking. Aggregates exit codes and surfaces stderr'
+description: 'PR/dev gate: cargo-deny policy plus a live cargo-audit scan. Both blocking. Aggregates exit codes and surfaces stderr.'
 parameters:
   manifest_path:
     type: string
@@ -36,7 +36,7 @@ steps:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
 - run:
-    name: 'PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan; both blocking. Aggregates exit codes and surfaces stderr'
+    name: 'PR/dev gate: cargo-deny policy plus a live cargo-audit scan. Both blocking. Aggregates exit codes and surfaces stderr.'
     command: <<include(scripts/check.sh)>>
     environment:
       MANIFEST_PATH: << parameters.manifest_path >>

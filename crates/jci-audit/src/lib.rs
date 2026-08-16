@@ -66,8 +66,9 @@ struct ToolOutput {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// PR / dev gate: run cargo-deny policy checks AND a live cargo-audit scan;
-    /// both blocking. Aggregates exit codes and surfaces stderr.
+    /// PR/dev gate: cargo-deny policy plus a live cargo-audit scan.
+    ///
+    /// Both blocking. Aggregates exit codes and surfaces stderr.
     Check {
         /// Path to the Cargo.toml (or its directory) to check.
         #[arg(long, default_value = ".")]
@@ -76,63 +77,75 @@ enum Commands {
         #[command(flatten)]
         output: ToolOutput,
     },
-    /// Release gate: reproducible validation against a pinned advisory-db
-    /// commit (cargo-deny offline), then a non-blocking live cargo-audit.
-    /// Writes the record locally to `.security/release-<VERSION>.json`; see
+    /// Release gate: reproducible, pinned-advisory-db validation.
+    ///
+    /// Locks `cargo-deny` to the pinned commit and runs it offline;
+    /// `cargo-audit` runs live as a non-blocking currency check. Writes the
+    /// record locally to `.security/release-<VERSION>.json`; see
     /// jerus-org/jci-audit#75 for how it is distributed from there.
     Release {
-        /// The release version being validated (e.g. "1.2.0"). Falls back to
-        /// an environment variable when omitted, since release pipelines
-        /// compute the version at runtime (see the other version flag below).
+        /// The release version being validated (e.g. "1.2.0").
+        ///
+        /// Falls back to an environment variable when omitted, since release
+        /// pipelines compute the version at runtime.
         #[arg(long, value_name = "VERSION")]
         release_version: Option<String>,
 
-        /// Env var NAME holding the release version when --release-version is
-        /// not given (default SEMVER).
+        /// Env var NAME holding the release version (default SEMVER).
+        ///
+        /// Used when --release-version is not given.
         #[arg(long)]
         version_env: Option<String>,
 
-        /// Advisory-db root; cargo-deny's checkout is discovered/refreshed
-        /// beneath it and its commit becomes the pin. Defaults to
-        /// ~/.cargo/advisory-db.
+        /// Advisory-db root; cargo-deny's checkout lives beneath it.
+        ///
+        /// Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
         #[arg(long)]
         advisory_db: Option<std::path::PathBuf>,
 
         #[command(flatten)]
         output: ToolOutput,
     },
-    /// Derive `.cargo/audit.toml` from the canonical `deny.toml`
-    /// `[advisories].ignore`. Makes deny.toml the single source of truth.
+    /// Derive `.cargo/audit.toml` from the canonical `deny.toml`.
+    ///
+    /// Reads `[advisories].ignore`, keeping deny.toml the single source of
+    /// truth.
     Sync {
         /// Fail (non-zero) on drift instead of rewriting the file. For CI.
         #[arg(long)]
         check: bool,
     },
-    /// Stale-ignore detector: run audit/deny against the naked advisory-db and
-    /// report ignores that no longer fire.
+    /// Stale-ignore detector for advisory ignores that no longer fire.
+    ///
+    /// Runs audit/deny against the naked advisory-db (no local ignores
+    /// applied) to find configured ignores that no longer fire.
     Prune {
         /// Fail (non-zero) when a stale ignore is found. For CI.
         #[arg(long)]
         check: bool,
     },
-    /// Re-verify a past release against the advisory snapshot it was locked
-    /// to, using the policy (deny.toml) that was in force at the time. Run it
+    /// Re-verify a past release against its recorded advisory snapshot.
+    ///
+    /// Uses the policy (deny.toml) that was in force at the time. Run it
     /// from a checkout of the released tag.
     Verify {
         /// The released version to verify (e.g. "1.2.0").
         #[arg(long, value_name = "VERSION")]
         release_version: String,
 
-        /// Advisory-db root; cargo-deny's checkout is moved to the recorded
-        /// commit beneath it. Defaults to ~/.cargo/advisory-db.
+        /// Advisory-db root; the checkout is moved to the recorded commit.
+        ///
+        /// Defaults to ~/.cargo/advisory-db.
         #[arg(long)]
         advisory_db: Option<std::path::PathBuf>,
 
         #[command(flatten)]
         output: ToolOutput,
     },
-    /// Scaffold a standard `deny.toml` template and a derived
-    /// `.cargo/audit.toml`.
+    /// Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`.
+    ///
+    /// Non-interactive — every value in the template is fixed; edit the
+    /// written files afterwards for anything project-specific.
     Init {
         /// Overwrite existing files without confirmation.
         #[arg(long)]
@@ -469,6 +482,29 @@ mod tests {
     fn parse_prune_and_init() {
         assert!(Cli::try_parse_from(["jci-audit", "prune"]).is_ok());
         assert!(Cli::try_parse_from(["jci-audit", "init", "--force"]).is_ok());
+    }
+
+    #[test]
+    fn every_subcommand_has_a_long_about_distinct_from_its_about() {
+        // A doc comment without a blank-line split leaves long_about unset,
+        // so clap falls back to `about` for --help too, matching -h exactly.
+        // Checking rendered `-h`/`--help` byte length is not a reliable
+        // proxy: clap's argument-table wrapping alone can make --help
+        // render longer even when about == long_about, letting this pass
+        // for a subcommand whose split is missing (caught in review on #74).
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        for name in ["check", "release", "sync", "prune", "verify", "init"] {
+            let sub = cmd
+                .find_subcommand(name)
+                .unwrap_or_else(|| panic!("no '{name}' subcommand"));
+            let about = sub.get_about().map(ToString::to_string);
+            let long_about = sub.get_long_about().map(ToString::to_string);
+            assert!(
+                long_about.is_some() && long_about != about,
+                "'{name}': long_about must be set and differ from about (about: {about:?})"
+            );
+        }
     }
 
     #[test]
