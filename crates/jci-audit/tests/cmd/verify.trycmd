@@ -1,0 +1,43 @@
+```
+$ jci-audit verify -h
+Re-verify a past release against its recorded advisory snapshot
+
+Usage: jci-audit verify [OPTIONS] --release-version <VERSION>
+
+Options:
+      --release-version <VERSION>  The released version to verify (e.g. "1.2.0")
+  -v, --verbose...                 Increase logging verbosity
+      --advisory-db <ADVISORY_DB>  Advisory-db root; the checkout is moved to the recorded commit
+  -q, --quiet...                   Decrease logging verbosity
+      --deny-warnings              Fail if the tools report any warning
+  -h, --help                       Print help (see more with '--help')
+
+$ jci-audit verify --help
+Re-verify a past release against its recorded advisory snapshot.
+
+Uses the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag.
+
+Usage: jci-audit verify [OPTIONS] --release-version <VERSION>
+
+Options:
+      --release-version <VERSION>
+          The released version to verify (e.g. "1.2.0")
+
+  -v, --verbose...
+          Increase logging verbosity
+
+      --advisory-db <ADVISORY_DB>
+          Advisory-db root; the checkout is moved to the recorded commit.
+          
+          Defaults to ~/.cargo/advisory-db.
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+      --deny-warnings
+          Fail if the tools report any warning
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+```

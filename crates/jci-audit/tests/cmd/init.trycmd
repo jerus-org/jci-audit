@@ -1,0 +1,33 @@
+```
+$ jci-audit init -h
+Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`
+
+Usage: jci-audit init [OPTIONS]
+
+Options:
+      --force       Overwrite existing files without confirmation
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+$ jci-audit init --help
+Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`.
+
+Non-interactive — every value in the template is fixed; edit the written files afterwards for anything project-specific.
+
+Usage: jci-audit init [OPTIONS]
+
+Options:
+      --force
+          Overwrite existing files without confirmation
+
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+```

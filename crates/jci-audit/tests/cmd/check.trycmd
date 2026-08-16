@@ -1,0 +1,39 @@
+```
+$ jci-audit check -h
+PR/dev gate: cargo-deny policy plus a live cargo-audit scan
+
+Usage: jci-audit check [OPTIONS]
+
+Options:
+      --manifest-path <MANIFEST_PATH>  Path to the Cargo.toml (or its directory) to check [default: .]
+  -v, --verbose...                     Increase logging verbosity
+      --deny-warnings                  Fail if the tools report any warning
+  -q, --quiet...                       Decrease logging verbosity
+  -h, --help                           Print help (see more with '--help')
+
+$ jci-audit check --help
+PR/dev gate: cargo-deny policy plus a live cargo-audit scan.
+
+Both blocking. Aggregates exit codes and surfaces stderr.
+
+Usage: jci-audit check [OPTIONS]
+
+Options:
+      --manifest-path <MANIFEST_PATH>
+          Path to the Cargo.toml (or its directory) to check
+          
+          [default: .]
+
+  -v, --verbose...
+          Increase logging verbosity
+
+      --deny-warnings
+          Fail if the tools report any warning
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+```
