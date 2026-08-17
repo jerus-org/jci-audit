@@ -110,6 +110,10 @@ workflows:
           crate_tag_prefix: jci-audit-v
           build_binary: true
           binary_name: jci-audit
+          # Required on repos with GitHub Immutable Releases: without it, the
+          # binary tarball/.sig uploads below fail against an already-published
+          # release. See digital-prstv/circleci-toolkit#520/#521.
+          draft: true
           context:
             - release
             - bot-check
