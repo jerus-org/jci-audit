@@ -25,6 +25,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#70])
 - give -h a terse summary distinct from --help(pr [#79])
 - deps: update jerusdp/ci-rust:rolling-6mo docker digest to 1fd59ba(pr [#81])
+- deps: update dependency toolkit to v7.2.0(pr [#82])
 
 ## [0.0.6] - 2026-08-13
 
@@ -198,6 +199,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#77]: https://github.com/jerus-org/jci-audit/pull/77
 [#79]: https://github.com/jerus-org/jci-audit/pull/79
 [#81]: https://github.com/jerus-org/jci-audit/pull/81
+[#82]: https://github.com/jerus-org/jci-audit/pull/82
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
