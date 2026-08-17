@@ -3,7 +3,7 @@ executor: default
 parameters:
   release_version:
     type: string
-    description: The release version being validated (e.g. "1.2.0").  Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
+    description: The release version being validated (e.g. "1.2.0"). Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
     default: ''
   verbose:
     type: boolean
@@ -15,7 +15,7 @@ parameters:
     default: false
   advisory_db:
     type: string
-    description: Advisory-db root; cargo-deny's checkout lives beneath it.  Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
+    description: Advisory-db root; cargo-deny's checkout lives beneath it. Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
     default: ''
   deny_warnings:
     type: boolean

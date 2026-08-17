@@ -9,7 +9,7 @@ parameters:
     default: false
   advisory_db:
     type: string
-    description: Advisory-db root; the checkout is moved to the recorded commit.  Defaults to ~/.cargo/advisory-db.
+    description: Advisory-db root; the checkout is moved to the recorded commit. Defaults to ~/.cargo/advisory-db.
     default: ''
   quiet:
     type: boolean
