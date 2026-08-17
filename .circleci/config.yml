@@ -11,7 +11,7 @@ orbs:
   orb-tools: circleci/orb-tools@12.5.0
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.6
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.7
   # <<< gen-circleci-orb
 jobs:
   # An unaccepted licence stops the release in its pre-release hook — after the
