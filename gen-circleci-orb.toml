@@ -39,7 +39,7 @@ orb_context = "orb-publishing"
 # openssl-sys, reached through pcu (sequoia-openpgp's OpenSSL backend). This is
 # the toolkit's clang-equipped compile image, digest-pinned so it survives
 # regeneration; Renovate tracks the digest here and in .circleci/ together.
-rust_image = "jerusdp/ci-rust:rolling-6mo@sha256:ac7fa7e1e811f24211f70ac0ebe87c7a27db118535582ef3bb70557f233ab28a"
+rust_image = "jerusdp/ci-rust:rolling-6mo@sha256:1fd59ba21c66d2830eefc54289707c7465c1537fef3dcade9e7dc54ccd2403f0"
 mcp = false
 mcp_context = ["pcu-app"]
 mcp_earliest_version = "0.0.1"

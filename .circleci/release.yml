@@ -92,7 +92,7 @@ workflows:
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
           package: jci-audit
-          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:ac7fa7e1e811f24211f70ac0ebe87c7a27db118535582ef3bb70557f233ab28a
+          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:1fd59ba21c66d2830eefc54289707c7465c1537fef3dcade9e7dc54ccd2403f0
           requires: [approve-release]
 
       # Record the security validation BEFORE the crate release. The record is
