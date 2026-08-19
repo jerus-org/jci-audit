@@ -87,11 +87,11 @@ for license attribution and bare `cargo` for `cargo metadata`. Understanding its
 trust model is important to using it safely:
 
 - **It shells out to fixed, known binaries — never a caller-supplied one.** Every
-  subprocess call names one of `cargo-audit`, `cargo-deny`, `cargo-about`, or `cargo`
-  directly, with arguments passed as a typed argument list rather than built by
-  string concatenation or a shell. There is no equivalent of "point the tool at an
-  arbitrary binary and it will execute it" — the binaries it runs are always its own
-  four fixed dependencies, resolved from `PATH`. See
+  subprocess call names one of `cargo-audit`, `cargo-deny`, `cargo-about`, `cargo`,
+  or `rsign` directly, with arguments passed as a typed argument list rather than
+  built by string concatenation or a shell. There is no equivalent of "point the
+  tool at an arbitrary binary and it will execute it" — the binaries it runs are
+  always its own five fixed dependencies, resolved from `PATH`. See
   [`preflight`](crates/jci-audit/src/preflight.rs) for how their presence is checked
   before use.
 - **`deny.toml` is the single source of truth; derived files are a merge, not a
@@ -104,12 +104,17 @@ trust model is important to using it safely:
   policy checks to a **pinned advisory-db commit** (recorded in the release record)
   rather than trusting whatever the live database says at build time, so the same
   inputs produce the same result on re-verification (`jci-audit verify`).
-- **No credentials are read today.** `jci-audit release` writes its validation
-  record to a local file only; the tool does not sign, commit, or push it. See
+- **Only one code path reads a credential, and only from an environment
+  variable.** `jci-audit release` writes its validation record to a local file
+  only; the tool does not sign, commit, or push it. `jci-audit verify`'s
+  no-checkout fallback (no local record present) is the one exception: it reads
+  a GitHub token from `GITHUB_TOKEN` — never a CLI flag — to fetch the record
+  and its signature from the published release, and checks that signature
+  against the pubkey published in the release's own `Cargo.toml` before
+  trusting anything in it. See
   [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) for
-  the planned distribution of that record as a signed release asset — when that
-  lands, any signing material it introduces will be read from environment
-  variables by *name* only, never on the command line or in configuration files.
+  the CI side (uploading the record + signature) that still has to land before
+  this path has anything to fetch.
 - **What is out of scope.** Vulnerabilities in `cargo-audit`, `cargo-deny`,
   `cargo-about`, the RustSec advisory database, or your own CI secrets management
   are outside this project's control. Report those to the relevant projects.

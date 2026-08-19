@@ -225,6 +225,33 @@ released tag and comparing:
 A missing/null field on an old-schema record is reported as **unverified**, never silently skipped
 or treated as a mismatch — the report says plainly how much assurance it actually has.
 
+### 5.4 Verifying without a checkout
+
+`jci-audit verify` tries the local record first (`.security/release-<VERSION>.json`); when it is
+absent, it falls back to `src/remote.rs` instead of erroring — the auditor's no-clone path
+[#75](https://github.com/jerus-org/jci-audit/issues/75) phase 3 exists for. This is a different,
+narrower check than §5.3, not the same one run against fetched bytes:
+
+1. Fetch `release-<VERSION>.json` and its `.sig` from the **published** release for the tag
+   (`pcu-release-assets::ReleaseAssetClient::download_release_asset` — published-only by
+   construction; it has no method that would read a draft, so there is no runtime flag to get
+   wrong).
+2. Fetch the release tag's raw `crates/jci-audit/Cargo.toml`
+   (`raw.githubusercontent.com/<owner>/<repo>/refs/tags/<tag>/...`) and read
+   `[package.metadata.binstall.signing].pubkey` — the same key `docs/RELEASING.md` documents for
+   verifying the binary tarball.
+3. Check the record's minisign signature against that pubkey, by shelling to `rsign verify`
+   (`preflight::Tool::Rsign`) — not by linking a crypto crate.
+4. On a valid signature, report the record's attested content (advisory-db commit, recorded
+   verdict) — but **do not re-run `cargo-deny`**: that needs the checked-out `Cargo.lock` and
+   `deny.toml` a bare directory doesn't have. `RemoteVerifyOutcome::unchecked` says so explicitly,
+   naming what a local checkout would additionally let `verify` prove.
+
+A failing signature check is a hard `Err`, not a reported mismatch — unlike §5.3, where a mismatch
+is still informative (the checkout state differs from the record, but the record itself was
+already trusted from the CI pipeline that wrote it). Here the record's authenticity *is* the
+question, so a bad signature means there is nothing left to report.
+
 ---
 
 ## 6. Distributing the record
@@ -245,10 +272,12 @@ the crate, tarball, and their signatures already come from.
 
 Distribution as a signed release asset — alongside the crate's other signed artifacts — is
 tracked in [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75); this is a
-phased rollout, and that piece has not landed yet. Until it does, the record still gates every
-release exactly as before — a failing `jci-audit release` still blocks the release — but the
-passing record itself is not yet durably distributed anywhere beyond the CI job's own log/
-artifacts.
+phased rollout. §5.4 describes the *consumer* of that asset (`verify`'s remote fetch path), which
+has landed; the *producer* — CI uploading the record and its signature to the draft release before
+it is published — is phase 2 and has not landed yet. Until it does, `jci-audit release` still
+gates every release exactly as before — a failing run still blocks the release — but there is no
+asset yet for `verify`'s remote path to fetch, so it will error with "no such asset" until phase 2
+ships.
 
 ---
 
@@ -257,10 +286,11 @@ artifacts.
 A tool whose purpose is detecting missing security coverage must itself detect the absence of the
 binaries it depends on — silently no-op-ing on a missing `cargo-deny` would be the worst possible
 failure mode for a security gate. Every subcommand that shells out calls
-`preflight::ensure_available` first, naming exactly which of the four fixed tools
-(`cargo-audit`, `cargo-deny`, `cargo-about`, bare `cargo`) is missing and how to install it —
-`cargo binstall <tool>` for the first three, rustup for bare `cargo` (not `cargo`-installable,
-since it doesn't yet exist).
+`preflight::ensure_available` first, naming exactly which of the five fixed tools
+(`cargo-audit`, `cargo-deny`, `cargo-about`, bare `cargo`, `rsign`) is missing and how to install
+it — `cargo binstall <tool>` for `cargo-audit`/`cargo-deny`/`cargo-about`, `cargo binstall rsign2`
+for `rsign` (binary name differs from its crate), rustup for bare `cargo` (not
+`cargo`-installable, since it doesn't yet exist).
 
 ---
 

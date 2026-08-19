@@ -33,13 +33,14 @@ flowchart LR
         SYNC["sync\nderive .cargo/audit.toml +\nper-crate about.toml"]
         CHECK["check\ncargo-deny (policy) +\ncargo-audit (live)"]
         RELEASE["release\npin advisory-db commit →\noffline deny + live audit → record"]
-        VERIFY["verify\nre-derive record inputs\nfrom a checkout"]
+        VERIFY["verify\nre-derive record inputs\nfrom a checkout, or fetch +\nsignature-check a published one"]
         PRUNE["prune\nnaked-DB diff →\nstale ignores"]
     end
     SYNC --> AUDITTOML[".cargo/audit.toml"]
     SYNC --> ABOUTTOML["crates/*/about.toml"]
     RELEASE --> RECORD[".security/release-<version>.json"]
     RECORD --> VERIFY
+    RELEASEASSET["published GitHub release\n(record + .sig, once #75\nphase 2 uploads them)"] -.->|no local checkout| VERIFY
 ```
 
 ## Modules (`crates/jci-audit/src/`)
@@ -51,9 +52,10 @@ flowchart LR
 | `license_scope.rs` | Computes each crate's *own* license-acceptance list by walking `cargo metadata`'s reachable dependency graph (excluding dev-only edges) and evaluating each package's SPDX expression against `deny.toml`'s allow-list — a crate-scoped subset, not the whole workspace policy copied verbatim. |
 | `release.rs` | Release gate: locks `cargo-deny` to a pinned `advisory-db` commit and runs it offline for reproducibility; `cargo-audit` runs live as a non-blocking currency check; writes `.security/release-<version>.json` locally (see [#75](https://github.com/jerus-org/jci-audit/issues/75) for how it's distributed). |
 | `verify.rs` | Re-derives a past release's three recorded inputs (dependency-set digest, policy digest, advisory-db commit) from a real checkout and compares them against the record — answers "did it really pass, under the exceptions in force at the time?" |
+| `remote.rs` | `verify`'s no-checkout fallback when no local record exists: downloads the record + signature from the **published** GitHub release via `pcu-release-assets`, fetches the historical signing pubkey from that release tag's raw `Cargo.toml`, and checks the minisign signature (shelling to `rsign verify`) before trusting the record's content. Does not re-run the gate — see [assurance-case.md](assurance-case.md) T6. |
 | `prune.rs` | Stale-ignore detector: runs the audit tool from outside the workspace (so no local ignore file is discovered) to get the **naked** result, and flags configured ignores that no longer fire. |
 | `init.rs` | Scaffolds the standard `deny.toml` policy template plus its derived `.cargo/audit.toml`. |
-| `preflight.rs` | Presence-checks `cargo-audit`/`cargo-deny`/`cargo-about`/bare `cargo` before any subcommand shells out to them, with per-tool install guidance. |
+| `preflight.rs` | Presence-checks `cargo-audit`/`cargo-deny`/`cargo-about`/bare `cargo`/`rsign` before any subcommand shells out to them, with per-tool install guidance. |
 | `diagnostics.rs` | Parses `cargo-deny`'s `warning[code]:` stderr lines into counts, so a captured run still surfaces what needs attention. |
 
 ## Subcommands
@@ -64,17 +66,22 @@ flowchart LR
 | `release --release-version X` | Release gate | Reproducible offline validation against a pinned advisory-db commit; writes the record locally. |
 | `sync [--check]` | PR + dev | Regenerate (or check drift of) `.cargo/audit.toml` and every `about.toml` from `deny.toml`. |
 | `prune [--check]` | PR + scheduled | Detect advisory ignores that no longer fire. |
-| `verify` | Audit / retrospective | Re-check a past release's record against a real checkout. |
+| `verify` | Audit / retrospective | Re-check a past release's record against a real checkout, or — with no checkout — fetch and signature-check the published release's record instead. |
 | `init` | Scaffold | Write the standard `deny.toml` template. |
 
 ## External interactions
 
-- **Process execution** — shells out to exactly four fixed binaries: `cargo-audit`,
-  `cargo-deny`, `cargo-about`, and bare `cargo` (for `cargo metadata`). Never a caller-supplied
-  program — see [assurance-case.md](assurance-case.md).
-- **Git & network** — none at present. The release record is written locally only; see
-  [#75](https://github.com/jerus-org/jci-audit/issues/75) for its planned distribution as a
-  signed release asset.
+- **Process execution** — shells out to exactly five fixed binaries: `cargo-audit`,
+  `cargo-deny`, `cargo-about`, bare `cargo` (for `cargo metadata`), and `rsign` (signature
+  verification, `verify`'s remote path only). Never a caller-supplied program — see
+  [assurance-case.md](assurance-case.md).
+- **Git** — none. `verify`'s remote path needs no checkout at all, by design.
+- **Network** — `verify`'s remote path (no local record present) makes two outbound HTTPS
+  calls of jci-audit's own: fetching the record + signature from a **published** GitHub
+  release via `pcu-release-assets` (REST + GraphQL, authenticated), and fetching the release
+  tag's raw `Cargo.toml` from `raw.githubusercontent.com` (unauthenticated) for the historical
+  signing pubkey. Every other subcommand, and `verify` when a local record exists, makes no
+  network calls of its own — see [assurance-case.md](assurance-case.md) §3/§7.
 - **Its own orb** — the project dogfoods `gen-circleci-orb` to generate the orb published from
   this repository (`orb/`), and jci-audit's own CI runs `jci-audit check`/`release` on itself.
 

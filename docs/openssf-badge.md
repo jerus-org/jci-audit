@@ -170,8 +170,8 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | implement_secure_design | Met | `docs/assurance-case.md` §5 (secure-design principles) |
 | crypto_weaknesses | Met | No known-weak algorithms |
 | crypto_algorithm_agility | Met | Algorithms provided by updatable libraries (GPG, Sigstore, `rsign`) |
-| crypto_credential_agility | Met | The crate's own release signing reads its key material via CI-context env vars, rotatable without recompiling; jci-audit's own code currently reads no credentials at all (`docs/assurance-case.md` T3) |
-| crypto_used_network | Met | HTTPS by default (crates.io, GitHub, the advisory-db fetch delegated to `cargo-deny`); jci-audit's own code makes no network calls of its own |
+| crypto_credential_agility | Met | The crate's own release signing reads its key material via CI-context env vars, rotatable without recompiling; `verify`'s remote path reads its one credential (a GitHub token) from `GITHUB_TOKEN` only — no CLI flag, no hardcoded value (`docs/assurance-case.md` T3) |
+| crypto_used_network | Met | HTTPS by default (crates.io, GitHub, the advisory-db fetch delegated to `cargo-deny`); jci-audit's own code makes network calls only from `verify`'s remote path (GitHub REST/GraphQL + `raw.githubusercontent.com`), also over HTTPS (`docs/assurance-case.md` §7, T9) |
 | crypto_tls12 | Met | TLS ≥1.2 via the underlying HTTPS clients (cargo, `cargo-deny`) |
 | crypto_certificate_verification | Met | TLS certificates verified by default by the underlying HTTPS clients |
 | crypto_verification_private | Met | Credentials only sent over verified HTTPS |
