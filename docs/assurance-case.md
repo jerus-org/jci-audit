@@ -30,11 +30,15 @@ subprocesses, using each for what it is best at rather than reimplementing eithe
 4. **`jci-audit prune`** — detects advisory ignores that no longer fire against the
    live database (`src/prune.rs`).
 5. **`jci-audit verify`** — re-derives a past release's inputs from a checkout and
-   compares them against the recorded snapshot (`src/verify.rs`).
+   compares them against the recorded snapshot; with no local record, fetches and
+   signature-checks the record from the **published** GitHub release instead
+   (`src/verify.rs`, `src/remote.rs`).
 6. **`jci-audit init`** — scaffolds a standard `deny.toml` template (`src/init.rs`).
 
-It runs on a developer workstation or in CI. It is **not** a network service and has
-no users, sessions, or stored credentials of its own.
+It runs on a developer workstation or in CI. It is **not** a network service — it
+never listens or accepts connections — and has no users or sessions of its own.
+It does make a small number of outbound HTTPS calls, and reads one credential,
+but only from `verify`'s no-checkout fallback path; see §3 and §7.
 
 ## 2. Security requirements
 
@@ -42,12 +46,12 @@ The security objectives, in priority order, are:
 
 - **R1 — No arbitrary code execution surface.** The tool must only ever invoke its
   own fixed set of dependency binaries (`cargo-audit`, `cargo-deny`, `cargo-about`,
-  `cargo`), never a caller- or config-supplied program.
+  `cargo`, `rsign`), never a caller- or config-supplied program.
 - **R2 — Protection of credentials.** Any signing key or token the tool is given
-  access to must never be leaked into generated files, logs, or the repository. No
-  code path currently reads a credential at all (see T3); this stays a live
-  requirement for when [#75](https://github.com/jerus-org/jci-audit/issues/75)
-  reintroduces signing.
+  access to must never be leaked into generated files, logs, or the repository.
+  `verify`'s remote fetch path is the one code path that reads a credential (a
+  GitHub token, read-only, scoped to fetching a published release's assets — see
+  T3); every other code path reads none.
 - **R3 — Reproducibility of release validation.** A release's pass/fail result must
   be re-derivable later from the same recorded inputs (advisory-db commit, policy
   digest, dependency-set digest), not just asserted once and trusted forever.
@@ -65,24 +69,26 @@ The security objectives, in priority order, are:
 
 | Boundary | Trusted? | Assumption |
 |----------|----------|------------|
-| The **`cargo-audit`/`cargo-deny`/`cargo-about`/`cargo` binaries** invoked | Trusted, fixed | Always one of these four fixed names, resolved from `PATH`; never a config- or argument-supplied program (unlike a generic "run this binary" tool — see R1). |
+| The **`cargo-audit`/`cargo-deny`/`cargo-about`/`cargo`/`rsign` binaries** invoked | Trusted, fixed | Always one of these five fixed names, resolved from `PATH`; never a config- or argument-supplied program (unlike a generic "run this binary" tool — see R1). |
 | The **`deny.toml` policy** | Trusted | Authored and reviewed by the repository owner; canonical source for both advisory ignores and license policy. |
 | **The RustSec advisory-db** | Semi-trusted, pinned | `release`/`verify` lock to a specific commit for reproducibility rather than trusting whatever the live clone contains at run time. |
 | **Third-party crates** (jci-audit's own dependencies) | Semi-trusted | Pinned via `Cargo.lock`; monitored — see R5/T4. |
-| **The network** (advisory-db fetch, managed by `cargo-deny` itself) | Untrusted transport | Confidentiality/integrity via TLS; see T5. jci-audit's own code makes no network calls of its own at present. |
+| **The network** (advisory-db fetch, managed by `cargo-deny`; GitHub's REST/GraphQL API and `raw.githubusercontent.com`, used by jci-audit's own code in `verify`'s remote path only) | Untrusted transport | Confidentiality/integrity via TLS on every leg; see T5. The GitHub API leg also carries the caller's read-only token (T3); the fetched record is additionally authenticated by its minisign signature, independent of transport trust (T6). |
+| **The GitHub token** (`verify`'s remote path, `GITHUB_TOKEN` env var only — no CLI flag exists for it) | Trusted, caller-supplied | Held in memory only for the duration of the fetch; used solely to authenticate `pcu-release-assets`' REST/GraphQL calls. Never written to a file, logged, or echoed — see T3. |
 
 ## 4. Threat model
 
 | ID | Threat | Mitigation |
 |----|--------|------------|
-| **T1** | **Arbitrary code execution via a caller-controlled program name.** | Does not apply the way it would to a tool that executes a user-supplied binary: every `Command::new(...)` call in the codebase names one of the four fixed tool binaries (`preflight::Tool`), with arguments passed as a typed `&[&str]` list, never shell-interpolated. There is no configuration surface that substitutes a different program. |
+| **T1** | **Arbitrary code execution via a caller-controlled program name.** | Does not apply the way it would to a tool that executes a user-supplied binary: every `Command::new(...)` call in the codebase names one of the five fixed tool binaries (`preflight::Tool`), with arguments passed as a typed `&[&str]` list, never shell-interpolated. There is no configuration surface that substitutes a different program. |
 | **T2** | **Tampering with generated/derived files** (`.cargo/audit.toml`, `about.toml`). | Derivation is a **merge** via `toml_edit` (`sync::merge_about_toml`, `sync::render_audit_toml`) that only touches keys attributable to `deny.toml`'s policy, leaving hand-authored content (comments, `.clarify` attribution) untouched. `sync --check` fails on drift rather than silently rewriting. Generated output is always reviewed in a diff before commit, same discipline as any generated file in this org. |
-| **T3** | **Credential leakage** — a signing key or token exposed in output, logs, or generated files. | No code path in jci-audit currently reads any credential — the release record is written locally and left there; nothing is signed, committed, or pushed by the tool itself. Trivially satisfies R2 for now. When [#75](https://github.com/jerus-org/jci-audit/issues/75) reintroduces signing (for the record's distribution as a release asset), this entry gets a real mitigation to describe again, not just an absence. |
+| **T3** | **Credential leakage** — a signing key or token exposed in output, logs, or generated files. | `verify`'s remote fetch path is the only code path that reads a credential: a GitHub token, read from `GITHUB_TOKEN` **only** — deliberately not a CLI flag, since a secret passed as a command-line argument is visible to any other user on the same machine via `ps`/`/proc/<pid>/cmdline` (`lib.rs::run_verify_remote`). It is used solely to build the `Authorization` header for `pcu-release-assets`' REST/GraphQL calls (`remote::PcuAssetSource`), held in a `String` field for the duration of one CLI invocation, never written to a file or generated output, and never passed to `tracing::*!` (the module's own log lines name the tag/version/asset, not the token). No other code path reads any credential. Satisfies R2. |
 | **T4** | **Supply-chain compromise** — a malicious or vulnerable dependency of jci-audit itself. | `Cargo.lock` is committed; `cargo-audit` and `cargo-deny` (advisories, bans, licenses, sources) run in this project's own CI; `deny.toml` is the single source of truth for both advisory ignores and license policy (`sync`); Renovate keeps dependencies current; sources are restricted to crates.io. Satisfies R5. |
 | **T5** | **Man-in-the-middle on advisory-db network operations.** | The advisory-db clone (managed by `cargo-deny`, not jci-audit's own code) goes over HTTPS with TLS certificate verification enabled by default. |
-| **T6** | **A stale or forged release record** — claiming a release passed validation when it did not, or when the environment has since drifted. | `jci-audit verify` independently re-derives all three recorded inputs from a real checkout — the dependency-set digest, the `deny.toml` policy digest (and, since schema 4, the `about.toml` policy digest), and the advisory-db commit — and re-runs `cargo-deny --offline` against that pinned commit, rather than trusting the record's stored verdict at face value. The record itself is not currently signed (see T3) — its integrity today rests on the CI pipeline that produced it, not on a cryptographic attestation; [#75](https://github.com/jerus-org/jci-audit/issues/75) tracks closing that gap. Partially satisfies R3. |
+| **T6** | **A stale or forged release record** — claiming a release passed validation when it did not, or when the environment has since drifted. | Two independent mechanisms, depending on what's available: (1) with a local checkout, `jci-audit verify` re-derives all three recorded inputs — the dependency-set digest, the `deny.toml` policy digest (and, since schema 4, the `about.toml` policy digest), and the advisory-db commit — and re-runs `cargo-deny --offline` against that pinned commit, rather than trusting the record's stored verdict at face value. (2) with no checkout, `verify`'s remote path (`src/remote.rs`) fetches the record from the **published** release only (never a draft — a draft's assets can still be replaced) and checks its minisign signature against the pubkey published in that release's own `Cargo.toml`, so a forged or substituted record fails closed rather than being silently trusted; it does not re-run the gate, and says so plainly (`RemoteVerifyOutcome::unchecked`). Satisfies R3 for (1) fully, (2) for authenticity though not reproduction. |
 | **T7** | **Incorrect derived license scope** — `about.toml` claiming a license is in use (or omitting one) that the crate's actual dependency graph does not (or does) carry. | `license_scope` computes the crate-scoped set from `cargo metadata --all-features`'s real dependency graph (excluding dev-only edges, matching `about.toml`'s own `ignore-dev-dependencies`) and evaluates each reachable package's SPDX expression with the `spdx` crate — the same library `cargo-deny` itself uses internally — rather than copying the workspace-wide allow-list verbatim into every crate. Satisfies R4. |
 | **T8** | **Malformed input causing an incorrect (especially a false-pass) result.** | Tool subprocess output is parsed as structured JSON (`serde_json`) or via `toml_edit`'s typed document model, not by pattern-matching raw text; a missing/absent value is an explicit unrecognised-shape error rather than a default "pass". Every subcommand that shells out runs `preflight::ensure_available` first, so a missing tool fails loudly instead of silently no-opping (R6). |
+| **T9** | **Man-in-the-middle on jci-audit's own new network calls** (`verify`'s remote path: the GitHub API and `raw.githubusercontent.com`). | Both legs go over HTTPS (`reqwest` with `rustls`, TLS certificate verification on by default) — mitigates transport-level tampering the same way T5 does for the advisory-db. The minisign signature check (T6) is a genuinely independent, second layer against **a tampered release asset specifically** — e.g. a compromised upload credential replacing the record after the fact, or a future distribution path (mirror, CDN) that isn't `api.github.com` itself — since the pubkey and the asset are fetched and checked separately. It is **not** a defense against a fully compromised `github.com` origin able to forge both the release asset and the tag's `Cargo.toml` consistently; that scenario is out of scope, the same trust-in-the-host-serving-releases assumption every subcommand already makes for crates.io/the advisory-db. |
 
 ## 5. Secure-design principles applied
 
@@ -90,8 +96,10 @@ The security objectives, in priority order, are:
   program — only its own four named dependency binaries, resolved from `PATH`. This
   is a materially smaller attack surface than a general-purpose "run this and parse
   its output" design.
-- **Least privilege.** The tool holds no ambient credentials, and currently reads
-  none at all — see T3.
+- **Least privilege.** The tool holds no ambient credentials. The one exception —
+  `verify`'s remote fetch path reading a GitHub token — is scoped to exactly what
+  `pcu-release-assets` needs to read a published release's assets; every other
+  code path reads none. See T3.
 - **Defense in depth.** Reproducible release validation, an independent `verify`
   step, and drift-detecting `sync --check`/`prune` are independent controls, not a
   single point of assurance.
@@ -99,8 +107,10 @@ The security objectives, in priority order, are:
   file is a hard, actionable error (`preflight`, `sync --check`), never a silent
   no-op or a default pass.
 - **Economy of mechanism / no home-grown crypto.** SPDX license-expression
-  evaluation is delegated to the `spdx` crate — the same one `cargo-deny` uses. jci-audit's
-  own code currently performs no cryptographic operations of its own — see §7.
+  evaluation is delegated to the `spdx` crate — the same one `cargo-deny` uses.
+  Signature verification is delegated to the `rsign` binary — the same tool the
+  release pipeline uses to sign — not a project-authored crypto implementation.
+  See §7.
 - **Complete mediation of output.** Derived files (`.cargo/audit.toml`, `about.toml`)
   and release records are always subject to review (diff, or `verify` after the
   fact) before or after they take effect.
@@ -120,24 +130,44 @@ All external input is converted to typed, validated models before use:
 - Subprocess arguments are always a typed `&[&str]` list (see the `CommandRunner`
   trait in `src/check.rs`), never built by string concatenation or passed through a
   shell.
+- **GitHub API responses** (`verify`'s remote path) are deserialized into typed
+  structures by `octocrate`/`gql_client`/`serde_json`, not parsed as raw text; the
+  fetched `Cargo.toml` is parsed with `toml_edit` and only a known, fixed key path
+  (`[package.metadata.binstall.signing].pubkey`) is read from it (`remote::extract_pubkey`).
 
 ## 7. Cryptography posture
 
-- **jci-audit's own code currently performs no cryptographic operations** — no
-  signing, no credential handling, no network calls of its own (see T3). The one
-  remaining transport-level touchpoint is TLS on the advisory-db fetch, which is
-  entirely delegated to `cargo-deny`'s own HTTPS client, not code this project
-  writes or controls.
+- **jci-audit's own code performs no cryptographic operations directly.**
+  `verify`'s remote path checks a minisign signature, but does so by shelling
+  out to the `rsign` binary (`remote::verify_remote_with`) — the same tool the
+  release pipeline uses to sign — rather than linking a crypto crate or
+  implementing verification itself. Every other subcommand still performs no
+  cryptographic operation of any kind.
+- **jci-audit's own code now makes network calls, scoped to one path.**
+  `verify`'s remote fetch (`src/remote.rs`) is the only place jci-audit's own
+  code opens a network connection: `pcu-release-assets` (REST + GraphQL, over
+  TLS via its own `reqwest`/`rustls` client) for the record + signature, and a
+  direct `reqwest` HTTPS GET to `raw.githubusercontent.com` for the historical
+  pubkey. Every other subcommand, and `verify` when a local record exists,
+  makes no network calls of jci-audit's own — the only remaining
+  transport-level touchpoint elsewhere is TLS on the advisory-db fetch, which
+  is entirely delegated to `cargo-deny`'s own HTTPS client. See T9.
 - **This does not mean jci-audit *releases* are unsigned.** The crate's own tag,
   commit, and binary tarball are still GPG-signed and SLSA-attested exactly as
   documented in [`docs/RELEASING.md`](RELEASING.md) — that's a property of the
   release *pipeline* (`cargo-release` plus the CI configuration), independent of
-  jci-audit's own runtime code. What changed here is narrower: the
-  release *record* (the JSON file) is no longer signed as part of a git commit —
-  see T3/T6 and [#75](https://github.com/jerus-org/jci-audit/issues/75).
-- **No known-weak algorithms** are selected by the project; the one remaining
-  algorithm choice (SPDX expression evaluation) is the `spdx` crate's, not a
-  project-authored implementation.
+  jci-audit's own runtime code.
+- **The release record is authenticated differently than before, not less.**
+  It is no longer signed as part of a git commit; instead (once
+  [#75](https://github.com/jerus-org/jci-audit/issues/75) phase 2 uploads it)
+  it is distributed as a release asset alongside its own minisign signature,
+  which `verify`'s remote path checks against the pubkey published in that
+  release's `Cargo.toml` — the same trust anchor `docs/RELEASING.md` already
+  documents for the binary tarball. See T6.
+- **No known-weak algorithms** are selected by the project; both algorithm
+  choices in the codebase (SPDX expression evaluation via `spdx`, minisign
+  verification via `rsign`) are delegated to established tools, not
+  project-authored implementations.
 
 ## 8. Residual risk
 

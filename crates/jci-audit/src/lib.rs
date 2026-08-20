@@ -27,10 +27,11 @@ pub mod license_scope;
 pub mod preflight;
 pub mod prune;
 pub mod release;
+pub mod remote;
 pub mod sync;
 pub mod verify;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
 use crate::preflight::Tool;
@@ -343,42 +344,128 @@ fn run_prune(check: bool) -> Result<()> {
     Ok(())
 }
 
+/// Where `verify` should look for a local record, if anywhere — the same
+/// upward search `verify::verify_with` performs internally
+/// (`sync::locate_paths`), so this check and that search never disagree
+/// about which directory is "the project root" from `start`. Checking
+/// `start` itself directly (ignoring parents) would wrongly report no local
+/// record from any subdirectory of the actual project root.
+fn discover_local_record(start: &std::path::Path, version: &str) -> Option<std::path::PathBuf> {
+    let (deny_path, _) = sync::locate_paths(start).ok()?;
+    let root = deny_path.parent()?;
+    let record_path = release::record_path(root, version);
+    record_path.exists().then_some(record_path)
+}
+
 fn run_verify(
     version: &str,
     advisory_db: Option<&std::path::Path>,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
-    preflight::ensure_available(&[Tool::CargoDeny])?;
     let cwd = std::env::current_dir()?;
-    let db_root = advisory_db
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(release::default_db_root);
-    let work = release::work_dir();
-    tracing::info!(version, db = %db_root.display(), "verify");
+    if discover_local_record(&cwd, version).is_some() {
+        preflight::ensure_available(&[Tool::CargoDeny])?;
+        let db_root = advisory_db
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(release::default_db_root);
+        let work = release::work_dir();
+        tracing::info!(version, db = %db_root.display(), "verify");
 
-    let outcome = verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
+        let outcome =
+            verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
+        let _ = std::fs::remove_dir_all(&work);
+        let outcome = outcome?;
+
+        println!(
+            "verifying release {} against advisory-db {}",
+            outcome.version, outcome.db_commit
+        );
+        for note in &outcome.unverified {
+            println!("  not verified: {note}");
+        }
+        for m in &outcome.mismatches {
+            println!("  MISMATCH: {m}");
+        }
+        if outcome.is_ok() {
+            println!("reproduced: the release passes the gate against its recorded snapshot");
+            diagnostics::enforce(&outcome.warnings, output.deny_warnings)
+        } else if !outcome.mismatches.is_empty() {
+            bail!("verification failed: inputs do not match the record")
+        } else {
+            bail!("verification failed: the gate did not reproduce the recorded verdict")
+        }
+    } else {
+        run_verify_remote(version, advisory_db, output)
+    }
+}
+
+/// No local `.security/release-<VERSION>.json` — fetch the record and its
+/// signature from the published GitHub release instead. See [`remote`].
+///
+/// The token is read from `GITHUB_TOKEN` only, never a CLI flag — a secret
+/// passed as a command-line argument is visible to anyone on the same
+/// machine who can read `/proc/<pid>/cmdline` or run `ps`.
+fn run_verify_remote(
+    version: &str,
+    advisory_db: Option<&std::path::Path>,
+    output: &ToolOutput,
+) -> Result<()> {
+    preflight::ensure_available(&[Tool::Rsign])?;
+    // `.ok().filter(...)` rather than a bare `Result` check: an empty-string
+    // value (e.g. an unset pipeline parameter interpolated to "") is `Ok("")`
+    // from `env::var`, not `Err` — treat it the same as absent rather than
+    // sending an empty bearer token and getting an opaque 401 from GitHub.
+    let token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty())
+        .context(
+            "no local release record, and no GITHUB_TOKEN set to fetch one from the \
+             published release",
+        )?;
+    let (owner, repo) = remote::owner_repo_from_repository_url(remote::REPOSITORY_URL)?;
+    let tag = format!("{}{version}", remote::TAG_PREFIX);
+    let source = remote::PcuAssetSource::new(owner, repo, token);
+    let work = release::work_dir();
+    tracing::info!(version, tag, "verify (remote fetch, no local record)");
+
+    let outcome = remote::verify_remote_with(&check::SystemRunner, &source, version, &tag, &work);
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
+    println!("no local record — fetched and verified the signed record for release '{tag}'");
+    println!("  advisory-db commit: {}", outcome.db_commit);
     println!(
-        "verifying release {} against advisory-db {}",
-        outcome.version, outcome.db_commit
+        "  recorded verdict: {}",
+        if outcome.recorded_pass {
+            "passed"
+        } else {
+            "failed"
+        }
     );
-    for note in &outcome.unverified {
-        println!("  not verified: {note}");
+    for note in &outcome.unchecked {
+        println!("  not checked: {note}");
     }
-    for m in &outcome.mismatches {
-        println!("  MISMATCH: {m}");
+    // Neither flag has anything to act on here: this mode never re-runs the
+    // gate, so there is no local advisory-db checkout to point --advisory-db
+    // at, and no live tool output to scan for warnings. Say so rather than
+    // silently accepting a flag that does nothing.
+    if advisory_db.is_some() {
+        println!(
+            "  note: --advisory-db has no effect on this fetch-only path — nothing is re-run \
+             against it"
+        );
     }
-    if outcome.is_ok() {
-        println!("reproduced: the release passes the gate against its recorded snapshot");
-        diagnostics::enforce(&outcome.warnings, output.deny_warnings)
-    } else if !outcome.mismatches.is_empty() {
-        bail!("verification failed: inputs do not match the record")
-    } else {
-        bail!("verification failed: the gate did not reproduce the recorded verdict")
+    if output.deny_warnings {
+        println!(
+            "  note: --deny-warnings has no effect on this fetch-only path — there is no live \
+             tool output to scan for warnings"
+        );
     }
+    if !outcome.recorded_pass {
+        bail!("the signed record attests that release '{tag}' failed the gate");
+    }
+    Ok(())
 }
 
 fn run_init(force: bool) -> Result<()> {
@@ -392,6 +479,43 @@ fn run_init(force: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write(path: &std::path::Path, contents: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn discover_local_record_finds_it_from_a_subdirectory() {
+        // verify::verify_with resolves its root by walking UP from `start` to
+        // find deny.toml (sync::locate_paths) — this check must use the same
+        // search, or a run from e.g. `crates/jci-audit/` would wrongly decide
+        // no local record exists and fall back to the network.
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        write(&repo.path().join(".security/release-1.2.0.json"), "{}");
+        let subdir = repo.path().join("crates/jci-audit");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let found = discover_local_record(&subdir, "1.2.0");
+        assert_eq!(
+            found,
+            Some(repo.path().join(".security/release-1.2.0.json"))
+        );
+    }
+
+    #[test]
+    fn discover_local_record_is_none_with_no_deny_toml_anywhere_up() {
+        let bare = tempfile::tempdir().unwrap();
+        assert_eq!(discover_local_record(bare.path(), "1.2.0"), None);
+    }
+
+    #[test]
+    fn discover_local_record_is_none_when_record_is_missing() {
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        assert_eq!(discover_local_record(repo.path(), "9.9.9"), None);
+    }
 
     #[test]
     fn parse_check_defaults_manifest_to_cwd() {

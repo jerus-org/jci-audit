@@ -32,6 +32,10 @@ pub enum Tool {
     /// Bare `cargo`, needed for `cargo metadata`. Not `cargo binstall`-able,
     /// so its install guidance differs from the other three.
     Cargo,
+    /// `rsign` — minisign signature verification (`rsign2` crate). Only
+    /// needed by `verify`'s remote fetch path, to check a downloaded release
+    /// record's signature.
+    Rsign,
 }
 
 impl Tool {
@@ -42,6 +46,7 @@ impl Tool {
             Tool::CargoDeny => "cargo-deny",
             Tool::CargoAbout => "cargo-about",
             Tool::Cargo => "cargo",
+            Tool::Rsign => "rsign",
         }
     }
 
@@ -52,6 +57,7 @@ impl Tool {
             Tool::CargoDeny => "cargo deny",
             Tool::CargoAbout => "cargo about",
             Tool::Cargo => "cargo",
+            Tool::Rsign => "rsign",
         }
     }
 
@@ -62,6 +68,9 @@ impl Tool {
                  install one via rustup (https://rustup.rs), or use an image \
                  that already has one"
                 .to_string(),
+            // The binary is `rsign`, but the crate that provides it is `rsign2`
+            // — the generic phrasing below would name a crate that doesn't exist.
+            Tool::Rsign => "provided by the `rsign2` crate — `cargo binstall rsign2`".to_string(),
             _ => format!(
                 "provided by the `{}` crate — `cargo binstall {}`",
                 self.binary(),
@@ -152,6 +161,20 @@ mod tests {
     fn cargo_about_is_a_probeable_tool() {
         assert_eq!(Tool::CargoAbout.invocation(), "cargo about");
         assert!(Tool::CargoAbout.install_hint().contains("cargo-about"));
+    }
+
+    #[test]
+    fn rsign_reports_the_rsign2_crate_not_its_own_binary_name() {
+        // The binary is `rsign` but the crate that provides it is `rsign2` —
+        // the generic "provided by the `{binary}` crate" phrasing would name
+        // a crate that doesn't exist.
+        assert_eq!(Tool::Rsign.invocation(), "rsign");
+        let hint = Tool::Rsign.install_hint();
+        assert!(hint.contains("rsign2"), "got: {hint}");
+        assert!(
+            !hint.contains("`rsign`"),
+            "must not suggest the nonexistent `rsign` crate: {hint}"
+        );
     }
 
     #[test]

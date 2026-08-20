@@ -84,7 +84,10 @@ pub fn load_record(path: &Path) -> Result<Value> {
 }
 
 /// A required string field, erroring rather than silently verifying nothing.
-fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
+///
+/// Shared with [`crate::remote`], which re-verifies the same record schema
+/// from a fetched copy rather than a checked-out one.
+pub(crate) fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
     let mut cur = record;
     for key in path {
         cur = cur
