@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - BREAKING: stop committing the release record to git(pr [#77])
+- verify's no-checkout remote fetch path(pr [#87])
 
 ### Changed
 
@@ -206,6 +207,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#83]: https://github.com/jerus-org/jci-audit/pull/83
 [#84]: https://github.com/jerus-org/jci-audit/pull/84
 [#89]: https://github.com/jerus-org/jci-audit/pull/89
+[#87]: https://github.com/jerus-org/jci-audit/pull/87
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
