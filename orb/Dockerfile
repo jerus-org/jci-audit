@@ -27,7 +27,8 @@ RUN cargo install cargo-binstall --locked \
     && cargo binstall --no-confirm \
     cargo-about \
     cargo-audit \
-    cargo-deny
+    cargo-deny \
+    rsign2
 
 FROM rust:1-slim-trixie@sha256:8e8cf8f7fd54a2d23d5a743b3a03f56e26b6c774276c33fa0595111704ebb15c
 RUN apt-get update \
@@ -42,5 +43,6 @@ COPY --from=builder /usr/local/cargo/bin/jci-audit /usr/local/bin/jci-audit
 COPY --from=builder /usr/local/cargo/bin/cargo-about /usr/local/bin/cargo-about
 COPY --from=builder /usr/local/cargo/bin/cargo-audit /usr/local/bin/cargo-audit
 COPY --from=builder /usr/local/cargo/bin/cargo-deny /usr/local/bin/cargo-deny
+COPY --from=builder /usr/local/cargo/bin/rsign /usr/local/bin/rsign
 USER circleci
 WORKDIR /home/circleci/project
