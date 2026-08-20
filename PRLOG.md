@@ -30,6 +30,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency toolkit to v7.2.0(pr [#82])
 - deps: update dependency gen-circleci-orb to v0.1.7(pr [#83])
 - wire rsign into orb executor container(pr [#89])
+- deps: lock file maintenance(pr [#85])
 
 ## [0.0.6] - 2026-08-13
 
@@ -208,6 +209,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#84]: https://github.com/jerus-org/jci-audit/pull/84
 [#89]: https://github.com/jerus-org/jci-audit/pull/89
 [#87]: https://github.com/jerus-org/jci-audit/pull/87
+[#85]: https://github.com/jerus-org/jci-audit/pull/85
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
