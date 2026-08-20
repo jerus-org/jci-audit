@@ -28,6 +28,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update jerusdp/ci-rust:rolling-6mo docker digest to 1fd59ba(pr [#81])
 - deps: update dependency toolkit to v7.2.0(pr [#82])
 - deps: update dependency gen-circleci-orb to v0.1.7(pr [#83])
+- wire rsign into orb executor container(pr [#89])
 
 ## [0.0.6] - 2026-08-13
 
@@ -204,6 +205,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#82]: https://github.com/jerus-org/jci-audit/pull/82
 [#83]: https://github.com/jerus-org/jci-audit/pull/83
 [#84]: https://github.com/jerus-org/jci-audit/pull/84
+[#89]: https://github.com/jerus-org/jci-audit/pull/89
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5

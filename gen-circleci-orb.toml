@@ -7,8 +7,12 @@ source_url = "https://github.com/jerus-org/jci-audit"
 # jci-audit orchestrates these tools, so its executor image must carry them.
 # Installed into the generated Dockerfile via cargo-binstall (gen-circleci-orb
 # >= 0.1.3), keeping the executor self-contained on an official public Rust base
-# — no dependency on the internal ci-container image.
-cargo_tools = ["cargo-audit", "cargo-deny", "cargo-about"]
+# — no dependency on the internal ci-container image. rsign2's binary is named
+# `rsign`, not `rsign2` — the "crate:binary" alias syntax needs gen-circleci-orb
+# >= 0.1.8 (#319). Pre-provisions rsign for #88's `verify` remote-fetch path
+# (minisign signature check on a fetched release record); the container gains
+# the binary here, the call to it lands separately when #88 is implemented.
+cargo_tools = ["cargo-audit", "cargo-deny", "cargo-about", "rsign2:rsign"]
 # Hand-authored orb files the generator does not produce. Without this the prune
 # step would delete them as orphans on the next `generate`.
 custom_files = ["src/examples/record_release.yml"]
