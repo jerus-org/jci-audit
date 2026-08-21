@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-08-13._
+_Last updated: 2026-08-21._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -36,6 +36,11 @@ The original build phased as follows:
 
 ## Near term (before 1.0 preview / `0.1.0`)
 
+- **[#90 — publish as bin-only; no importable library.](https://github.com/jerus-org/jci-audit/issues/90)**
+  Nothing depends on `jci_audit` as a library today; the lib/bin split is an internal
+  testability artifact, not an intended public API. Restructure so the published crate carries
+  no `[lib]` target, then yank 0.0.1–0.0.7 so new dependents can't resolve the accidentally-
+  importable versions. Lock this in before `0.1.0` sets a publish-shape expectation.
 - **Project hardening / OpenSSF Best Practices badge.** Complete the governance, security, and
   quality documentation and achieve (and display) at least the Silver badge.
 - **License policy scoped per crate.** ✅ Done — `about.toml`'s `accepted` list is derived from
