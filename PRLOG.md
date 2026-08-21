@@ -19,6 +19,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - docs-add RELEASING.md release verification guide(pr [#71])
 - docs-add OpenSSF Best Practices evidence sheet(pr [#72])
 - ci-enable draft-first GitHub releases(pr [#84])
+- docs-add user guides; fix release --version flag bug(pr [#73])
 
 ### Fixed
 
@@ -210,6 +211,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#89]: https://github.com/jerus-org/jci-audit/pull/89
 [#87]: https://github.com/jerus-org/jci-audit/pull/87
 [#85]: https://github.com/jerus-org/jci-audit/pull/85
+[#73]: https://github.com/jerus-org/jci-audit/pull/73
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
