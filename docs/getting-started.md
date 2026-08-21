@@ -98,6 +98,7 @@ what it compares and what a mismatch means.
 
 - [User guide](user-guide.md) — every subcommand in depth: flags, exit codes, what each does
   under the hood.
-- [Configuration guide](configuration-guide.md) — `deny.toml` and `about.toml` field reference.
+- [Configuration guide](configuration-guide.md) — the `deny.toml`/`about.toml` fields
+  jci-audit interacts with.
 - [Advanced configuration](advanced-configuration.md) — the release record's current storage
   model, advisory-db overrides, and troubleshooting `verify` mismatches.

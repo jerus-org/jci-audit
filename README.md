@@ -55,7 +55,7 @@ just licenses    # regenerate THIRD-PARTY-LICENSES.md (cargo-about)
 | [crate README](crates/jci-audit/README.md) | Full usage guide, CLI reference, runtime prerequisites |
 | [docs/getting-started.md](docs/getting-started.md) | First-run walkthrough |
 | [docs/user-guide.md](docs/user-guide.md) | Every subcommand in depth |
-| [docs/configuration-guide.md](docs/configuration-guide.md) / [docs/advanced-configuration.md](docs/advanced-configuration.md) | `deny.toml`/`about.toml` reference; CI signing, advisory-db overrides, troubleshooting |
+| [docs/configuration-guide.md](docs/configuration-guide.md) / [docs/advanced-configuration.md](docs/advanced-configuration.md) | The `deny.toml`/`about.toml` fields jci-audit interacts with; release record storage, advisory-db overrides, troubleshooting |
 | [docs/architecture.md](docs/architecture.md) | High-level architecture |
 | [docs/design.md](docs/design.md) | Detailed design document |
 | [docs/assurance-case.md](docs/assurance-case.md) | Security assurance case & threat model |

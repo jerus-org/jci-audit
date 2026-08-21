@@ -8,8 +8,9 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 Less common configuration: how the release record is stored today, overriding the
 advisory-db location, and troubleshooting a `verify` mismatch. See
-[configuration-guide.md](configuration-guide.md) for `deny.toml`/`about.toml` fields, and
-[user-guide.md](user-guide.md) for every subcommand's basic flags.
+[configuration-guide.md](configuration-guide.md) for the subset of `deny.toml`/`about.toml`
+fields jci-audit interacts with, and [user-guide.md](user-guide.md) for every subcommand's
+basic flags.
 
 ## The release record is local-only, for now
 

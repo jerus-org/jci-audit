@@ -8,8 +8,12 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 jci-audit has no configuration file of its own — it reads the same `deny.toml` you'd hand
 `cargo-deny` directly, and treats it as the **single source of truth** for both advisory
-ignores and license policy. This guide covers `deny.toml`'s fields, the two files `jci-audit
-sync` derives from it, and what stays hand-authored. See
+ignores and license policy. This guide covers only the **subset of `deny.toml`/`about.toml`
+fields jci-audit itself reads, writes, or derives from** — not a full reference for either
+file. For every other field, consult the tools' own documentation:
+[cargo-deny](https://embarkstudios.github.io/cargo-deny/) and
+[cargo-about](https://embarkstudios.github.io/cargo-about/). This guide also covers the two
+files `jci-audit sync` derives from `deny.toml`, and what stays hand-authored. See
 [advanced-configuration.md](advanced-configuration.md) for the release record's storage model
 and CI-specific settings.
 

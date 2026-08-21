@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 In-depth reference for every jci-audit subcommand. See [getting-started.md](getting-started.md)
 for a first-run walkthrough, and [configuration-guide.md](configuration-guide.md) for the
-`deny.toml`/`about.toml` field reference.
+`deny.toml`/`about.toml` fields jci-audit interacts with.
 
 All commands print `0` on success and `1` (with an error message) on failure — the standard
 `anyhow`-backed exit convention. `-v`/`-q` (repeatable) raise or lower log verbosity; they're
