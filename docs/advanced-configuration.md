@@ -6,53 +6,25 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Advanced configuration
 
-Less common configuration: committing and pushing the release record in CI, overriding the
+Less common configuration: how the release record is stored today, overriding the
 advisory-db location, and troubleshooting a `verify` mismatch. See
 [configuration-guide.md](configuration-guide.md) for `deny.toml`/`about.toml` fields, and
 [user-guide.md](user-guide.md) for every subcommand's basic flags.
 
-## Committing and pushing the release record
+## The release record is local-only, for now
 
-`jci-audit release --commit` writes `.security/release-<VERSION>.json` **before**
-`cargo-release` runs — `cargo-release` refuses to start on a dirty tree, so the record can't
-just be left for it to pick up. `--push` (requires `--commit`) pushes that commit.
+`jci-audit release` writes `.security/release-<VERSION>.json` to the working directory and
+does nothing else with it — no git commit, no push, no signing. Earlier versions committed and
+GPG-signed the record via [`pcu`](https://crates.io/crates/pcu) (the `--commit`/`--push`/
+`--gpg-*-env`/`--sign-key-env` flags this section used to document); that path is gone
+([jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) phase 1) — those
+flags are now rejected by clap rather than silently accepted as no-ops. `.security/*.json` is
+`.gitignore`'d, so `cargo-release`'s dirty-tree check is unaffected by the write.
 
-Signing and pushing go through [`pcu`](https://crates.io/crates/pcu) rather than driving
-`git`/GPG directly, since a protected branch accepts only a credential its rules permit to
-bypass them — a deploy key cannot, so a plain `git push` is not an option in CI. Set:
-
-```bash
-# GitHub App credentials — the credential pcu uses to bypass branch protection.
-# A personal access token (GITHUB_TOKEN) is a fallback with no bypass authority.
-export PCU_APP_ID=...
-export PCU_PRIVATE_KEY=...
-
-# Signing material — only *names* are configurable via CLI flags below; these
-# are the defaults if you don't override them.
-export GPG_KEY=...        # base64-encoded signing key
-export GPG_TRUST=...      # GPG ownertrust
-export GIT_USER_NAME=...
-export GIT_USER_EMAIL=...
-export GPG_SIGN_KEY=...   # the signing key's id
-```
-
-Every one of `--gpg-key-env`, `--gpg-trust-env`, `--user-name-env`, `--user-email-env`,
-`--sign-key-env` lets you point at **differently-named** environment variables instead — useful
-if your CI already has a naming convention. `read_identity` requires the *full* identity
-(name, email, sign key) to be present, or it's treated as absent entirely; a partial identity is
-never silently attributed to whatever git happens to have configured locally.
-
-```bash
-jci-audit release --release-version 1.2.0 --commit --push \
-  --gpg-key-env BOT_GPG_KEY \
-  --gpg-trust-env BOT_TRUST \
-  --user-name-env BOT_USER_NAME \
-  --user-email-env BOT_USER_EMAIL \
-  --sign-key-env BOT_SIGN_KEY
-```
-
-Without `PCU_APP_ID`/`PCU_PRIVATE_KEY` (or `GITHUB_TOKEN` as a fallback with no bypass
-authority), `--push` will fail to land the commit on a protected branch.
+Distributing the record as a signed GitHub release asset (attached to the draft release before
+publish, verified via `rsign` in `verify`'s remote-fetch path) is tracked as #75's remaining
+phase and not yet shipped — see [`.security/README.md`](../.security/README.md) for the current
+state and [design.md §3.2](design.md#32-release-gate) for the write-time flow.
 
 ## Overriding the advisory-db location
 

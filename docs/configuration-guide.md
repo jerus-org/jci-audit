@@ -10,8 +10,8 @@ jci-audit has no configuration file of its own — it reads the same `deny.toml`
 `cargo-deny` directly, and treats it as the **single source of truth** for both advisory
 ignores and license policy. This guide covers `deny.toml`'s fields, the two files `jci-audit
 sync` derives from it, and what stays hand-authored. See
-[advanced-configuration.md](advanced-configuration.md) for the `release --commit --push`
-signing flags and CI-specific settings.
+[advanced-configuration.md](advanced-configuration.md) for the release record's storage model
+and CI-specific settings.
 
 ## `deny.toml`
 

@@ -48,40 +48,28 @@ jci-audit check --deny-warnings              # treat warnings as failures too
 jci-audit release [OPTIONS]
 
 Options:
-      --release-version <VERSION>      The release version being validated (e.g. "1.2.0")
-      --version-env <VERSION_ENV>      Env var NAME holding the version when --release-version is not given [default: SEMVER]
-      --advisory-db <ADVISORY_DB>      Advisory-db root; cargo-deny's checkout is discovered/refreshed beneath it [default: ~/.cargo/advisory-db]
-      --commit                         Commit the record
-      --push                           Push the commit (requires --commit)
-      --gpg-key-env <GPG_KEY_ENV>      Env var NAME holding the base64 GPG signing key [default: GPG_KEY]
-      --gpg-trust-env <GPG_TRUST_ENV>  Env var NAME holding the GPG ownertrust [default: GPG_TRUST]
-      --user-name-env <USER_NAME_ENV>  Env var NAME holding the committer name [default: GIT_USER_NAME]
-      --user-email-env <USER_EMAIL_ENV> Env var NAME holding the committer email [default: GIT_USER_EMAIL]
-      --sign-key-env <SIGN_KEY_ENV>    Env var NAME holding the GPG signing key id [default: GPG_SIGN_KEY]
-      --deny-warnings                  Fail if the tools report any warning
+      --release-version <VERSION>  The release version being validated (e.g. "1.2.0")
+      --version-env <VERSION_ENV>  Env var NAME holding the version when --release-version is not given [default: SEMVER]
+      --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny's checkout lives beneath it [default: ~/.cargo/advisory-db]
+      --deny-warnings               Fail if the tools report any warning
 ```
 
 The release gate. Locks `cargo-deny` to a **pinned advisory-db commit** and runs it offline for
 reproducibility; `cargo-audit` always runs against the **live** database (PRs already gate on
 it continuously via `check`), so at release time it only runs again as a non-blocking currency
-check, not a second pinned/offline pass. Writes `.security/release-<VERSION>.json` — see
-[design.md §5](design.md#5-reproducibility-the-release-record) for exactly what that record
-contains and why.
+check, not a second pinned/offline pass. Writes `.security/release-<VERSION>.json` to the working
+directory — see [design.md §5](design.md#5-reproducibility-the-release-record) for exactly what
+that record contains and why, and
+[advanced-configuration.md](advanced-configuration.md#the-release-record-is-local-only-for-now)
+for the record's current (local-only, not yet distributed) storage model.
 
 The version comes from `--release-version`, or (for CI pipelines that compute the version at
 runtime, e.g. via `nextsv`) from the environment variable named by `--version-env` (default
 `SEMVER`) when `--release-version` is omitted.
 
 ```bash
-jci-audit release --release-version 1.2.0                 # local: just validate
-jci-audit release --release-version 1.2.0 --commit        # also commit the record
-jci-audit release --release-version 1.2.0 --commit --push # commit and push it
+jci-audit release --release-version 1.2.0   # validate and write the record locally
 ```
-
-`--commit`/`--push` and the signing flags are documented in depth in
-[advanced-configuration.md](advanced-configuration.md#committing-and-pushing-the-release-record) —
-they exist for CI pipelines where the record has to reach the branch before `cargo-release` runs
-(it refuses to start on a dirty tree).
 
 ## `sync`
 

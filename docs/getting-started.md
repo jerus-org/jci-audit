@@ -99,5 +99,5 @@ what it compares and what a mismatch means.
 - [User guide](user-guide.md) — every subcommand in depth: flags, exit codes, what each does
   under the hood.
 - [Configuration guide](configuration-guide.md) — `deny.toml` and `about.toml` field reference.
-- [Advanced configuration](advanced-configuration.md) — CI wiring for `release --commit --push`,
-  advisory-db overrides, and troubleshooting `verify` mismatches.
+- [Advanced configuration](advanced-configuration.md) — the release record's current storage
+  model, advisory-db overrides, and troubleshooting `verify` mismatches.
