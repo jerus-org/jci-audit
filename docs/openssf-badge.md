@@ -28,7 +28,7 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | license_location | Met | `LICENSE-MIT` / `LICENSE-APACHE` at repo root **and** crate dir, plus `LICENSES/` (SPDX REUSE convention — the auto-detector's `license_location` check does not recognise the Rust-convention `LICENSE-APACHE`/`LICENSE-MIT` naming, but does recognise a top-level `LICENSES/` dir) |
 | documentation_basics | Met | `README.md`, `docs/architecture.md`, `docs/design.md` |
 | documentation_interface | Met | Crate README Usage section (all six subcommands) + `--help` |
-| sites_https | Met | GitHub, crates.io, docs.rs all serve over HTTPS/TLS |
+| sites_https | Met | GitHub and crates.io both serve over HTTPS/TLS (no docs.rs page — jci-audit is bin-only, [#90](https://github.com/jerus-org/jci-audit/issues/90)) |
 | discussion | Met | GitHub Issues — searchable, URL-addressable, open participation |
 | english | Met | All documentation is in English |
 | maintained | Met | Active development (recent commits, releases, Renovate) |

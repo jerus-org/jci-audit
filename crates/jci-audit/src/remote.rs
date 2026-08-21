@@ -27,7 +27,7 @@ use crate::verify::field;
 /// Where the remote fetch path gets its bytes from — a published release's
 /// named assets, and the raw `Cargo.toml` at that release's tag. A trait so
 /// [`verify_remote_with`] is testable without real network access.
-pub trait ReleaseAssetSource {
+pub(crate) trait ReleaseAssetSource {
     /// Fetch a named asset from the **published** release for `tag`.
     fn fetch_asset(&self, tag: &str, asset_name: &str) -> Result<Vec<u8>>;
     /// Fetch the raw `crates/jci-audit/Cargo.toml` as it stood at `tag`, to
@@ -37,16 +37,16 @@ pub trait ReleaseAssetSource {
 
 /// What a remote (no-checkout) verification concluded.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RemoteVerifyOutcome {
+pub(crate) struct RemoteVerifyOutcome {
     /// The release version verified.
-    pub version: String,
+    pub(crate) version: String,
     /// The advisory-db commit the record attests it was locked to.
-    pub db_commit: String,
+    pub(crate) db_commit: String,
     /// The record's own attested verdict — not re-derived, only authenticated.
-    pub recorded_pass: bool,
+    pub(crate) recorded_pass: bool,
     /// What this mode does not check, so an auditor sees exactly the limits
     /// of a signature-only verification rather than an implied full pass.
-    pub unchecked: Vec<String>,
+    pub(crate) unchecked: Vec<String>,
 }
 
 /// A required boolean field, erroring rather than silently defaulting to a
@@ -68,7 +68,7 @@ fn bool_field(record: &Value, path: &[&str]) -> Result<bool> {
 /// Extract `[package.metadata.binstall.signing].pubkey` from a crate
 /// manifest's text. This is where the release pipeline publishes each
 /// release's ephemeral minisign public key (see `docs/RELEASING.md`).
-pub fn extract_pubkey(cargo_toml: &str) -> Result<String> {
+pub(crate) fn extract_pubkey(cargo_toml: &str) -> Result<String> {
     let doc: toml_edit::DocumentMut = cargo_toml.parse().context("failed to parse Cargo.toml")?;
     doc.get("package")
         .and_then(|p| p.get("metadata"))
@@ -85,7 +85,7 @@ pub fn extract_pubkey(cargo_toml: &str) -> Result<String> {
 
 /// Re-verify a published release's record from its release assets alone, no
 /// checkout required. `tag` is the full release tag (e.g. `jci-audit-v1.2.0`).
-pub fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
+pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     runner: &R,
     source: &S,
     version: &str,
@@ -152,13 +152,13 @@ pub fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
 /// The crate's own repository, e.g. `https://github.com/jerus-org/jci-audit`
 /// — `CARGO_PKG_REPOSITORY` at compile time, so this only ever tracks the
 /// real value in `Cargo.toml`, never a value that can drift from it.
-pub const REPOSITORY_URL: &str = env!("CARGO_PKG_REPOSITORY");
+pub(crate) const REPOSITORY_URL: &str = env!("CARGO_PKG_REPOSITORY");
 
 /// This repo's release tag prefix — fixed, like the rest of this crate's
 /// hardcoded self-knowledge (`release::DEFAULT_VERSION_ENV`, the
 /// `.security/release-<VERSION>.json` path). `verify` only ever verifies
 /// jci-audit's own releases, not an arbitrary repo's.
-pub const TAG_PREFIX: &str = "jci-audit-v";
+pub(crate) const TAG_PREFIX: &str = "jci-audit-v";
 
 /// Where the release pipeline publishes this crate's manifest, relative to
 /// the repo root — this repo's workspace layout, not a general convention.
@@ -169,7 +169,7 @@ const MANIFEST_PATH: &str = "crates/jci-audit/Cargo.toml";
 /// Accepts the exact form `CARGO_PKG_REPOSITORY` publishes
 /// (`https://github.com/<owner>/<repo>`), with or without a trailing `.git`
 /// or slash.
-pub fn owner_repo_from_repository_url(url: &str) -> Result<(String, String)> {
+pub(crate) fn owner_repo_from_repository_url(url: &str) -> Result<(String, String)> {
     let path = url
         .trim_end_matches('/')
         .trim_end_matches(".git")
@@ -193,7 +193,7 @@ fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
 /// record + signature and a plain HTTPS fetch for the raw `Cargo.toml` at
 /// the release tag — `pcu-release-assets` only fetches release *assets*,
 /// not arbitrary repo file contents.
-pub struct PcuAssetSource {
+pub(crate) struct PcuAssetSource {
     client: pcu_release_assets::ReleaseAssetClient,
     owner: String,
     repo: String,
@@ -210,7 +210,7 @@ pub struct PcuAssetSource {
 const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 impl PcuAssetSource {
-    pub fn new(
+    pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
         github_token: impl Into<String>,

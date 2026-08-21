@@ -7,14 +7,14 @@
 //! what needs attention.
 
 /// A warning code and how many times it occurred.
-pub type WarningCount = (String, usize);
+pub(crate) type WarningCount = (String, usize);
 
 /// Count warnings by code, most frequent first then alphabetical.
 ///
 /// Matches only the `warning[code]:` diagnostic prefix at the start of a line:
 /// tree lines and prose mentioning a warning must not inflate the total, or the
 /// summary is not worth printing.
-pub fn count_warnings(stderr: &str) -> Vec<WarningCount> {
+pub(crate) fn count_warnings(stderr: &str) -> Vec<WarningCount> {
     let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
     for line in stderr.lines() {
         if let Some(code) = warning_code(&strip_ansi(line)) {
@@ -27,12 +27,12 @@ pub fn count_warnings(stderr: &str) -> Vec<WarningCount> {
 }
 
 /// Total warnings across all codes.
-pub fn total(counts: &[WarningCount]) -> usize {
+pub(crate) fn total(counts: &[WarningCount]) -> usize {
     counts.iter().map(|(_, n)| n).sum()
 }
 
 /// One line naming the total and the codes, or `None` when there is nothing to say.
-pub fn render_summary(counts: &[WarningCount]) -> Option<String> {
+pub(crate) fn render_summary(counts: &[WarningCount]) -> Option<String> {
     if counts.is_empty() {
         return None;
     }
@@ -49,7 +49,7 @@ pub fn render_summary(counts: &[WarningCount]) -> Option<String> {
 
 /// How much of a tool's output to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Detail {
+pub(crate) enum Detail {
     /// Counts by code.
     Summary,
     /// Each warning's headline, without its dependency tree.
@@ -63,7 +63,7 @@ impl Detail {
     ///
     /// The middle step is the useful one: which warnings, without the thousands
     /// of lines of tree that justify them.
-    pub fn from_level(level: tracing::level_filters::LevelFilter) -> Self {
+    pub(crate) fn from_level(level: tracing::level_filters::LevelFilter) -> Self {
         use tracing::level_filters::LevelFilter as L;
         if level >= L::TRACE {
             Detail::Full
@@ -76,7 +76,7 @@ impl Detail {
 }
 
 /// The headline of each warning, without the dependency tree beneath it.
-pub fn warning_lines(stderr: &str) -> Vec<String> {
+pub(crate) fn warning_lines(stderr: &str) -> Vec<String> {
     stderr
         .lines()
         .map(strip_ansi)
@@ -89,7 +89,7 @@ pub fn warning_lines(stderr: &str) -> Vec<String> {
 /// The tool's stdout is always shown — it is the one-line verdict. Its stderr
 /// carries the warnings and a dependency tree for each, so how much of it appears
 /// depends on `detail`.
-pub fn emit(stdout: &str, stderr: &str, detail: Detail) -> Vec<WarningCount> {
+pub(crate) fn emit(stdout: &str, stderr: &str, detail: Detail) -> Vec<WarningCount> {
     if !stdout.trim().is_empty() {
         print!("{stdout}");
     }
@@ -109,7 +109,7 @@ pub fn emit(stdout: &str, stderr: &str, detail: Detail) -> Vec<WarningCount> {
 }
 
 /// Fail when warnings are present and the caller asked for that.
-pub fn enforce(counts: &[WarningCount], deny_warnings: bool) -> anyhow::Result<()> {
+pub(crate) fn enforce(counts: &[WarningCount], deny_warnings: bool) -> anyhow::Result<()> {
     if deny_warnings && !counts.is_empty() {
         anyhow::bail!(
             "{} warning(s) reported and --deny-warnings is set",

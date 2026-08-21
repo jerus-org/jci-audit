@@ -14,7 +14,7 @@ use anyhow::{Context, Result, bail};
 use crate::sync::{extract_ignores, render_audit_toml};
 
 /// The standard Style-B `deny.toml` written by `jci-audit init`.
-pub const DENY_TEMPLATE: &str = r#"[advisories]
+pub(crate) const DENY_TEMPLATE: &str = r#"[advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 # Vulnerabilities are always denied by cargo-deny. unmaintained/unsound are
@@ -62,7 +62,7 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 /// Write the `deny.toml` template and derived `.cargo/audit.toml` into `dir`.
 /// Refuses to overwrite an existing `deny.toml` unless `force` is set.
-pub fn init_at(dir: &Path, force: bool) -> Result<()> {
+pub(crate) fn init_at(dir: &Path, force: bool) -> Result<()> {
     let deny_path = dir.join("deny.toml");
     if deny_path.exists() && !force {
         bail!(

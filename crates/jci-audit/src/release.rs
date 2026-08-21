@@ -38,29 +38,29 @@ use crate::{
 };
 
 /// Schema version of the emitted record, so consumers can evolve with it.
-pub const RECORD_SCHEMA_VERSION: u64 = 4;
+pub(crate) const RECORD_SCHEMA_VERSION: u64 = 4;
 
 /// The cargo-deny checks the release gate enforces.
-pub const DENY_CHECKS: &[&str] = &["advisories", "bans", "licenses", "sources"];
+pub(crate) const DENY_CHECKS: &[&str] = &["advisories", "bans", "licenses", "sources"];
 
 /// Outcome of a release validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReleaseOutcome {
+pub(crate) struct ReleaseOutcome {
     /// Where the record was written.
-    pub record_path: PathBuf,
+    pub(crate) record_path: PathBuf,
     /// Warnings the gate reported, for `--deny-warnings`.
-    pub warnings: Vec<crate::diagnostics::WarningCount>,
+    pub(crate) warnings: Vec<crate::diagnostics::WarningCount>,
     /// The advisory-db commit the release is locked to.
-    pub db_commit: String,
+    pub(crate) db_commit: String,
     /// Whether the blocking cargo-deny gate passed.
-    pub deny_passed: bool,
+    pub(crate) deny_passed: bool,
     /// Advisory ids the live (non-blocking) audit reported.
-    pub live_findings: Vec<String>,
+    pub(crate) live_findings: Vec<String>,
 }
 
 /// Override `[advisories].db-path` in a `deny.toml`, leaving every other setting
 /// untouched. Creates the `[advisories]` table if the config lacks one.
-pub fn with_db_path(deny_toml: &str, db_path: &Path) -> Result<String> {
+pub(crate) fn with_db_path(deny_toml: &str, db_path: &Path) -> Result<String> {
     let mut doc = deny_toml
         .parse::<DocumentMut>()
         .context("failed to parse deny.toml")?;
@@ -75,7 +75,7 @@ pub fn with_db_path(deny_toml: &str, db_path: &Path) -> Result<String> {
 
 /// Hex-encoded SHA-256 of the lockfile bytes — records exactly which dependency
 /// set was validated.
-pub fn lockfile_digest(bytes: &[u8]) -> String {
+pub(crate) fn lockfile_digest(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hasher
@@ -100,7 +100,7 @@ pub fn lockfile_digest(bytes: &[u8]) -> String {
 /// The digest therefore states exactly what it means: the third-party
 /// dependency set the gate validated. Entries are sorted, so it does not depend
 /// on lockfile ordering.
-pub fn dependency_set_digest(lockfile_toml: &str) -> Result<String> {
+pub(crate) fn dependency_set_digest(lockfile_toml: &str) -> Result<String> {
     let doc = lockfile_toml
         .parse::<DocumentMut>()
         .context("failed to parse Cargo.lock")?;
@@ -135,7 +135,7 @@ pub fn dependency_set_digest(lockfile_toml: &str) -> Result<String> {
 /// cargo-deny nests it as `advisory-db-<url-hash>`; the hash is undocumented, so
 /// the single matching directory is located rather than derived. Errors when
 /// none or several exist, since neither can be recorded unambiguously.
-pub fn discover_db_checkout(root: &Path) -> Result<PathBuf> {
+pub(crate) fn discover_db_checkout(root: &Path) -> Result<PathBuf> {
     let entries = std::fs::read_dir(root)
         .with_context(|| format!("cannot read advisory-db root '{}'", root.display()))?;
     let mut found: Vec<PathBuf> = entries
@@ -166,7 +166,7 @@ pub fn discover_db_checkout(root: &Path) -> Result<PathBuf> {
 }
 
 /// Path of the release record for `version`, relative to the repo root.
-pub fn record_path(root: &Path, version: &str) -> PathBuf {
+pub(crate) fn record_path(root: &Path, version: &str) -> PathBuf {
     root.join(".security")
         .join(format!("release-{version}.json"))
 }
@@ -176,7 +176,7 @@ pub fn record_path(root: &Path, version: &str) -> PathBuf {
 /// Deterministic by construction: no timestamps, and no live-audit results (the
 /// live database moves, so including it would break byte-identical re-runs).
 /// `serde_json` maps are sorted, so key order is stable too.
-pub fn build_record(
+pub(crate) fn build_record(
     version: &str,
     db_commit: &str,
     deny_version: &str,
@@ -207,7 +207,7 @@ pub fn build_record(
 
 /// Serialise the record exactly as it is written to disk (pretty, trailing
 /// newline) so callers can compare runs byte-for-byte.
-pub fn render_record(record: &Value) -> Result<String> {
+pub(crate) fn render_record(record: &Value) -> Result<String> {
     let mut out = serde_json::to_string_pretty(record)?;
     out.push('\n');
     Ok(out)
@@ -221,12 +221,12 @@ fn first_line(text: &str) -> String {
 /// Default env var consulted for the release version when `--release-version`
 /// is not given. Release pipelines compute the version at runtime (nextsv), so
 /// it cannot always be supplied as a config-time orb parameter.
-pub const DEFAULT_VERSION_ENV: &str = "SEMVER";
+pub(crate) const DEFAULT_VERSION_ENV: &str = "SEMVER";
 
 /// Resolve the release version: the explicit value wins, otherwise the named
 /// environment variable. Erroring here beats recording a release under an empty
 /// or wrong version.
-pub fn resolve_version(explicit: Option<&str>, env_name: &str) -> Result<String> {
+pub(crate) fn resolve_version(explicit: Option<&str>, env_name: &str) -> Result<String> {
     if let Some(v) = explicit.map(str::trim).filter(|v| !v.is_empty()) {
         return Ok(v.to_string());
     }
@@ -244,7 +244,7 @@ pub fn resolve_version(explicit: Option<&str>, env_name: &str) -> Result<String>
 /// `db_root` is cargo-deny's `db-path` (it clones/refreshes its checkout
 /// beneath it); `work_dir` holds the ephemeral derived config. The record is
 /// written only when the blocking gate passes — it attests a good release.
-pub fn release_with<R: CommandRunner>(
+pub(crate) fn release_with<R: CommandRunner>(
     runner: &R,
     start: &Path,
     version: &str,
@@ -421,12 +421,12 @@ pub fn release_with<R: CommandRunner>(
 
 /// Ephemeral directory for the derived cargo-deny config. Process-scoped so
 /// concurrent runs cannot collide; nothing here is committed.
-pub fn work_dir() -> PathBuf {
+pub(crate) fn work_dir() -> PathBuf {
     std::env::temp_dir().join(format!("jci-audit-release-{}", std::process::id()))
 }
 
 /// cargo-deny's default `db-path`, resolved from `$HOME`.
-pub fn default_db_root() -> PathBuf {
+pub(crate) fn default_db_root() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))

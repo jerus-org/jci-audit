@@ -24,18 +24,18 @@ use crate::{
 
 /// Outcome of a prune run.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PruneReport {
+pub(crate) struct PruneReport {
     /// Advisory ids configured as ignores in `deny.toml`.
-    pub configured: Vec<String>,
+    pub(crate) configured: Vec<String>,
     /// Advisory ids the naked database reports for this lockfile.
-    pub firing: Vec<String>,
+    pub(crate) firing: Vec<String>,
     /// Configured ignores that no longer fire — safe to remove.
-    pub stale: Vec<String>,
+    pub(crate) stale: Vec<String>,
 }
 
 impl PruneReport {
     /// Whether every configured ignore still fires.
-    pub fn is_clean(&self) -> bool {
+    pub(crate) fn is_clean(&self) -> bool {
         self.stale.is_empty()
     }
 }
@@ -43,7 +43,7 @@ impl PruneReport {
 /// Collect every advisory id in a `cargo-audit --json` report: both
 /// `vulnerabilities.list[]` and each `warnings.<kind>[]` bucket (an ignore may
 /// suppress an `unmaintained`/`yanked` warning as well as a vulnerability).
-pub fn parse_firing_ids(json: &str) -> Result<Vec<String>> {
+pub(crate) fn parse_firing_ids(json: &str) -> Result<Vec<String>> {
     let doc: Value =
         serde_json::from_str(json).context("failed to parse the cargo-audit JSON report")?;
 
@@ -93,7 +93,7 @@ fn advisory_id(entry: &Value) -> Option<&str> {
 
 /// Configured ignores that do not appear in the naked results, preserving the
 /// order they were declared in.
-pub fn stale_ignores(configured: &[String], firing: &[String]) -> Vec<String> {
+pub(crate) fn stale_ignores(configured: &[String], firing: &[String]) -> Vec<String> {
     configured
         .iter()
         .filter(|id| !firing.iter().any(|f| f == *id))
@@ -117,7 +117,7 @@ fn audit_args(lockfile: &Path) -> Vec<String> {
 /// `naked_cwd` must be a directory **outside** the repository, so cargo does not
 /// discover the repo's `.cargo/audit.toml` and apply the very suppressions we
 /// are testing.
-pub fn prune_with<R: CommandRunner>(
+pub(crate) fn prune_with<R: CommandRunner>(
     runner: &R,
     start: &Path,
     naked_cwd: &Path,
@@ -165,7 +165,7 @@ pub fn prune_with<R: CommandRunner>(
 
 /// A directory outside any repository, used as the working directory for the
 /// naked run. Process-scoped so concurrent runs cannot collide.
-pub fn naked_run_dir() -> PathBuf {
+pub(crate) fn naked_run_dir() -> PathBuf {
     std::env::temp_dir().join(format!("jci-audit-prune-{}", std::process::id()))
 }
 
