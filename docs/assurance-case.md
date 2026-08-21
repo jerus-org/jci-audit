@@ -22,8 +22,9 @@ subprocesses, using each for what it is best at rather than reimplementing eithe
 1. **`jci-audit check`** — PR/dev gate: `cargo deny` policy checks and a live
    `cargo audit` scan, both blocking (`src/check.rs`).
 2. **`jci-audit release`** — release gate: locks `cargo deny` to a **pinned advisory-db
-   commit** and runs it offline for reproducibility; `cargo audit` runs live as a
-   non-blocking currency check; writes the release record locally (`src/release.rs`).
+   commit** and runs it offline for reproducibility; `cargo audit` keeps running live,
+   as a non-blocking currency check rather than a second pinned pass; writes the
+   release record locally (`src/release.rs`).
 3. **`jci-audit sync`** — derives `.cargo/audit.toml` and every crate's `about.toml`
    from the canonical `deny.toml`, merging into (not overwriting) hand-authored
    content (`src/sync.rs`, `src/license_scope.rs`).

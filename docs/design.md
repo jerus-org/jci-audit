@@ -15,9 +15,10 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 `jci-audit` is a context-aware security gate for Rust projects. It orchestrates two tools with
 complementary strengths — `cargo audit` (fresh, live RustSec advisories) and `cargo deny` (policy
 enforcement with file-based, justified ignores) — using each for what it does best, rather than
-reimplementing either. It runs each pair of tools differently depending on pipeline context: both
-blocking and live on a pull request; both offline and locked to a pinned advisory-db commit at
-release, for reproducibility.
+reimplementing either. It runs each tool differently depending on pipeline context: both blocking
+and live on a pull request; at release, `cargo-deny` locks to a pinned, offline advisory-db
+commit for reproducibility, while `cargo-audit` keeps running live as a non-blocking currency
+check (see §5.1).
 
 ### 1.1 The problem it replaces
 
