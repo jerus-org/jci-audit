@@ -1,40 +1,11 @@
-//! # jci-audit
-//!
-//! A context-aware Rust security gate that orchestrates
-//! [`cargo-audit`](https://crates.io/crates/cargo-audit) and
-//! [`cargo-deny`](https://crates.io/crates/cargo-deny), leveraging the
-//! complementary strengths of each:
-//!
-//! - **`cargo audit`** — fresh, *live* advisories from the RustSec database.
-//! - **`cargo deny`** — policy enforcement (advisories, bans, licenses,
-//!   sources) with **file-based** ignores that carry written justifications.
-//!
-//! `deny.toml` is the single source of truth for both advisory ignores and
-//! license policy; `.cargo/audit.toml` and every crate's `about.toml` are
-//! derived from it via `jci-audit sync`. Release validation is
-//! **reproducible**: `cargo deny` locks to a pinned advisory-db commit and
-//! runs offline; `cargo audit` keeps running live, as a non-blocking
-//! currency check.
-//!
-//! `jci-audit` shells out to the `cargo audit` and `cargo deny` binaries; it
-//! does not reimplement them. See [`preflight`] for the presence check every
-//! shelling subcommand runs first.
-
-pub mod check;
-pub mod diagnostics;
-pub mod init;
-pub mod license_scope;
-pub mod preflight;
-pub mod prune;
-pub mod release;
-pub mod remote;
-pub mod sync;
-pub mod verify;
+//! The CLI surface: argument parsing (`Cli`, `Commands`) and the dispatch
+//! that wires each subcommand to its module.
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
 use crate::preflight::Tool;
+use crate::{check, diagnostics, init, preflight, prune, release, remote, sync, verify};
 
 /// Context-aware Rust security gate over cargo-audit and cargo-deny.
 #[derive(Debug, Parser)]
@@ -49,9 +20,9 @@ use crate::preflight::Tool;
         canonical deny.toml; `prune` detects stale advisory ignores; `init` \
         scaffolds a standard deny.toml."
 )]
-pub struct Cli {
+pub(crate) struct Cli {
     #[command(flatten)]
-    pub logging: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
+    pub(crate) logging: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
 
     #[command(subcommand)]
     command: Commands,
@@ -161,7 +132,7 @@ impl Cli {
     }
 
     /// Execute the selected subcommand.
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         let detail = self.detail();
         match &self.command {
             Commands::Check {

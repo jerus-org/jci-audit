@@ -25,14 +25,14 @@ use crate::release::lockfile_digest;
 /// One advisory ignore: its id plus any justification comment carried from
 /// `deny.toml` so the derived file explains itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IgnoreEntry {
-    pub id: String,
-    pub comment: Option<String>,
+pub(crate) struct IgnoreEntry {
+    pub(crate) id: String,
+    pub(crate) comment: Option<String>,
 }
 
 /// Result of a sync operation, so the CLI can report and set an exit code.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SyncOutcome {
+pub(crate) enum SyncOutcome {
     /// `.cargo/audit.toml` already matched the derived content.
     InSync,
     /// The file was (or would be) written with this many ignore entries.
@@ -48,7 +48,7 @@ pub enum SyncOutcome {
 /// }`), and captures any `#` comment written immediately above each entry. A
 /// missing `[advisories]` table or `ignore` key yields an empty list (not an
 /// error).
-pub fn extract_ignores(deny_toml: &str) -> Result<Vec<IgnoreEntry>> {
+pub(crate) fn extract_ignores(deny_toml: &str) -> Result<Vec<IgnoreEntry>> {
     let doc = deny_toml
         .parse::<DocumentMut>()
         .context("failed to parse deny.toml")?;
@@ -107,7 +107,7 @@ fn first_comment(prefix: &str) -> Option<String> {
 ///
 /// Always emits a `[advisories]` table with an `ignore` array (empty when there
 /// are no entries) and a header marking the file as generated.
-pub fn render_audit_toml(ignores: &[IgnoreEntry]) -> String {
+pub(crate) fn render_audit_toml(ignores: &[IgnoreEntry]) -> String {
     const HEADER: &str = "\
 # DERIVED FILE — do not edit by hand.
 # Regenerated from the canonical deny.toml [advisories].ignore by
@@ -137,9 +137,9 @@ pub fn render_audit_toml(ignores: &[IgnoreEntry]) -> String {
 /// name and allow list. Unfiltered — which exceptions actually apply to a
 /// given crate is [`crate::license_scope`]'s job, not this parser's.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct LicensePolicy {
-    pub allow: BTreeSet<String>,
-    pub exceptions: Vec<(String, Vec<String>)>,
+pub(crate) struct LicensePolicy {
+    pub(crate) allow: BTreeSet<String>,
+    pub(crate) exceptions: Vec<(String, Vec<String>)>,
 }
 
 /// Read an `Item`'s value as an array of strings, or an empty vec/set if the
@@ -156,7 +156,7 @@ fn string_array<T: FromIterator<String>>(item: Option<&Item>) -> T {
 /// `[licenses]` table, `allow` key, or `exceptions` array yields empty
 /// results (not an error) — mirrors [`extract_ignores`]'s handling of a
 /// missing `[advisories]`.
-pub fn extract_license_policy(deny_toml: &str) -> Result<LicensePolicy> {
+pub(crate) fn extract_license_policy(deny_toml: &str) -> Result<LicensePolicy> {
     let doc = deny_toml
         .parse::<DocumentMut>()
         .context("failed to parse deny.toml")?;
@@ -207,7 +207,7 @@ fn multiline_array<I: IntoIterator<Item = String>>(items: I) -> Array {
 /// `ignore-dev-dependencies`. Not a wholesale rewrite (unlike
 /// [`render_audit_toml`]) because `about.toml` carries real hand-maintained
 /// content `deny.toml` has no equivalent for.
-pub fn merge_about_toml(
+pub(crate) fn merge_about_toml(
     existing: &str,
     scope: &crate::license_scope::CrateLicenseScope,
     policy: &LicensePolicy,
@@ -266,7 +266,7 @@ pub fn merge_about_toml(
 
 /// Locate the workspace `deny.toml` and the derived `.cargo/audit.toml`,
 /// walking up from `start` until a directory containing `deny.toml` is found.
-pub fn locate_paths(start: &Path) -> Result<(PathBuf, PathBuf)> {
+pub(crate) fn locate_paths(start: &Path) -> Result<(PathBuf, PathBuf)> {
     let start = start
         .canonicalize()
         .with_context(|| format!("cannot access '{}'", start.display()))?;
@@ -325,7 +325,7 @@ fn decide_and_write(
 /// Run the sync from `start` (the directory to search from). In `check` mode,
 /// returns `Drift`/`InSync` without writing; otherwise writes the file and
 /// returns `Wrote(n)`.
-pub fn sync_at(start: &Path, check: bool) -> Result<SyncOutcome> {
+pub(crate) fn sync_at(start: &Path, check: bool) -> Result<SyncOutcome> {
     let (deny_path, audit_path) = locate_paths(start)?;
     let deny = std::fs::read_to_string(&deny_path)
         .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
@@ -355,7 +355,7 @@ pub fn sync_at(start: &Path, check: bool) -> Result<SyncOutcome> {
 /// third-party notices. The single place that knows this layout —
 /// [`sync_about_toml_at`] and [`about_toml_digest`] both walk from here
 /// rather than each re-implementing the `crates/` scan.
-pub fn find_about_toml_paths(workspace_root: &Path) -> Result<Vec<PathBuf>> {
+pub(crate) fn find_about_toml_paths(workspace_root: &Path) -> Result<Vec<PathBuf>> {
     let crates_dir = workspace_root.join("crates");
     let mut paths: Vec<PathBuf> = match std::fs::read_dir(&crates_dir) {
         Ok(rd) => rd
@@ -374,15 +374,15 @@ pub fn find_about_toml_paths(workspace_root: &Path) -> Result<Vec<PathBuf>> {
 
 /// The result of syncing one crate's `about.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AboutSyncResult {
-    pub about_toml_path: PathBuf,
-    pub outcome: SyncOutcome,
+pub(crate) struct AboutSyncResult {
+    pub(crate) about_toml_path: PathBuf,
+    pub(crate) outcome: SyncOutcome,
 }
 
 /// Sync every `crates/*/about.toml` found under the workspace root (located
 /// via the same `deny.toml` search as [`sync_at`]) against its own
 /// crate-scoped derivation.
-pub fn sync_about_toml_at<R: crate::check::CommandRunner>(
+pub(crate) fn sync_about_toml_at<R: crate::check::CommandRunner>(
     runner: &R,
     start: &Path,
     check: bool,
@@ -438,7 +438,7 @@ pub fn sync_about_toml_at<R: crate::check::CommandRunner>(
 /// comment on this), so a value that could differ between the machine that
 /// generated the committed copy and the release container would make
 /// `verify` unable to reproduce it.
-pub fn about_toml_digest(workspace_root: &Path) -> Result<Option<String>> {
+pub(crate) fn about_toml_digest(workspace_root: &Path) -> Result<Option<String>> {
     let paths = find_about_toml_paths(workspace_root)?;
     if paths.is_empty() {
         return Ok(None);

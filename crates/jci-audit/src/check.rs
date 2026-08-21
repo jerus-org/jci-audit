@@ -21,20 +21,20 @@ use crate::sync;
 /// `std::process::Output` so orchestration is testable without constructing a
 /// platform-specific `ExitStatus`.
 #[derive(Debug, Clone)]
-pub struct ToolOutput {
-    pub success: bool,
-    pub stdout: String,
-    pub stderr: String,
+pub(crate) struct ToolOutput {
+    pub(crate) success: bool,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
 }
 
 /// Abstraction over running an external command, so the check orchestration is
 /// unit-testable with a mock in place of real cargo subcommands.
-pub trait CommandRunner {
+pub(crate) trait CommandRunner {
     fn run(&self, program: &str, args: &[&str], cwd: &Path) -> Result<ToolOutput>;
 }
 
 /// Runs commands as real subprocesses.
-pub struct SystemRunner;
+pub(crate) struct SystemRunner;
 
 impl CommandRunner for SystemRunner {
     fn run(&self, program: &str, args: &[&str], cwd: &Path) -> Result<ToolOutput> {
@@ -53,27 +53,27 @@ impl CommandRunner for SystemRunner {
 
 /// One tool invocation within a check and whether it passed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckStep {
-    pub label: String,
-    pub success: bool,
+pub(crate) struct CheckStep {
+    pub(crate) label: String,
+    pub(crate) success: bool,
 }
 
 /// Aggregate result of a `check` run.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckReport {
-    pub steps: Vec<CheckStep>,
+pub(crate) struct CheckReport {
+    pub(crate) steps: Vec<CheckStep>,
     /// Warnings the tools reported, for `--deny-warnings`.
-    pub warnings: Vec<crate::diagnostics::WarningCount>,
+    pub(crate) warnings: Vec<crate::diagnostics::WarningCount>,
 }
 
 impl CheckReport {
     /// The check passes only when every step passed.
-    pub fn success(&self) -> bool {
+    pub(crate) fn success(&self) -> bool {
         self.steps.iter().all(|s| s.success)
     }
 
     /// Labels of the steps that failed.
-    pub fn failures(&self) -> Vec<&str> {
+    pub(crate) fn failures(&self) -> Vec<&str> {
         self.steps
             .iter()
             .filter(|s| !s.success)
@@ -104,7 +104,7 @@ const AUDIT_ARGS: &[&str] = &["audit"];
 /// crate's own directory* as its working directory (resolved from its
 /// `about.toml`'s path — see [`crate::license_scope::scope_for_crate`]), not
 /// `cwd` itself, since a workspace can hold more than one crate.
-pub fn check_with<R: CommandRunner>(
+pub(crate) fn check_with<R: CommandRunner>(
     runner: &R,
     cwd: &Path,
     detail: crate::diagnostics::Detail,
