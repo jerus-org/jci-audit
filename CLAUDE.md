@@ -20,11 +20,16 @@ consumer migration).
 ```
 crates/jci-audit/
 ├── src/
-│   ├── main.rs       # CLI entry (tracing setup)
-│   ├── lib.rs        # Cli + Commands (check/release/sync/prune/init), run()
+│   ├── main.rs       # crate doc + mod declarations, tracing setup
+│   ├── cli.rs        # Cli + Commands (check/release/sync/prune/init), run()
 │   └── preflight.rs  # tool-presence detection for cargo-audit / cargo-deny
 └── tests/cmd/*.trycmd  # CLI snapshot tests (trycmd)
 ```
+
+Bin-only crate, deliberately — no `[lib]` target (`autolib = false`; no `src/lib.rs`).
+Nothing depends on `jci_audit` as a library, and publishing to crates.io shouldn't make it
+importable ([#90](https://github.com/jerus-org/jci-audit/issues/90)). Internal items use
+`pub(crate)`, never bare `pub`.
 
 - **`deny.toml`** (workspace root) is the **single source of truth** for both
   advisory ignores and license policy. **`.cargo/audit.toml`** and every
