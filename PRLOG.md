@@ -34,6 +34,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - wire rsign into orb executor container(pr [#89])
 - deps: lock file maintenance(pr [#85])
 - deps: update dependency toolkit to v7.3.0(pr [#96])
+- deps: update pinned containers(pr [#93])
 
 ## [0.0.6] - 2026-08-13
 
@@ -216,6 +217,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#73]: https://github.com/jerus-org/jci-audit/pull/73
 [#91]: https://github.com/jerus-org/jci-audit/pull/91
 [#96]: https://github.com/jerus-org/jci-audit/pull/96
+[#93]: https://github.com/jerus-org/jci-audit/pull/93
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
