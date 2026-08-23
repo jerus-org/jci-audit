@@ -48,7 +48,7 @@ spdx = "0.13.5"
 pcu-release-assets = "0.1.0"
 # Just enough runtime for `remote`'s blocking wrapper around
 # pcu-release-assets' async API — no macros/multi-thread, one call at a time.
-tokio = { version = "1.53.0", default-features = false, features = [
+tokio = { version = "1.53.1", default-features = false, features = [
     "rt",
     "time",
     "net",
