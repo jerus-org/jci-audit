@@ -113,7 +113,7 @@ workflows:
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
           package: jci-audit
-          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:1fd59ba21c66d2830eefc54289707c7465c1537fef3dcade9e7dc54ccd2403f0
+          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:b48a099fe67725fde4adf84144f3bb5061323e069566dd763871e09aefd29d59
       - gen-circleci-orb/generate:
           name: regenerate-orb
           binary: jci-audit
