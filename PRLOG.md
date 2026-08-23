@@ -37,6 +37,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update pinned containers(pr [#93])
 - deps: update dependency gen-circleci-orb to v0.1.9(pr [#94])
 - deps: update rust crate tokio to 1.53.1(pr [#95])
+- deps: lock file maintenance(pr [#97])
 
 ## [0.0.6] - 2026-08-13
 
@@ -222,6 +223,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#93]: https://github.com/jerus-org/jci-audit/pull/93
 [#94]: https://github.com/jerus-org/jci-audit/pull/94
 [#95]: https://github.com/jerus-org/jci-audit/pull/95
+[#97]: https://github.com/jerus-org/jci-audit/pull/97
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
