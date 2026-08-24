@@ -22,7 +22,7 @@ use anyhow::{Result, bail};
 
 /// An external tool that `jci-audit` shells out to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tool {
+pub(crate) enum Tool {
     /// `cargo audit` — live advisory scanning (cargo-audit crate).
     CargoAudit,
     /// `cargo deny` — policy enforcement (cargo-deny crate).
@@ -51,7 +51,7 @@ impl Tool {
     }
 
     /// Human-facing invocation, e.g. `cargo audit`.
-    pub fn invocation(&self) -> &'static str {
+    pub(crate) fn invocation(&self) -> &'static str {
         match self {
             Tool::CargoAudit => "cargo audit",
             Tool::CargoDeny => "cargo deny",
@@ -99,13 +99,13 @@ fn probe_version(binary: &str) -> bool {
 /// Pure core: given a presence probe, return the subset of `tools` that are
 /// absent, preserving input order. Separated from the subprocess probe so it is
 /// unit-testable without a real cargo installation.
-pub fn missing_tools(tools: &[Tool], probe: impl Fn(&Tool) -> bool) -> Vec<Tool> {
+pub(crate) fn missing_tools(tools: &[Tool], probe: impl Fn(&Tool) -> bool) -> Vec<Tool> {
     tools.iter().copied().filter(|t| !probe(t)).collect()
 }
 
 /// Ensure every tool in `tools` is available on PATH, or return an error that
 /// names each missing tool and how to install it.
-pub fn ensure_available(tools: &[Tool]) -> Result<()> {
+pub(crate) fn ensure_available(tools: &[Tool]) -> Result<()> {
     let missing = missing_tools(tools, |t| t.is_present());
     if missing.is_empty() {
         return Ok(());

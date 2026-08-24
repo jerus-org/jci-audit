@@ -17,10 +17,15 @@ pinned and reproducible at release — with `deny.toml` as the single source of 
 
 ## Crate layout
 
-This is a Cargo workspace with a single library-plus-binary crate, `crates/jci-audit`
-(`src/lib.rs` → library `jci_audit`, `src/main.rs` → binary `jci-audit`). Keeping the logic in a
-library makes it testable independently of the CLI shell, and lets the generated orb's jobs call
-the same code paths that `cargo test` exercises directly.
+This is a Cargo workspace with a single **bin-only** crate, `crates/jci-audit`
+(`src/main.rs` → binary `jci-audit`, declaring the crate's modules; `src/cli.rs` → `Cli` +
+`Commands` + dispatch). Deliberately no `[lib]` target — nothing depends on `jci_audit` as a
+library, and publishing to crates.io shouldn't make one importable
+([#90](https://github.com/jerus-org/jci-audit/issues/90)). Splitting the logic into modules
+still makes each one independently unit-testable (`cargo test` compiles and runs a bin
+crate's `#[cfg(test)]` modules the same way it would a lib's); the generated orb's jobs don't
+link any of this code either way — they shell out to the compiled `jci-audit` binary, same as
+a human running it.
 
 ## Pipeline
 

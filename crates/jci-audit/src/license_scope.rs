@@ -40,13 +40,13 @@ fn index_by_id(items: &[Value]) -> HashMap<&str, &Value> {
 /// one crate's own dependency graph — the precise `about.toml` content for
 /// that crate, scoped down from the workspace-wide `deny.toml` policy.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct CrateLicenseScope {
+pub(crate) struct CrateLicenseScope {
     /// Which of `deny.toml`'s `[licenses].allow` identifiers are actually
     /// used by a package reachable from this crate.
-    pub accepted: BTreeSet<String>,
+    pub(crate) accepted: BTreeSet<String>,
     /// Which `[[licenses.exceptions]]` crate names are actually reachable
     /// from this crate (dependency name membership, not license matching).
-    pub reachable_exception_crates: BTreeSet<String>,
+    pub(crate) reachable_exception_crates: BTreeSet<String>,
 }
 
 /// Compute the license scope for the crate at `manifest_path`, given
@@ -56,7 +56,7 @@ pub struct CrateLicenseScope {
 /// as its working directory, matching how `release.rs` invokes `cargo-about`
 /// per crate, rather than the caller's own directory (which need not have
 /// any relationship to the crate being resolved).
-pub fn scope_for_crate<R: CommandRunner>(
+pub(crate) fn scope_for_crate<R: CommandRunner>(
     runner: &R,
     manifest_path: &Path,
     allow: &BTreeSet<String>,
@@ -87,7 +87,7 @@ pub fn scope_for_crate<R: CommandRunner>(
 /// Parse `cargo metadata --format-version 1` JSON and compute the license
 /// scope. Split from [`scope_for_crate`] so tests can inject captured JSON
 /// directly rather than mocking a subprocess call.
-pub fn scope_from_metadata(
+pub(crate) fn scope_from_metadata(
     metadata_json: &str,
     allow: &BTreeSet<String>,
     exception_crates: &BTreeSet<String>,

@@ -13,6 +13,11 @@ readme = "README.md"
 # cargo-about tooling config: needed to regenerate THIRD-PARTY-LICENSES.md but
 # not part of the distributed crate.
 exclude = ["about.toml", "about.hbs"]
+# Bin-only, deliberately: nothing in this org depends on `jci_audit` as a
+# library (see jerus-org/jci-audit#90), so publishing must not make one
+# resolvable. Explicit rather than relying only on the absence of
+# `src/lib.rs`, so a future `src/lib.rs` doesn't silently resurrect one.
+autolib = false
 
 # jci-audit orchestrates the `cargo audit` and `cargo deny` *binaries* as
 # subprocesses — it does not link them as library crates. They are runtime
@@ -63,10 +68,6 @@ trycmd.workspace = true
 [[bin]]
 name = "jci-audit"
 path = "src/main.rs"
-
-[lib]
-name = "jci_audit"
-path = "src/lib.rs"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/jci-audit-v{ version }/jci-audit-{ target }.tar.gz"

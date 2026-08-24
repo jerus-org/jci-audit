@@ -39,44 +39,44 @@ use crate::{
 
 /// Digests computed from the checked-out tree, compared against the record.
 #[derive(Debug, Clone)]
-pub struct CheckoutDigests {
+pub(crate) struct CheckoutDigests {
     /// Digest of the external dependency set (schema 3+).
-    pub dependencies: String,
+    pub(crate) dependencies: String,
     /// Raw digest of Cargo.lock, for records predating the dependency digest.
-    pub lockfile_raw: String,
+    pub(crate) lockfile_raw: String,
     /// Digest of deny.toml — the exception set in force.
-    pub deny_toml: String,
+    pub(crate) deny_toml: String,
     /// Digest of every crate's about.toml (schema 4+). `None` when the
     /// checked-out workspace has no about.toml at all.
-    pub about_toml: Option<String>,
+    pub(crate) about_toml: Option<String>,
 }
 
 /// What a verification concluded.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VerifyOutcome {
+pub(crate) struct VerifyOutcome {
     /// The release version verified.
-    pub version: String,
+    pub(crate) version: String,
     /// The advisory-db commit the record locked the release to.
-    pub db_commit: String,
+    pub(crate) db_commit: String,
     /// Whether re-running the gate reproduced the record's verdict.
-    pub reproduced: bool,
+    pub(crate) reproduced: bool,
     /// Checks that could not be performed, e.g. an absent policy digest.
-    pub unverified: Vec<String>,
+    pub(crate) unverified: Vec<String>,
     /// Inputs that did not match the record.
-    pub mismatches: Vec<String>,
+    pub(crate) mismatches: Vec<String>,
     /// Warnings the gate reported, for `--deny-warnings`.
-    pub warnings: Vec<crate::diagnostics::WarningCount>,
+    pub(crate) warnings: Vec<crate::diagnostics::WarningCount>,
 }
 
 impl VerifyOutcome {
     /// A verification succeeds only when nothing mismatched and the gate agreed.
-    pub fn is_ok(&self) -> bool {
+    pub(crate) fn is_ok(&self) -> bool {
         self.reproduced && self.mismatches.is_empty()
     }
 }
 
 /// Read a release record from disk.
-pub fn load_record(path: &Path) -> Result<Value> {
+pub(crate) fn load_record(path: &Path) -> Result<Value> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("no release record at '{}'", path.display()))?;
     serde_json::from_str(&text)
@@ -102,7 +102,10 @@ pub(crate) fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
 ///
 /// Returns `(mismatches, unverified)`. A record without a policy digest
 /// (`schema_version` 1) yields an `unverified` note rather than a false pass.
-pub fn compare_inputs(record: &Value, digests: &CheckoutDigests) -> (Vec<String>, Vec<String>) {
+pub(crate) fn compare_inputs(
+    record: &Value,
+    digests: &CheckoutDigests,
+) -> (Vec<String>, Vec<String>) {
     let mut mismatches = Vec::new();
     let mut unverified = Vec::new();
 
@@ -181,7 +184,7 @@ pub fn compare_inputs(record: &Value, digests: &CheckoutDigests) -> (Vec<String>
 }
 
 /// Re-verify the release named by `version`.
-pub fn verify_with<R: CommandRunner>(
+pub(crate) fn verify_with<R: CommandRunner>(
     runner: &R,
     start: &Path,
     version: &str,
