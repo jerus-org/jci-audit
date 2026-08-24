@@ -64,6 +64,9 @@ workflows:
               ignore: main
 
       - toolkit/test_doc_build:
+          # jci-audit is bin-only (no [lib] target, #90) — cargo doc --lib
+          # errors with "no library targets found" otherwise.
+          doc_target: ""
           filters:
             branches:
               ignore: main

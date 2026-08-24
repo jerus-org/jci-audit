@@ -4,8 +4,8 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use crate::preflight::Tool;
-use crate::{check, diagnostics, init, preflight, prune, release, remote, sync, verify};
+use crate::preflight::{self, Tool};
+use crate::{check, diagnostics, init, prune, release, remote, sync, verify};
 
 /// Context-aware Rust security gate over cargo-audit and cargo-deny.
 #[derive(Debug, Parser)]
