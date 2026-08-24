@@ -21,6 +21,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - ci-enable draft-first GitHub releases(pr [#84])
 - docs-add user guides; fix release --version flag bug(pr [#73])
 - docs-track bin-only publish refactor in roadmap(pr [#91])
+- refactor-publish jci-audit as bin-only(pr [#92])
 
 ### Fixed
 
@@ -224,6 +225,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#94]: https://github.com/jerus-org/jci-audit/pull/94
 [#95]: https://github.com/jerus-org/jci-audit/pull/95
 [#97]: https://github.com/jerus-org/jci-audit/pull/97
+[#92]: https://github.com/jerus-org/jci-audit/pull/92
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
