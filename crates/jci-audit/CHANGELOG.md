@@ -5,9 +5,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-08-25
+
+Summary: Added[2], Changed[1], Chore[1], Documentation[2], Fixed[3]
+
+### Added
+
+ - feat: verify's no-checkout remote fetch path
+ - feat!: stop committing the release record to git
+
+### Fixed
+
+ - fix(deps): update rust crate tokio to 1.53.1
+ - fix: give -h a terse summary distinct from --help
+ - fix: address /code-review findings on the record-commit removal
+
+### Changed
+
+ - refactor: publish jci-audit as bin-only
+
 ## [0.0.7] - 2026-08-13
 
-Summary: Added[1], Documentation[1], Fixed[1]
+Summary: Added[1], Chore[1], Documentation[1], Fixed[1]
 
 ### Added
 
@@ -19,7 +38,7 @@ Summary: Added[1], Documentation[1], Fixed[1]
 
 ## [0.0.6] - 2026-08-12
 
-Summary: Added[3], Changed[2], Chore[1], Fixed[2]
+Summary: Added[3], Changed[2], Chore[1], Fixed[1]
 
 ### Added
 
@@ -29,7 +48,6 @@ Summary: Added[3], Changed[2], Chore[1], Fixed[2]
 
 ### Fixed
 
- - fix(deps): update rust crate pcu to 0.6.31
  - fix(deps): update rust crate clap to 4.6.6
 
 ### Changed
@@ -39,13 +57,12 @@ Summary: Added[3], Changed[2], Chore[1], Fixed[2]
 
 ## [0.0.5] - 2026-07-31
 
-Summary: Chore[1], Fixed[4]
+Summary: Chore[1], Fixed[3]
 
 ### Fixed
 
  - fix(deps): update rust crate sha2 to 0.11.0
  - fix(deps): update rust crate tokio to 1.53.1
- - fix(deps): update rust crate pcu to 0.6.30
  - fix: let verify reach commits it has not seen yet
 
 ## [0.0.4] - 2026-07-31
@@ -107,7 +124,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.0.7...HEAD
+[0.0.7]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/jerus-org/jci-audit/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/jerus-org/jci-audit/compare/v0.0.3...v0.0.4
