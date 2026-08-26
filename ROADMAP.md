@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-08-23._
+_Last updated: 2026-08-25._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -16,11 +16,12 @@ into themes and horizons.
 
 ## Current status
 
-jci-audit is **pre-1.0 (0.0.x)**. All six subcommands (`check`, `release`, `sync`, `prune`,
-`verify`, `init`) are implemented and tested; the crate and its generated orb
-(`jerus-org/jci-audit`) publish in tag-lockstep. `deny.toml` is the single source of truth
-for both advisory ignores and license policy — `.cargo/audit.toml` and every crate's
-`about.toml` are derived from it.
+jci-audit is **pre-1.0, currently `0.1.0`** — published bin-only (no importable `[lib]` target,
+[#90](https://github.com/jerus-org/jci-audit/issues/90)); crates.io versions `0.0.1`–`0.0.7` are
+yanked. All six subcommands (`check`, `release`, `sync`, `prune`, `verify`, `init`) are
+implemented and tested; the crate and its generated orb (`jerus-org/jci-audit`) publish in
+tag-lockstep. `deny.toml` is the single source of truth for both advisory ignores and license
+policy — `.cargo/audit.toml` and every crate's `about.toml` are derived from it.
 
 ## Delivered phases
 
@@ -34,27 +35,31 @@ The original build phased as follows:
 | **P3 — `release` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done |
 | **P4 — publish** | crates.io + orb published in lockstep | ✅ Done |
 
-## Near term (before 1.0 preview / `0.1.0`)
+## Near term (0.1.0 preview credibility gates, before consumer migration)
+
+`0.1.0` has already shipped as a version number — an automatic minor bump from #90's breaking
+bin-only change, released 2026-08-25. The gates below are about public-facing *readiness*, not the
+version tag itself, and still gate consumer migration.
 
 - **[#90 — publish as bin-only; no importable library.](https://github.com/jerus-org/jci-audit/issues/90)**
-  Nothing depends on `jci_audit` as a library today; the lib/bin split was an internal
-  testability artifact, not an intended public API. ✅ Restructure done (crate carries no
-  `[lib]` target) — **remaining: yank 0.0.1–0.0.7 on crates.io**, so new dependents can't
-  resolve the versions that still carry the accidentally-importable library (their docs.rs
-  pages stay published regardless — yanking only affects dependency resolution). Lock this
-  in before `0.1.0` sets a publish-shape expectation.
-- **Project hardening / OpenSSF Best Practices badge.** Complete the governance, security, and
-  quality documentation and achieve (and display) at least the Silver badge.
+  ✅ Done — restructured (crate carries no `[lib]` target), released in `0.1.0`, and
+  `0.0.1`–`0.0.7` yanked on crates.io so new dependents can't resolve the versions that carried
+  the accidentally-importable library (their docs.rs pages stay published regardless — yanking
+  only affects dependency resolution).
+- **Project hardening / OpenSSF Best Practices badge.** ✅ Done — the project has reached
+  [Silver](https://www.bestpractices.dev/projects/14065) (confirmed 2026-08-25; 100% of Silver's
+  55 criteria met, Gold at 35%).
 - **License policy scoped per crate.** ✅ Done — `about.toml`'s `accepted` list is derived from
   each crate's own reachable dependency graph via SPDX evaluation, not copied verbatim from the
   workspace-wide `deny.toml` allow-list.
-- **Documentation and a project presence** (user guides, jrussell.ie project page, announcement
-  draft) ahead of any consumer migration.
+- **Documentation and a project presence.** Repo docs ✅ done. jrussell.ie project page:
+  [digital-prstv/jrussell.ie#264](https://github.com/digital-prstv/jrussell.ie/pull/264) open.
+  Announcement draft for the jrussell.ie blog: not yet started.
 - **Consumer migration (P4's remaining half).** Add the published orb to `gen-changelog`, `pcu`,
   `nextsv`, and `gen-circleci-orb`; wire `jci-audit check`/`release` into their pipelines;
   standardize each `deny.toml` on the shared template; retire ad-hoc `--ignore` CI flags. Deferred
-  until the 0.1.0 preview gates above are met — no repo should be told to adopt a tool with no
-  docs or public credibility signal yet.
+  until the remaining preview gates above (jrussell.ie page merged, announcement drafted) are
+  met — no repo should be told to adopt a tool with no docs or public credibility signal yet.
 
 ## Backlog (tracked as issues, not yet scheduled)
 
