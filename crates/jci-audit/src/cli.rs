@@ -210,7 +210,7 @@ fn run_release(
     // record itself, written locally only (see jerus-org/jci-audit#75 for how
     // it's distributed from there).
     let work = release::work_dir();
-    tracing::info!(version, db = %db_root.display(), "release");
+    tracing::info!(version, db = %db_root.display(), "release-prep");
 
     let outcome =
         release::release_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
