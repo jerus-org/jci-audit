@@ -100,12 +100,12 @@ trust model is important to using it safely:
   preserves hand-authored content (comments, `.clarify` attribution pins) and only
   touches the derived keys — review the diff before committing, as with any
   generated output.
-- **Release validation is reproducible and offline.** `jci-audit release` locks
+- **Release validation is reproducible and offline.** `jci-audit release-prep` locks
   policy checks to a **pinned advisory-db commit** (recorded in the release record)
   rather than trusting whatever the live database says at build time, so the same
   inputs produce the same result on re-verification (`jci-audit verify`).
 - **Only one code path reads a credential, and only from an environment
-  variable.** `jci-audit release` writes its validation record to a local file
+  variable.** `jci-audit release-prep` writes its validation record to a local file
   only; the tool does not sign, commit, or push it. `jci-audit verify`'s
   no-checkout fallback (no local record present) is the one exception: it reads
   a GitHub token from `GITHUB_TOKEN` — never a CLI flag — to fetch the record

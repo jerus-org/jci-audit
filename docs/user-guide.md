@@ -42,10 +42,10 @@ jci-audit check --manifest-path crates/foo   # a specific crate in a workspace
 jci-audit check --deny-warnings              # treat warnings as failures too
 ```
 
-## `release`
+## `release-prep`
 
 ```
-jci-audit release [OPTIONS]
+jci-audit release-prep [OPTIONS]
 
 Options:
       --release-version <VERSION>  The release version being validated (e.g. "1.2.0")
@@ -68,7 +68,7 @@ runtime, e.g. via `nextsv`) from the environment variable named by `--version-en
 `SEMVER`) when `--release-version` is omitted.
 
 ```bash
-jci-audit release --release-version 1.2.0   # validate and write the record locally
+jci-audit release-prep --release-version 1.2.0   # validate and write the record locally
 ```
 
 ## `sync`

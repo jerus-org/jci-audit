@@ -14,7 +14,7 @@ basic flags.
 
 ## The release record is local-only, for now
 
-`jci-audit release` writes `.security/release-<VERSION>.json` to the working directory and
+`jci-audit release-prep` writes `.security/release-<VERSION>.json` to the working directory and
 does nothing else with it — no git commit, no push, no signing. Earlier versions committed and
 GPG-signed the record via [`pcu`](https://crates.io/crates/pcu) (the `--commit`/`--push`/
 `--gpg-*-env`/`--sign-key-env` flags this section used to document); that path is gone
@@ -29,12 +29,12 @@ state and [design.md §3.2](design.md#32-release-gate) for the write-time flow.
 
 ## Overriding the advisory-db location
 
-`release` and `verify` both accept `--advisory-db <PATH>`, and both treat it the same way: it's
+`release-prep` and `verify` both accept `--advisory-db <PATH>`, and both treat it the same way: it's
 the advisory-db **root** (not a specific checkout), passed straight through to `deny.toml`'s
 `[advisories].db-path` — the directory beneath which `cargo-deny` nests its own managed checkout
 as `advisory-db-<hash>`. Default `~/.cargo/advisory-db`.
 
-- **`release`** discovers/refreshes that checkout and pins the release to its resulting commit.
+- **`release-prep`** discovers/refreshes that checkout and pins the release to its resulting commit.
 - **`verify`** discovers the existing checkout beneath the given root and moves it to the commit
   recorded in `.security/release-<VERSION>.json`.
 
@@ -45,7 +45,7 @@ caches the advisory-db root somewhere other than the default, to avoid a redunda
 
 ## `--deny-warnings`
 
-Present on `check`, `release`, and `verify`. `cargo-deny` reports some conditions (e.g.
+Present on `check`, `release-prep`, and `verify`. `cargo-deny` reports some conditions (e.g.
 `unmaintained = "all"`) as warnings rather than hard errors by default. Pass `--deny-warnings` to
 escalate every warning to a failure — useful for a stricter branch policy or a scheduled run
 where warnings shouldn't be allowed to silently accumulate. Without it, warnings are still
@@ -95,7 +95,7 @@ means the released artifact no longer matches what its own record says was valid
 record pins to is unreachable (garbage-collected, or the checkout was never made), `verify` fails
 outright — before the `verifying release...` banner or any comparison output prints — with its
 own top-level error rather than a `MISMATCH`. Re-fetch the advisory-db (`cargo deny fetch`, or
-just re-run `jci-audit check`/`release` once to let cargo-deny refresh it) and retry.
+just re-run `jci-audit check`/`release-prep` once to let cargo-deny refresh it) and retry.
 
 ## Multi-crate workspaces
 
@@ -106,7 +106,7 @@ Two related limitations are tracked, not yet implemented:
 - **License scope always includes build dependencies**, regardless of `about.toml`'s own
   `ignore-build-dependencies`/`ignore-transitive-dependencies` settings
   ([#63](https://github.com/jerus-org/jci-audit/issues/63)).
-- **`release`/`verify` don't yet support per-crate ordering** for a workspace with multiple
+- **`release-prep`/`verify` don't yet support per-crate ordering** for a workspace with multiple
   publishable crates and dependencies between them — see
   [#62](https://github.com/jerus-org/jci-audit/issues/62), which tracks bringing the release
   pattern `pcu` uses (explicit crate release order) to jci-audit.

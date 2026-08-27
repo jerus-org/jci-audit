@@ -15,7 +15,7 @@ use crate::{check, diagnostics, init, prune, release, remote, sync, verify};
     version,
     about,
     long_about = "Orchestrate cargo-audit and cargo-deny per pipeline context. \
-        `check` gates PRs on both tools; `release` validates reproducibly \
+        `check` gates PRs on both tools; `release-prep` validates reproducibly \
         against a pinned advisory-db; `sync` derives .cargo/audit.toml from the \
         canonical deny.toml; `prune` detects stale advisory ignores; `init` \
         scaffolds a standard deny.toml."
@@ -55,6 +55,7 @@ enum Commands {
     /// `cargo-audit` runs live as a non-blocking currency check. Writes the
     /// record locally to `.security/release-<VERSION>.json`; see
     /// jerus-org/jci-audit#75 for how it is distributed from there.
+    #[command(name = "release-prep")]
     Release {
         /// The release version being validated (e.g. "1.2.0").
         ///
@@ -524,8 +525,8 @@ mod tests {
     fn release_version_is_optional_at_parse_time() {
         // Release pipelines compute the version at runtime, so it is resolved
         // from the environment rather than being required on the command line.
-        assert!(Cli::try_parse_from(["jci-audit", "release"]).is_ok());
-        let cli = Cli::try_parse_from(["jci-audit", "release", "--release-version", "1.2.0"])
+        assert!(Cli::try_parse_from(["jci-audit", "release-prep"]).is_ok());
+        let cli = Cli::try_parse_from(["jci-audit", "release-prep", "--release-version", "1.2.0"])
             .expect("parses");
         match cli.command {
             Commands::Release {
@@ -537,7 +538,8 @@ mod tests {
         // --version is the tool's own version, and must stay that way: naming the
         // release version the same thing made one flag mean two things depending
         // on where it sat.
-        let err = Cli::try_parse_from(["jci-audit", "release", "--version", "1.2.0"]).unwrap_err();
+        let err =
+            Cli::try_parse_from(["jci-audit", "release-prep", "--version", "1.2.0"]).unwrap_err();
         assert!(
             !err.to_string().contains("1.2.0"),
             "--version must not be taken as a release version: {err}"
@@ -549,13 +551,13 @@ mod tests {
         // The record is no longer committed to git (jerus-org/jci-audit#75);
         // these flags must not silently resurrect as unused no-ops.
         for args in [
-            vec!["jci-audit", "release", "--commit"],
-            vec!["jci-audit", "release", "--push"],
-            vec!["jci-audit", "release", "--gpg-key-env", "X"],
-            vec!["jci-audit", "release", "--gpg-trust-env", "X"],
-            vec!["jci-audit", "release", "--user-name-env", "X"],
-            vec!["jci-audit", "release", "--user-email-env", "X"],
-            vec!["jci-audit", "release", "--sign-key-env", "X"],
+            vec!["jci-audit", "release-prep", "--commit"],
+            vec!["jci-audit", "release-prep", "--push"],
+            vec!["jci-audit", "release-prep", "--gpg-key-env", "X"],
+            vec!["jci-audit", "release-prep", "--gpg-trust-env", "X"],
+            vec!["jci-audit", "release-prep", "--user-name-env", "X"],
+            vec!["jci-audit", "release-prep", "--user-email-env", "X"],
+            vec!["jci-audit", "release-prep", "--sign-key-env", "X"],
         ] {
             assert!(
                 Cli::try_parse_from(&args).is_err(),
@@ -589,7 +591,7 @@ mod tests {
         // for a subcommand whose split is missing (caught in review on #74).
         use clap::CommandFactory;
         let cmd = Cli::command();
-        for name in ["check", "release", "sync", "prune", "verify", "init"] {
+        for name in ["check", "release-prep", "sync", "prune", "verify", "init"] {
             let sub = cmd
                 .find_subcommand(name)
                 .unwrap_or_else(|| panic!("no '{name}' subcommand"));

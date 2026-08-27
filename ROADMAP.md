@@ -24,7 +24,7 @@ uploaded as a release asset, and the CI build-artifact copy expired — see
 [#75](https://github.com/jerus-org/jci-audit/issues/75)) — `jci-audit verify` would have nothing
 to check `0.1.0` against, so it isn't a verifiable release. There is currently no installable
 version on crates.io; that clears once the next release ships #75's remaining phase and produces
-a genuinely retrievable record. All six subcommands (`check`, `release`, `sync`, `prune`,
+a genuinely retrievable record. All six subcommands (`check`, `release-prep`, `sync`, `prune`,
 `verify`, `init`) are implemented and tested; the crate and its generated orb
 (`jerus-org/jci-audit`) publish in tag-lockstep. `deny.toml` is the single source of truth for
 both advisory ignores and license policy — `.cargo/audit.toml` and every crate's `about.toml` are
@@ -39,7 +39,7 @@ The original build phased as follows:
 | **P0 — scaffold** | New repo, workspace + clap skeleton, release lockstep, CI | ✅ Done |
 | **P1 — `check` + `sync` + `init` + orb** | Both tools in one gate; `deny.toml` → `.cargo/audit.toml` single source; standard policy template; generated orb | ✅ Done |
 | **P2 — `prune`** | Automated stale-ignore detection (naked-DB diff) | ✅ Done |
-| **P3 — `release` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done (the original commit-based signing was later removed by #75 phase 1; see the #75 gate below for the current, unfinished replacement) |
+| **P3 — `release-prep` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done (the original commit-based signing was later removed by #75 phase 1; see the #75 gate below for the current, unfinished replacement) |
 | **P4 — publish** | crates.io + orb published in lockstep | ✅ Done — publishing itself works; whether any given *version* is currently installable is separate, see Current status above |
 
 ## Near term (0.1.0 preview credibility gates, before consumer migration)
@@ -76,7 +76,7 @@ version tag itself, and still gate consumer migration.
   [digital-prstv/jrussell.ie#264](https://github.com/digital-prstv/jrussell.ie/pull/264) open.
   Announcement draft for the jrussell.ie blog: not yet started.
 - **Consumer migration (P4's remaining half).** Add the published orb to `gen-changelog`, `pcu`,
-  `nextsv`, and `gen-circleci-orb`; wire `jci-audit check`/`release` into their pipelines;
+  `nextsv`, and `gen-circleci-orb`; wire `jci-audit check`/`release-prep` into their pipelines;
   standardize each `deny.toml` on the shared template; retire ad-hoc `--ignore` CI flags. Deferred
   until the remaining preview gates above (jrussell.ie page merged, announcement drafted) are
   met — no repo should be told to adopt a tool with no docs or public credibility signal yet.
@@ -99,7 +99,7 @@ version tag itself, and still gate consumer migration.
 - **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
   Today it's a manual copy-the-YAML step; `gen-circleci-orb init`/`update` already automates the
   equivalent for its own consumers.
-- **[#80 — fold the `cargo-about` license-policy resolution check into `check`/`release`.](https://github.com/jerus-org/jci-audit/issues/80)**
+- **[#80 — fold the `cargo-about` license-policy resolution check into `check`/`release-prep`.](https://github.com/jerus-org/jci-audit/issues/80)**
   Today it only runs as a hand-authored job in this repo's own CI, so a consumer who adopts the
   generated orb doesn't get it.
 

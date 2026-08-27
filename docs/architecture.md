@@ -88,7 +88,7 @@ flowchart LR
   signing pubkey. Every other subcommand, and `verify` when a local record exists, makes no
   network calls of its own — see [assurance-case.md](assurance-case.md) §3/§7.
 - **Its own orb** — the project dogfoods `gen-circleci-orb` to generate the orb published from
-  this repository (`orb/`), and jci-audit's own CI runs `jci-audit check`/`release` on itself.
+  this repository (`orb/`), and jci-audit's own CI runs `jci-audit check`/`release-prep` on itself.
 
 ## Key design properties
 

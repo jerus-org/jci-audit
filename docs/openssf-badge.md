@@ -99,7 +99,7 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
 | static_analysis | Met | Clippy + SonarCloud (`sonar-project.properties`) |
-| static_analysis_common_vulnerabilities | Met | `cargo audit` (live) runs on every PR; `cargo-about` license-policy resolution runs on every PR (`licenses_policy` job); full `cargo deny` policy checks (bans/licenses/sources) run locally (`just audit`) and are enforced as a hard release gate (`jci-audit release`) — CI-time wiring of `jci-audit check` on every PR is tracked in `ROADMAP.md` (post-migration) |
+| static_analysis_common_vulnerabilities | Met | `cargo audit` (live) runs on every PR; `cargo-about` license-policy resolution runs on every PR (`licenses_policy` job); full `cargo deny` policy checks (bans/licenses/sources) run locally (`just audit`) and are enforced as a hard release gate (`jci-audit release-prep`) — CI-time wiring of `jci-audit check` on every PR is tracked in `ROADMAP.md` (post-migration) |
 | static_analysis_fixed | Met | Findings addressed; CI enforces |
 | static_analysis_often | Met | Runs on every PR |
 | dynamic_analysis | N/A | Memory-safe Rust; the only `unsafe` blocks are in test code (`std::env::set_var`/`remove_var`), none in production logic |
@@ -154,7 +154,7 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | installation_standard_variables | Met | Cargo honors `CARGO_INSTALL_ROOT` etc. |
 | installation_development_quick | Met | `cargo build` / `just test` (see `CONTRIBUTING.md`) |
 | external_dependencies | Met | `Cargo.toml` + `Cargo.lock` (machine-readable) |
-| dependency_monitoring | Met | Renovate + `cargo-audit`/`cargo-deny` (the latter dogfooded on itself via `jci-audit release`) |
+| dependency_monitoring | Met | Renovate + `cargo-audit`/`cargo-deny` (the latter dogfooded on itself via `jci-audit release-prep`) |
 | updateable_reused_components | Met | Cargo dependencies, versioned |
 | interfaces_current | Met | No deprecated APIs relied upon |
 | automated_integration_testing | Met | CI runs the suite on every check-in |

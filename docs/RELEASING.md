@@ -30,7 +30,7 @@ Releases run on CircleCI ([`.circleci/release.yml`](../.circleci/release.yml)):
 2. **Manual approval** gate — a reviewer approves the calculated version before anything is
    published.
 3. `build-binary` — builds the release binary from the commit being released.
-4. `record-release` — runs `jci-audit release`: locks validation to a pinned advisory-db commit
+4. `record-release` — runs `jci-audit release-prep`: locks validation to a pinned advisory-db commit
    and writes `.security/release-<version>.json` locally (not committed — see
    [design.md §5–6](design.md#5-reproducibility-the-release-record) and
    [#75](https://github.com/jerus-org/jci-audit/issues/75) for how the record is distributed).

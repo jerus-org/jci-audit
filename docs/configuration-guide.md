@@ -61,7 +61,7 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 | Key | Meaning |
 |-----|---------|
-| `db-path` / `db-urls` | Where `cargo-deny` clones/refreshes its advisory-db copy. `jci-audit release` overrides `db-path` internally to pin the checkout for reproducibility — leave these at their defaults. |
+| `db-path` / `db-urls` | Where `cargo-deny` clones/refreshes its advisory-db copy. `jci-audit release-prep` overrides `db-path` internally to pin the checkout for reproducibility — leave these at their defaults. |
 | `unmaintained` | Scope selector (`"all"` \| `"workspace"` \| `"transitive"` \| `"none"`) for reporting unmaintained crates. `"all"` checks the whole dependency graph and reports as a warning. |
 | `yanked` | `"warn"` or `"deny"` for yanked crate versions. |
 | `ignore` | **The canonical list of accepted advisory IDs**, each ideally with a comment explaining why. `jci-audit sync` derives `.cargo/audit.toml`'s `[advisories].ignore` from this — never edit `.cargo/audit.toml` directly. |

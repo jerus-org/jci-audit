@@ -55,7 +55,7 @@ cargo install jci-audit
 jci-audit check
 
 # Release gate: reproducible validation against a pinned advisory-db + live audit
-jci-audit release --release-version 1.2.0
+jci-audit release-prep --release-version 1.2.0
 
 # Derive .cargo/audit.toml and every crate's about.toml from the canonical
 # deny.toml (CI: --check fails on drift)

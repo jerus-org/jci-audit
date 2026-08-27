@@ -1,4 +1,4 @@
-description: Run release command in a dedicated job.
+description: Run release-prep command in a dedicated job.
 executor: default
 parameters:
   release_version:
@@ -41,7 +41,7 @@ steps:
         command: <<include(scripts/add-workspace-to-path.sh)>>
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
-- release:
+- release_prep:
     release_version: << parameters.release_version >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>

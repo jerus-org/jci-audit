@@ -53,7 +53,7 @@ write)
 
 cargo-about could not resolve the licences of this dependency graph.
 
-'jci-audit release' runs this same check earlier, before the approval gate and
+'jci-audit release-prep' runs this same check earlier, before the approval gate and
 the build — so this is caught here at PR time, not there at the most expensive
 point in the pipeline.
 
