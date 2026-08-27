@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-08-25._
+_Last updated: 2026-08-27._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -17,11 +17,18 @@ into themes and horizons.
 ## Current status
 
 jci-audit is **pre-1.0, currently `0.1.0`** — published bin-only (no importable `[lib]` target,
-[#90](https://github.com/jerus-org/jci-audit/issues/90)); crates.io versions `0.0.1`–`0.0.7` are
-yanked. All six subcommands (`check`, `release`, `sync`, `prune`, `verify`, `init`) are
-implemented and tested; the crate and its generated orb (`jerus-org/jci-audit`) publish in
-tag-lockstep. `deny.toml` is the single source of truth for both advisory ignores and license
-policy — `.cargo/audit.toml` and every crate's `about.toml` are derived from it.
+[#90](https://github.com/jerus-org/jci-audit/issues/90)). **Every published crates.io version,
+`0.0.1`–`0.1.0`, is currently yanked**: `0.0.1`–`0.0.7` for the accidentally-importable library
+(#90), and `0.1.0` because its release-security-record was unrecoverable (never committed, never
+uploaded as a release asset, and the CI build-artifact copy expired — see
+[#75](https://github.com/jerus-org/jci-audit/issues/75)) — `jci-audit verify` would have nothing
+to check `0.1.0` against, so it isn't a verifiable release. There is currently no installable
+version on crates.io; that clears once the next release ships #75's remaining phase and produces
+a genuinely retrievable record. All six subcommands (`check`, `release`, `sync`, `prune`,
+`verify`, `init`) are implemented and tested; the crate and its generated orb
+(`jerus-org/jci-audit`) publish in tag-lockstep. `deny.toml` is the single source of truth for
+both advisory ignores and license policy — `.cargo/audit.toml` and every crate's `about.toml` are
+derived from it.
 
 ## Delivered phases
 
@@ -32,8 +39,8 @@ The original build phased as follows:
 | **P0 — scaffold** | New repo, workspace + clap skeleton, release lockstep, CI | ✅ Done |
 | **P1 — `check` + `sync` + `init` + orb** | Both tools in one gate; `deny.toml` → `.cargo/audit.toml` single source; standard policy template; generated orb | ✅ Done |
 | **P2 — `prune`** | Automated stale-ignore detection (naked-DB diff) | ✅ Done |
-| **P3 — `release` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done |
-| **P4 — publish** | crates.io + orb published in lockstep | ✅ Done |
+| **P3 — `release` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done (the original commit-based signing was later removed by #75 phase 1; see the #75 gate below for the current, unfinished replacement) |
+| **P4 — publish** | crates.io + orb published in lockstep | ✅ Done — publishing itself works; whether any given *version* is currently installable is separate, see Current status above |
 
 ## Near term (0.1.0 preview credibility gates, before consumer migration)
 
@@ -46,6 +53,19 @@ version tag itself, and still gate consumer migration.
   `0.0.1`–`0.0.7` yanked on crates.io so new dependents can't resolve the versions that carried
   the accidentally-importable library (their docs.rs pages stay published regardless — yanking
   only affects dependency resolution).
+- **[#75 — release record retrievability.](https://github.com/jerus-org/jci-audit/issues/75)**
+  In progress, now top priority. Phase 1 (stop git-committing the record) shipped before `0.1.0`;
+  phase 3 (`verify`'s signed remote-fetch path) is already built and wired. Phase 2 (sign the
+  record and upload it, with its signature, to the draft release before publish) is the one
+  remaining piece, and its absence caused real damage: `0.1.0`'s own record fell through every
+  available path (no commit, no release asset, and the CI build-artifact copy expired) and can
+  never be reconstructed. **`0.1.0` has been yanked from crates.io** as a result — not a
+  verifiable release. This isn't jci-audit's first release with a record, though: `0.0.4`–`0.0.7`
+  each carry a real, GPG-signed, git-committed record and are still independently verifiable from
+  a checkout — they're separately yanked, for the unrelated #90 reason. The gap phase 2 closes is
+  that *every* release since phase 1 removed the commit path has had no record at all; the next
+  release, cut after phase 2 ships, will be the first since then to be both installable and
+  verifiable.
 - **Project hardening / OpenSSF Best Practices badge.** ✅ Done — the project has reached
   [Silver](https://www.bestpractices.dev/projects/14065) (confirmed 2026-08-25; 100% of Silver's
   55 criteria met, Gold at 35%).
@@ -71,6 +91,17 @@ version tag itself, and still gate consumer migration.
 - **[#49 — accept warnings at release time and record the acceptances.](https://github.com/jerus-org/jci-audit/issues/49)**
 - **[#36 — run `licenses-check` in validation so notices cannot go stale.](https://github.com/jerus-org/jci-audit/issues/36)**
 - **[#31 — resolve the cargo-deny warnings (unmatched license allowances, duplicate syn).](https://github.com/jerus-org/jci-audit/issues/31)**
+- **[#86 — `RUST_LOG=""` (set-but-empty) silently disables all logging.](https://github.com/jerus-org/jci-audit/issues/86)**
+  The `-v`/`-q`-derived fallback filter only kicks in when `RUST_LOG` is unset, not when it's set
+  but empty.
+- **[#100 — `about.toml` sync assumes a `crates/*/` layout instead of reading the workspace manifest.](https://github.com/jerus-org/jci-audit/issues/100)**
+  A workspace laid out any other way silently never gets its `about.toml` synced.
+- **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
+  Today it's a manual copy-the-YAML step; `gen-circleci-orb init`/`update` already automates the
+  equivalent for its own consumers.
+- **[#80 — fold the `cargo-about` license-policy resolution check into `check`/`release`.](https://github.com/jerus-org/jci-audit/issues/80)**
+  Today it only runs as a hand-authored job in this repo's own CI, so a consumer who adopts the
+  generated orb doesn't get it.
 
 ## Medium term — toward 1.0
 
