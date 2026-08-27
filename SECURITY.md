@@ -108,13 +108,15 @@ trust model is important to using it safely:
   variable.** `jci-audit release-prep` writes its validation record to a local file
   only; the tool does not sign, commit, or push it. `jci-audit verify`'s
   no-checkout fallback (no local record present) is the one exception: it reads
-  a GitHub token from `GITHUB_TOKEN` — never a CLI flag — to fetch the record
-  and its signature from the published release, and checks that signature
-  against the pubkey published in the release's own `Cargo.toml` before
-  trusting anything in it. See
+  a GitHub token from `GITHUB_TOKEN` — never a CLI flag — to fetch the record,
+  its signature, and its pubkey — all three as named assets on the published
+  release — and checks the signature before trusting anything in the record.
+  That check alone doesn't prove much when the pubkey has no anchor beyond the
+  release itself — see `docs/assurance-case.md`'s T9 entry for the honest
+  limits of what it does and doesn't catch. See
   [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) for
-  the CI side (uploading the record + signature) that still has to land before
-  this path has anything to fetch.
+  the CI side (uploading the record, signature, and pubkey) that still has to
+  land before this path has anything to fetch.
 - **What is out of scope.** Vulnerabilities in `cargo-audit`, `cargo-deny`,
   `cargo-about`, the RustSec advisory database, or your own CI secrets management
   are outside this project's control. Report those to the relevant projects.

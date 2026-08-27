@@ -233,17 +233,15 @@ absent, it falls back to `src/remote.rs` instead of erroring — the auditor's n
 [#75](https://github.com/jerus-org/jci-audit/issues/75) phase 3 exists for. This is a different,
 narrower check than §5.3, not the same one run against fetched bytes:
 
-1. Fetch `release-<VERSION>.json` and its `.sig` from the **published** release for the tag
-   (`pcu-release-assets::ReleaseAssetClient::download_release_asset` — published-only by
+1. Fetch `release-<VERSION>.json`, its `.sig`, and its `.pub` from the **published** release for
+   the tag (`pcu-release-assets::ReleaseAssetClient::download_release_asset` — published-only by
    construction; it has no method that would read a draft, so there is no runtime flag to get
-   wrong).
-2. Fetch the release tag's raw `crates/jci-audit/Cargo.toml`
-   (`raw.githubusercontent.com/<owner>/<repo>/refs/tags/<tag>/...`) and read
-   `[package.metadata.binstall.signing].pubkey` — the same key `docs/RELEASING.md` documents for
-   verifying the binary tarball.
-3. Check the record's minisign signature against that pubkey, by shelling to `rsign verify`
+   wrong). The `.pub` asset's content is parsed for the bare key (tolerating either a plain
+   key or the full `rsign`-generated pubkey-file format with its `untrusted comment:` line) —
+   no `Cargo.toml` involved, so this mode needs nothing beyond the release's own assets.
+2. Check the record's minisign signature against that pubkey, by shelling to `rsign verify`
    (`preflight::Tool::Rsign`) — not by linking a crypto crate.
-4. On a valid signature, report the record's attested content (advisory-db commit, recorded
+3. On a valid signature, report the record's attested content (advisory-db commit, recorded
    verdict) — but **do not re-run `cargo-deny`**: that needs the checked-out `Cargo.lock` and
    `deny.toml` a bare directory doesn't have. `RemoteVerifyOutcome::unchecked` says so explicitly,
    naming what a local checkout would additionally let `verify` prove.

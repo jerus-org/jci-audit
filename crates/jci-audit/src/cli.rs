@@ -372,8 +372,9 @@ fn run_verify(
     }
 }
 
-/// No local `.security/release-<VERSION>.json` — fetch the record and its
-/// signature from the published GitHub release instead. See [`remote`].
+/// No local `.security/release-<VERSION>.json` — fetch the record, its
+/// signature, and its pubkey from the published GitHub release instead. See
+/// [`remote`].
 ///
 /// The token is read from `GITHUB_TOKEN` only, never a CLI flag — a secret
 /// passed as a command-line argument is visible to anyone on the same
