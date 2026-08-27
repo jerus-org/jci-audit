@@ -12,7 +12,7 @@ gen-changelog generate \
 # Runs from the crate directory, where about.toml / about.hbs live and where
 # THIRD-PARTY-LICENSES.md is packaged.
 #
-# Unguarded: `jci-audit release` (record-release, earlier in this same
+# Unguarded: `jci-audit release-prep` (record-release, earlier in this same
 # pipeline) already ran cargo-about's policy-resolution check as a hard gate,
 # so its presence and the policy's resolvability are already guaranteed here.
 # A failure at this point means the environment changed between the two

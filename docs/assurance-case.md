@@ -21,7 +21,7 @@ subprocesses, using each for what it is best at rather than reimplementing eithe
 
 1. **`jci-audit check`** — PR/dev gate: `cargo deny` policy checks and a live
    `cargo audit` scan, both blocking (`src/check.rs`).
-2. **`jci-audit release`** — release gate: locks `cargo deny` to a **pinned advisory-db
+2. **`jci-audit release-prep`** — release gate: locks `cargo deny` to a **pinned advisory-db
    commit** and runs it offline for reproducibility; `cargo audit` keeps running live,
    as a non-blocking currency check rather than a second pinned pass; writes the
    release record locally (`src/release.rs`).
@@ -72,7 +72,7 @@ The security objectives, in priority order, are:
 |----------|----------|------------|
 | The **`cargo-audit`/`cargo-deny`/`cargo-about`/`cargo`/`rsign` binaries** invoked | Trusted, fixed | Always one of these five fixed names, resolved from `PATH`; never a config- or argument-supplied program (unlike a generic "run this binary" tool — see R1). |
 | The **`deny.toml` policy** | Trusted | Authored and reviewed by the repository owner; canonical source for both advisory ignores and license policy. |
-| **The RustSec advisory-db** | Semi-trusted, pinned | `release`/`verify` lock to a specific commit for reproducibility rather than trusting whatever the live clone contains at run time. |
+| **The RustSec advisory-db** | Semi-trusted, pinned | `release-prep`/`verify` lock to a specific commit for reproducibility rather than trusting whatever the live clone contains at run time. |
 | **Third-party crates** (jci-audit's own dependencies) | Semi-trusted | Pinned via `Cargo.lock`; monitored — see R5/T4. |
 | **The network** (advisory-db fetch, managed by `cargo-deny`; GitHub's REST/GraphQL API and `raw.githubusercontent.com`, used by jci-audit's own code in `verify`'s remote path only) | Untrusted transport | Confidentiality/integrity via TLS on every leg; see T5. The GitHub API leg also carries the caller's read-only token (T3); the fetched record is additionally authenticated by its minisign signature, independent of transport trust (T6). |
 | **The GitHub token** (`verify`'s remote path, `GITHUB_TOKEN` env var only — no CLI flag exists for it) | Trusted, caller-supplied | Held in memory only for the duration of the fetch; used solely to authenticate `pcu-release-assets`' REST/GraphQL calls. Never written to a file, logged, or echoed — see T3. |

@@ -76,7 +76,7 @@ Both tool results and the drift check are aggregated — a failure in one does n
 
 ```mermaid
 flowchart TD
-    START["jci-audit release --release-version X"] --> DRIFT2["about.toml drift check"]
+    START["jci-audit release-prep --release-version X"] --> DRIFT2["about.toml drift check"]
     DRIFT2 --> POLICY["cargo-about policy resolution\n(cache-independent --locked check)"]
     POLICY --> PIN["cargo-deny clones/refreshes\nadvisory-db, resolve HEAD commit"]
     PIN --> OFFLINE["cargo deny --offline check\n(pinned advisory-db)"]
@@ -200,7 +200,7 @@ Design notes:
   `THIRD-PARTY-LICENSES.md`.** `cargo-about` resolves license text partly from files extracted into
   the local cargo registry cache, so identical inputs render different bytes across cache states —
   a measured 208-line diff, cold vs warm, same commit and lockfile. Digesting the rendered output
-  would make `verify` unable to reproduce it. It is also not yet in final form when `release` runs,
+  would make `verify` unable to reproduce it. It is also not yet in final form when `release-prep` runs,
   since `THIRD-PARTY-LICENSES.md` regeneration happens later, in `cargo-release`'s own
   `release-hook.sh`.
 - **`about_toml_sha256` is `null` on schema versions before 4** (and on a workspace with no
@@ -257,7 +257,7 @@ question, so a bad signature means there is nothing left to report.
 
 ## 6. Distributing the record
 
-`jci-audit release` writes the record to `.security/release-<VERSION>.json` in the working
+`jci-audit release-prep` writes the record to `.security/release-<VERSION>.json` in the working
 directory and stops there — it is not committed to git. Earlier versions committed and
 GPG-signed it as a commit ancestor of the release tag, specifically to satisfy `cargo-release`'s
 refusal to start on a dirty tree; that dependency is gone now, since the record path is
@@ -275,7 +275,7 @@ Distribution as a signed release asset — alongside the crate's other signed ar
 tracked in [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75); this is a
 phased rollout. §5.4 describes the *consumer* of that asset (`verify`'s remote fetch path), which
 has landed; the *producer* — CI uploading the record and its signature to the draft release before
-it is published — is phase 2 and has not landed yet. Until it does, `jci-audit release` still
+it is published — is phase 2 and has not landed yet. Until it does, `jci-audit release-prep` still
 gates every release exactly as before — a failing run still blocks the release — but there is no
 asset yet for `verify`'s remote path to fetch, so it will error with "no such asset" until phase 2
 ships.

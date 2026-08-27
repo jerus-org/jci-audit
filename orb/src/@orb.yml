@@ -1,6 +1,6 @@
 version: 2.1
 description: >
-  Orchestrate cargo-audit and cargo-deny per pipeline context. `check` gates PRs on both tools; `release` validates reproducibly against a pinned advisory-db; `sync` derives .cargo/audit.toml from the canonical deny.toml; `prune` detects stale advisory ignores; `init` scaffolds a standard deny.toml.
+  Orchestrate cargo-audit and cargo-deny per pipeline context. `check` gates PRs on both tools; `release-prep` validates reproducibly against a pinned advisory-db; `sync` derives .cargo/audit.toml from the canonical deny.toml; `prune` detects stale advisory ignores; `init` scaffolds a standard deny.toml.
 display:
   home_url: "https://github.com/jerus-org/jci-audit"
   source_url: "https://github.com/jerus-org/jci-audit"

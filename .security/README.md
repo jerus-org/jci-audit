@@ -13,7 +13,7 @@ byte-identical file.
 
 **The records below (0.0.4–0.0.7) are historical.** Starting with the release
 that ships [#75](https://github.com/jerus-org/jci-audit/issues/75) phase 1,
-`jci-audit release` no longer commits the record here — it's written locally
+`jci-audit release-prep` no longer commits the record here — it's written locally
 and left `.gitignore`'d, pending distribution as a signed release asset
 (tracked in the same issue). This directory won't gain new entries going
 forward; the files already here are kept as-is.

@@ -61,7 +61,7 @@ jobs:
             # where the detail should stay. The record is written locally only
             # (.gitignore'd) — no longer committed; see jerus-org/jci-audit#75
             # for its eventual distribution as a signed release asset.
-            jci-audit release \
+            jci-audit release-prep \
               --release-version "${VERSION}" \
               --verbose
             # Copy to a version-independent path: store_artifacts can't expand

@@ -36,7 +36,7 @@ See SECURITY.md for the policy.
 ## Environment
 
 - jci-audit version:
-- Subcommand (`check` / `release` / `sync` / `prune` / `init` / `verify`):
+- Subcommand (`check` / `release-prep` / `sync` / `prune` / `init` / `verify`):
 - Rust toolchain (`rustc --version`):
 - Operating system:
 

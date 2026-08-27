@@ -24,7 +24,7 @@ usage:
   workflows:
     release:
       jobs:
-        - jci-audit/release:
+        - jci-audit/release_prep:
             name: record-release
             # Explicit version. Omit this and export SEMVER instead when the
             # version is calculated during the pipeline.

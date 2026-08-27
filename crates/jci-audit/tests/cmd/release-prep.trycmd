@@ -1,8 +1,8 @@
 ```
-$ jci-audit release -h
+$ jci-audit release-prep -h
 Release gate: reproducible, pinned-advisory-db validation
 
-Usage: jci-audit release [OPTIONS]
+Usage: jci-audit release-prep [OPTIONS]
 
 Options:
       --release-version <VERSION>  The release version being validated (e.g. "1.2.0")
@@ -13,12 +13,12 @@ Options:
       --deny-warnings              Fail if the tools report any warning
   -h, --help                       Print help (see more with '--help')
 
-$ jci-audit release --help
+$ jci-audit release-prep --help
 Release gate: reproducible, pinned-advisory-db validation.
 
 Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there.
 
-Usage: jci-audit release [OPTIONS]
+Usage: jci-audit release-prep [OPTIONS]
 
 Options:
       --release-version <VERSION>

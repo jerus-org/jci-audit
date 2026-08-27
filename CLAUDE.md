@@ -21,7 +21,7 @@ consumer migration).
 crates/jci-audit/
 ├── src/
 │   ├── main.rs       # crate doc + mod declarations, tracing setup
-│   ├── cli.rs        # Cli + Commands (check/release/sync/prune/init), run()
+│   ├── cli.rs        # Cli + Commands (check/release-prep/sync/prune/init), run()
 │   └── preflight.rs  # tool-presence detection for cargo-audit / cargo-deny
 └── tests/cmd/*.trycmd  # CLI snapshot tests (trycmd)
 ```

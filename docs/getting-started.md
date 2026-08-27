@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Getting started with jci-audit
 
-This guide takes you from installation to a working `check`/`release` gate for a Rust project.
+This guide takes you from installation to a working `check`/`release-prep` gate for a Rust project.
 
 ## Install
 
@@ -74,7 +74,7 @@ Add `sync --check` to your validation workflow so a hand-edit to either derived 
 Once you're ready to cut a release:
 
 ```bash
-jci-audit release --release-version 1.2.0
+jci-audit release-prep --release-version 1.2.0
 ```
 
 This locks `cargo-deny` to a **pinned advisory-db commit** and runs it offline for
