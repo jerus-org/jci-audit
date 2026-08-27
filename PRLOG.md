@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - docs-mark #90 and OpenSSF Silver done in roadmap(pr [#99])
+- docs-note 0.1.0 yank, add missing backlog issues(pr [#102])
 
 ## [0.1.0] - 2026-08-25
 
@@ -233,6 +234,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#97]: https://github.com/jerus-org/jci-audit/pull/97
 [#92]: https://github.com/jerus-org/jci-audit/pull/92
 [#99]: https://github.com/jerus-org/jci-audit/pull/99
+[#102]: https://github.com/jerus-org/jci-audit/pull/102
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
