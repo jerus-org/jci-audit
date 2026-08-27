@@ -39,8 +39,8 @@ The original build phased as follows:
 | **P0 — scaffold** | New repo, workspace + clap skeleton, release lockstep, CI | ✅ Done |
 | **P1 — `check` + `sync` + `init` + orb** | Both tools in one gate; `deny.toml` → `.cargo/audit.toml` single source; standard policy template; generated orb | ✅ Done |
 | **P2 — `prune`** | Automated stale-ignore detection (naked-DB diff) | ✅ Done |
-| **P3 — `release` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done |
-| **P4 — publish** | crates.io + orb published in lockstep | ✅ Done |
+| **P3 — `release` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done (the original commit-based signing was later removed by #75 phase 1; see the #75 gate below for the current, unfinished replacement) |
+| **P4 — publish** | crates.io + orb published in lockstep | ✅ Done — publishing itself works; whether any given *version* is currently installable is separate, see Current status above |
 
 ## Near term (0.1.0 preview credibility gates, before consumer migration)
 
@@ -54,14 +54,18 @@ version tag itself, and still gate consumer migration.
   the accidentally-importable library (their docs.rs pages stay published regardless — yanking
   only affects dependency resolution).
 - **[#75 — release record retrievability.](https://github.com/jerus-org/jci-audit/issues/75)**
-  🔴 In progress, now top priority. Phase 1 (stop git-committing the record) shipped before
-  `0.1.0`; phase 3 (`verify`'s signed remote-fetch path) is already built and wired. Phase 2 (sign
-  the record and upload it, with its signature, to the draft release before publish) is the one
+  In progress, now top priority. Phase 1 (stop git-committing the record) shipped before `0.1.0`;
+  phase 3 (`verify`'s signed remote-fetch path) is already built and wired. Phase 2 (sign the
+  record and upload it, with its signature, to the draft release before publish) is the one
   remaining piece, and its absence caused real damage: `0.1.0`'s own record fell through every
   available path (no commit, no release asset, and the CI build-artifact copy expired) and can
   never be reconstructed. **`0.1.0` has been yanked from crates.io** as a result — not a
-  verifiable release. The next release, cut after phase 2 ships, will be the first genuinely
-  verifiable one.
+  verifiable release. This isn't jci-audit's first release with a record, though: `0.0.4`–`0.0.7`
+  each carry a real, GPG-signed, git-committed record and are still independently verifiable from
+  a checkout — they're separately yanked, for the unrelated #90 reason. The gap phase 2 closes is
+  that *every* release since phase 1 removed the commit path has had no record at all; the next
+  release, cut after phase 2 ships, will be the first since then to be both installable and
+  verifiable.
 - **Project hardening / OpenSSF Best Practices badge.** ✅ Done — the project has reached
   [Silver](https://www.bestpractices.dev/projects/14065) (confirmed 2026-08-25; 100% of Silver's
   55 criteria met, Gold at 35%).
