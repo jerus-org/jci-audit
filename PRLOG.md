@@ -15,6 +15,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: lock file maintenance(pr [#106])
+- deps: lock file maintenance(pr [#110])
 
 ## [0.1.0] - 2026-08-25
 
@@ -242,6 +243,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#102]: https://github.com/jerus-org/jci-audit/pull/102
 [#104]: https://github.com/jerus-org/jci-audit/pull/104
 [#106]: https://github.com/jerus-org/jci-audit/pull/106
+[#110]: https://github.com/jerus-org/jci-audit/pull/110
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
