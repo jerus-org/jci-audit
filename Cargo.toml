@@ -54,6 +54,17 @@ tokio = { version = "1.53.1", default-features = false, features = [
     "net",
     "io-util",
 ] }
+# ManifestPubkeySource's raw Cargo.toml-at-tag fetch (verify's remote-path
+# pubkey fallback, jerus-org/jci-audit#75) — pcu-release-assets only fetches
+# release *assets*, not arbitrary repo file contents. Pinned to the same
+# major as pcu-release-assets' own direct reqwest dependency (0.13) so this
+# doesn't add a THIRD reqwest version — pcu-release-assets' own transitive
+# deps (gql_client, octocrate-core) already pull reqwest 0.12 regardless of
+# this pin (verified with `cargo tree -i reqwest@0.12.28`), so some
+# duplication is unavoidable here.
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "rustls",
+] }
 
 # Testing
 tempfile = "3.27.0"

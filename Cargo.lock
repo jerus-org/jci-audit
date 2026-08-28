@@ -905,6 +905,7 @@ dependencies = [
  "clap",
  "clap-verbosity-flag",
  "pcu-release-assets",
+ "reqwest 0.13.4",
  "serde_json",
  "sha2",
  "spdx",

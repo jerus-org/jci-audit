@@ -51,9 +51,13 @@ sha2.workspace = true
 spdx.workspace = true
 
 # Release-record remote fetch (verify's no-local-checkout path, #75 phase 3):
-# downloads the record, signature, and pubkey from a published GitHub release.
+# downloads the record and signature from a published GitHub release, and
+# (via a pubkey source) the pubkey that signed it — either the release's own
+# .pub asset, or, until the CI upload step for that lands, the pubkey
+# inject_pubkey_and_amend already writes into the release tag's Cargo.toml.
 pcu-release-assets.workspace = true
 tokio.workspace = true
+reqwest.workspace = true
 
 # NOTE: config, serde, thiserror are declared in the workspace dependency
 # catalog and switched on when a phase needs them — `config` is reserved for

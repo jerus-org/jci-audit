@@ -233,15 +233,21 @@ absent, it falls back to `src/remote.rs` instead of erroring — the auditor's n
 [#75](https://github.com/jerus-org/jci-audit/issues/75) phase 3 exists for. This is a different,
 narrower check than §5.3, not the same one run against fetched bytes:
 
-1. Fetch `release-<VERSION>.json`, its `.sig`, and its `.pub` from the **published** release for
-   the tag (`pcu-release-assets::ReleaseAssetClient::download_release_asset` — published-only by
+1. Fetch `release-<VERSION>.json` and its `.sig` from the **published** release for the tag
+   (`pcu-release-assets::ReleaseAssetClient::download_release_asset` — published-only by
    construction; it has no method that would read a draft, so there is no runtime flag to get
-   wrong). The `.pub` asset's content is parsed for the bare key (tolerating either a plain
-   key or the full `rsign`-generated pubkey-file format with its `untrusted comment:` line) —
-   no `Cargo.toml` involved, so this mode needs nothing beyond the release's own assets.
-2. Check the record's minisign signature against that pubkey, by shelling to `rsign verify`
+   wrong).
+2. Find the pubkey that signed it from an ordered list of `PubkeySource`s — `cli.rs::
+   run_verify_remote` tries `ManifestPubkeySource` (the release tag's raw `Cargo.toml`, read for
+   `[package.metadata.binstall.signing].pubkey`) before `AssetPubkeySource` (the record's own
+   `.pub` release asset, parsed for the bare key). Manifest first because — until #75's
+   asset-upload CI step ships — it's the only one with real data for any actual release at all,
+   **not** because it's an independently stronger guarantee: in jci-audit's own pipeline both
+   sources currently trace back to the same CI job and credentials (T9 of
+   `docs/assurance-case.md` has the full, honest accounting).
+3. Check the record's minisign signature against that pubkey, by shelling to `rsign verify`
    (`preflight::Tool::Rsign`) — not by linking a crypto crate.
-3. On a valid signature, report the record's attested content (advisory-db commit, recorded
+4. On a valid signature, report the record's attested content (advisory-db commit, recorded
    verdict) — but **do not re-run `cargo-deny`**: that needs the checked-out `Cargo.lock` and
    `deny.toml` a bare directory doesn't have. `RemoteVerifyOutcome::unchecked` says so explicitly,
    naming what a local checkout would additionally let `verify` prove.

@@ -57,7 +57,7 @@ flowchart LR
 | `license_scope.rs` | Computes each crate's *own* license-acceptance list by walking `cargo metadata`'s reachable dependency graph (excluding dev-only edges) and evaluating each package's SPDX expression against `deny.toml`'s allow-list — a crate-scoped subset, not the whole workspace policy copied verbatim. |
 | `release.rs` | Release gate: locks `cargo-deny` to a pinned `advisory-db` commit and runs it offline for reproducibility; `cargo-audit` runs live as a non-blocking currency check, not a second pinned pass; writes `.security/release-<version>.json` locally (see [#75](https://github.com/jerus-org/jci-audit/issues/75) for how it's distributed). |
 | `verify.rs` | Re-derives a past release's three recorded inputs (dependency-set digest, policy digest, advisory-db commit) from a real checkout and compares them against the record — answers "did it really pass, under the exceptions in force at the time?" |
-| `remote.rs` | `verify`'s no-checkout fallback when no local record exists: downloads the record, its signature, and the pubkey that signed it — all three from the **published** GitHub release via `pcu-release-assets` — and checks the minisign signature (shelling to `rsign verify`) before trusting the record's content. Does not re-run the gate — see [assurance-case.md](assurance-case.md) T6. |
+| `remote.rs` | `verify`'s no-checkout fallback when no local record exists: downloads the record and its signature from the **published** GitHub release via `pcu-release-assets`, finds the pubkey that signed it from one of two ordered `PubkeySource`s (`Cargo.toml` at the release tag, then the release's own `.pub` asset), and checks the minisign signature (shelling to `rsign verify`) before trusting the record's content. Does not re-run the gate — see [assurance-case.md](assurance-case.md) T6. |
 | `prune.rs` | Stale-ignore detector: runs the audit tool from outside the workspace (so no local ignore file is discovered) to get the **naked** result, and flags configured ignores that no longer fire. |
 | `init.rs` | Scaffolds the standard `deny.toml` policy template plus its derived `.cargo/audit.toml`. |
 | `preflight.rs` | Presence-checks `cargo-audit`/`cargo-deny`/`cargo-about`/bare `cargo`/`rsign` before any subcommand shells out to them, with per-tool install guidance. |
@@ -82,10 +82,12 @@ flowchart LR
   [assurance-case.md](assurance-case.md).
 - **Git** — none. `verify`'s remote path needs no checkout at all, by design.
 - **Network** — `verify`'s remote path (no local record present) makes outbound HTTPS calls of
-  jci-audit's own: fetching the record, its signature, and its pubkey — three named assets, all
-  from a **published** GitHub release — via `pcu-release-assets` (REST + GraphQL, authenticated).
-  Every other subcommand, and `verify` when a local record exists, makes no network calls of its
-  own — see [assurance-case.md](assurance-case.md) §3/§7.
+  jci-audit's own: fetching the record and its signature as named assets from a **published**
+  GitHub release via `pcu-release-assets` (REST + GraphQL, authenticated), and — for the pubkey —
+  either a direct authenticated fetch of the release tag's `Cargo.toml` (tried first) or the
+  pubkey's own release asset (the fallback). Every other subcommand, and `verify` when a local
+  record exists, makes no network calls of its own — see [assurance-case.md](assurance-case.md)
+  §3/§7.
 - **Its own orb** — the project dogfoods `gen-circleci-orb` to generate the orb published from
   this repository (`orb/`), and jci-audit's own CI runs `jci-audit check`/`release-prep` on itself.
 
