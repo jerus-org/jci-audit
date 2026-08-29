@@ -104,26 +104,19 @@ trust model is important to using it safely:
   policy checks to a **pinned advisory-db commit** (recorded in the release record)
   rather than trusting whatever the live database says at build time, so the same
   inputs produce the same result on re-verification (`jci-audit verify`).
-- **Only one code path reads a credential, and only from an environment
-  variable — and even there it's optional.** `jci-audit release-prep` writes its
-  validation record to a local file only; the tool does not sign, commit, or push
-  it. `jci-audit verify`'s no-checkout fallback (no local record present) is the
-  one exception: when `GITHUB_TOKEN` is set — never a CLI flag — it authenticates
-  the fetch of the record and its signature as named assets on the published
-  release, and the pubkey that signed them, from one of two sources tried in
-  order: the release tag's `Cargo.toml` (where the existing tarball-signing step
-  already writes it — currently the only source with real data for any release,
-  since the asset-upload CI step below hasn't shipped), then the release's own
-  `release-<VERSION>.json.pub` asset once that exists. The token is **not
-  required**: the release and its assets are public, and GitHub's REST API
-  serves public release-asset downloads and public-repo raw file contents
-  unauthenticated — a token, when present, only raises the rate limit. This
-  keeps the no-checkout path usable by an independent auditor with no
-  maintainer contact at all, which a hard token requirement would have defeated
-  (jerus-org/jci-audit#103). Whichever source succeeds, the signature is
-  checked before trusting anything in the record — but that check means
-  different things depending on which source found the key; see
-  `docs/assurance-case.md`'s T9 entry for the honest limits of each.
+- **Only one code path ever reads a credential, and even there a token is never
+  required — only optional, to raise GitHub's rate limit.** `jci-audit
+  release-prep` writes its validation record to a local file only; it does not
+  sign, commit, or push it. `jci-audit verify`'s no-checkout fallback fetches
+  the record, its signature, and the signing pubkey from the **public**
+  release (and, as a fallback pubkey source, the release tag's `Cargo.toml`).
+  If `GITHUB_TOKEN` is set — never a CLI flag — it authenticates those
+  requests; if unset, the same requests go out unauthenticated instead
+  (jerus-org/jci-audit#103), keeping this path usable by an auditor with no
+  maintainer contact at all. Whichever pubkey source succeeds, the signature
+  is checked before trusting anything in the record — see
+  `docs/assurance-case.md`'s T9 entry for what that check does and doesn't
+  prove, which differs by source.
   See [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75)
   for the CI side (uploading the record, signature, and pubkey as release
   assets) that still has to land before the asset source has anything to fetch.

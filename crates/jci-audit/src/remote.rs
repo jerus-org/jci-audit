@@ -345,14 +345,9 @@ const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 pub(crate) struct ManifestPubkeySource {
     owner: String,
     repo: String,
-    // reqwest's client doesn't need a matching getter on anything else here
-    // — this is the only place in the module that makes an HTTP call outside
-    // pcu-release-assets, so the token is just stored plainly rather than
-    // threaded through a shared client. `None` when unauthenticated
-    // (jerus-org/jci-audit#103) — `raw.githubusercontent.com` serves a
-    // public repo's tag contents with no auth at all, and GitHub treats an
-    // *empty* bearer token as invalid credentials rather than as anonymous,
-    // so this must be an absent header, not an empty one.
+    // `None` sends no Authorization header at all (jerus-org/jci-audit#103)
+    // — GitHub treats an *empty* bearer token as invalid credentials, not
+    // as anonymous, so an empty string here would be the wrong "no token".
     github_token: Option<String>,
 }
 
@@ -427,13 +422,10 @@ pub(crate) struct PcuAssetSource {
 
 impl PcuAssetSource {
     /// `github_token: None` builds an unauthenticated client
-    /// (`ReleaseAssetClient::new_unauthenticated`) — fine for
-    /// [`Self::fetch_asset`], which only ever calls
-    /// `download_release_asset`: that method resolves a tag's *published*
-    /// release and its assets entirely via GitHub's REST API, which serves a
-    /// public repo unauthenticated (jerus-org/jci-audit#103); it never needs
-    /// draft visibility, the one thing an anonymous client can't do (that
-    /// needs GitHub's GraphQL API, which has no anonymous path at all).
+    /// (jerus-org/jci-audit#103) — fine here since [`Self::fetch_asset`]
+    /// only ever calls `download_release_asset`, the one entry point that
+    /// works unauthenticated for a public repo (it never needs draft
+    /// visibility, which is what requires a token).
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
@@ -509,18 +501,13 @@ mod tests {
 
     #[test]
     fn manifest_pubkey_source_builds_without_a_token() {
-        // jerus-org/jci-audit#103: the remote verify path must not require
-        // GITHUB_TOKEN for a public repo's data. Constructibility only —
-        // exercising the actual unauthenticated HTTP fetch needs a live
-        // network call, outside this module's test doubles.
+        // Constructibility only (jerus-org/jci-audit#103) — the actual
+        // unauthenticated fetch needs a live network call.
         let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", None);
     }
 
     #[test]
     fn pcu_asset_source_builds_without_a_token() {
-        // Same as above, for the release-asset side: `PcuAssetSource::new`
-        // must route `None` to `ReleaseAssetClient::new_unauthenticated`,
-        // not fail or require a token at construction time.
         let _source = PcuAssetSource::new("jerus-org", "jci-audit", None);
     }
 
