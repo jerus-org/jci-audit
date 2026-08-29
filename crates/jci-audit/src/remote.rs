@@ -345,23 +345,22 @@ const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 pub(crate) struct ManifestPubkeySource {
     owner: String,
     repo: String,
-    // reqwest's client doesn't need a matching getter on anything else here
-    // — this is the only place in the module that makes an authenticated
-    // HTTP call outside pcu-release-assets, so the token is just stored
-    // plainly rather than threaded through a shared client.
-    github_token: String,
+    // `None` sends no Authorization header at all (jerus-org/jci-audit#103)
+    // — GitHub treats an *empty* bearer token as invalid credentials, not
+    // as anonymous, so an empty string here would be the wrong "no token".
+    github_token: Option<String>,
 }
 
 impl ManifestPubkeySource {
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
-        github_token: impl Into<String>,
+        github_token: Option<String>,
     ) -> Self {
         Self {
             owner: owner.into(),
             repo: repo.into(),
-            github_token: github_token.into(),
+            github_token,
         }
     }
 
@@ -379,14 +378,17 @@ impl ManifestPubkeySource {
 impl PubkeySource for ManifestPubkeySource {
     fn fetch_pubkey(&self, tag: &str, _version: &str) -> Result<String> {
         let url = raw_manifest_url(&self.owner, &self.repo, tag);
-        let manifest: String = Self::block_on(async {
+        let token = self.github_token.clone();
+        let manifest: String = Self::block_on(async move {
             let client = reqwest::Client::builder()
                 .timeout(MANIFEST_FETCH_TIMEOUT)
                 .build()
                 .context("failed to build an HTTP client")?;
-            let resp = client
-                .get(&url)
-                .bearer_auth(&self.github_token)
+            let mut req = client.get(&url);
+            if let Some(token) = &token {
+                req = req.bearer_auth(token);
+            }
+            let resp = req
                 .send()
                 .await
                 .with_context(|| format!("failed to fetch '{url}'"))?;
@@ -419,12 +421,20 @@ pub(crate) struct PcuAssetSource {
 }
 
 impl PcuAssetSource {
+    /// `github_token: None` builds an unauthenticated client
+    /// (jerus-org/jci-audit#103) — fine here since [`Self::fetch_asset`]
+    /// only ever calls `download_release_asset`, the one entry point that
+    /// works unauthenticated for a public repo (it never needs draft
+    /// visibility, which is what requires a token).
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
-        github_token: impl Into<String>,
+        github_token: Option<String>,
     ) -> Self {
-        let client = pcu_release_assets::ReleaseAssetClient::new(owner, repo, github_token);
+        let client = match github_token {
+            Some(token) => pcu_release_assets::ReleaseAssetClient::new(owner, repo, token),
+            None => pcu_release_assets::ReleaseAssetClient::new_unauthenticated(owner, repo),
+        };
         Self { client }
     }
 
@@ -487,6 +497,18 @@ mod tests {
         let (owner, repo) = owner_repo_from_repository_url(REPOSITORY_URL).unwrap();
         assert_eq!(owner, "jerus-org");
         assert_eq!(repo, "jci-audit");
+    }
+
+    #[test]
+    fn manifest_pubkey_source_builds_without_a_token() {
+        // Constructibility only (jerus-org/jci-audit#103) — the actual
+        // unauthenticated fetch needs a live network call.
+        let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", None);
+    }
+
+    #[test]
+    fn pcu_asset_source_builds_without_a_token() {
+        let _source = PcuAssetSource::new("jerus-org", "jci-audit", None);
     }
 
     #[test]
