@@ -30,6 +30,7 @@ mod init;
 mod license_scope;
 mod preflight;
 mod prune;
+mod publish_record;
 mod release;
 mod remote;
 mod sync;

@@ -1,26 +1,33 @@
 description: >
-  Run the release gate before the crate is released, and record its security
-  validation.
+  Run the release gate before the crate is released, then sign and upload the
+  security record to the release as its own set of assets.
 
-  The record attests that the release passed the gate against a known advisory
-  snapshot, so the release can be re-verified later with `jci-audit verify`. It
-  is written to `.security/release-<VERSION>.json` in the job's own working
-  directory and left there — the job does not commit, sign, or push it. If you
-  want to inspect it, persist it to the workspace or store it as a build
-  artifact, as this example does.
+  jci-audit/release_prep writes the record, unsigned, to
+  `.security/release-<VERSION>.json` in its own job's working directory. It
+  does not commit, sign, or push it — persist it to the workspace (as this
+  example does) so a later job can pick it up.
 
-  Distributing the record as a signed release asset (alongside the crate's
-  other signed artifacts) is tracked in
-  https://github.com/jerus-org/jci-audit/issues/75 and not yet available
-  through this orb.
+  jci-audit/publish_record then generates a one-use minisign keypair, signs
+  the record, uploads the record/.sig/.pub as release assets on the given
+  tag, and (with `publish: true`) un-drafts the release once they're
+  attached. The private key never leaves that one job — it is generated,
+  used, and discarded inside it, never passed to or from another step.
 
-  Supply the version either as the `release_version` parameter, or by exporting
-  it (the `version_env` parameter names the variable, default SEMVER) when your
-  pipeline computes it at runtime.
+  This is the self-contained path (jerus-org/jci-audit#75) for a consumer
+  with no equivalent signing facility of their own — it needs nothing beyond
+  this orb and a GitHub token with permission to upload assets to (and, with
+  `publish: true`, publish) the release. Set that token via a context on the
+  publish-record job, not as a parameter — it must never appear on a command
+  line or in a CI log.
+
+  Supply the version either as the `release_version` parameter, or by
+  exporting it (the `version_env` parameter names the variable, default
+  SEMVER) when your pipeline computes it at runtime. `tag` must be the exact
+  tag your own release job created the draft release under.
 usage:
   version: 2.1
   orbs:
-    jci-audit: jerus-org/jci-audit@0.0.2
+    jci-audit: jerus-org/jci-audit@0.1
   workflows:
     release:
       jobs:
@@ -30,10 +37,26 @@ usage:
             # version is calculated during the pipeline.
             release_version: "1.2.0"
             post-steps:
-              - store_artifacts:
-                  path: .security
-                  destination: security-record
+              - persist_to_workspace:
+                  root: .
+                  paths:
+                    - .security
 
-        # Release the crate only after the gate has passed.
-        - your-release-job:
+        # Creates the draft release however your pipeline normally does.
+        - your-draft-release-job:
             requires: [record-release]
+
+        - jci-audit/publish_record:
+            name: publish-security-record
+            requires: [your-draft-release-job]
+            context: [github-release-write]
+            attach_workspace: true
+            release_version: "1.2.0"
+            tag: "myapp-v1.2.0"
+            owner: "your-org"
+            repo: "your-repo"
+            # attach_workspace lands the record under workspace_root
+            # (default /tmp/workspace), not inside this job's own fresh
+            # checkout — point record_path at it explicitly.
+            record_path: "/tmp/workspace/.security/release-1.2.0.json"
+            publish: true

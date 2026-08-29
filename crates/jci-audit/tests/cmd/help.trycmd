@@ -5,13 +5,14 @@ Orchestrate cargo-audit and cargo-deny per pipeline context. `check` gates PRs o
 Usage: jci-audit [OPTIONS] <COMMAND>
 
 Commands:
-  check         PR/dev gate: cargo-deny policy plus a live cargo-audit scan
-  release-prep  Release gate: reproducible, pinned-advisory-db validation
-  sync          Derive `.cargo/audit.toml` from the canonical `deny.toml`
-  prune         Stale-ignore detector for advisory ignores that no longer fire
-  verify        Re-verify a past release against its recorded advisory snapshot
-  init          Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`
-  help          Print this message or the help of the given subcommand(s)
+  check           PR/dev gate: cargo-deny policy plus a live cargo-audit scan
+  release-prep    Release gate: reproducible, pinned-advisory-db validation
+  sync            Derive `.cargo/audit.toml` from the canonical `deny.toml`
+  prune           Stale-ignore detector for advisory ignores that no longer fire
+  verify          Re-verify a past release against its recorded advisory snapshot
+  init            Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`
+  publish-record  Self-contained: sign and upload the release record
+  help            Print this message or the help of the given subcommand(s)
 
 Options:
   -v, --verbose...
