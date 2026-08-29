@@ -346,22 +346,26 @@ pub(crate) struct ManifestPubkeySource {
     owner: String,
     repo: String,
     // reqwest's client doesn't need a matching getter on anything else here
-    // — this is the only place in the module that makes an authenticated
-    // HTTP call outside pcu-release-assets, so the token is just stored
-    // plainly rather than threaded through a shared client.
-    github_token: String,
+    // — this is the only place in the module that makes an HTTP call outside
+    // pcu-release-assets, so the token is just stored plainly rather than
+    // threaded through a shared client. `None` when unauthenticated
+    // (jerus-org/jci-audit#103) — `raw.githubusercontent.com` serves a
+    // public repo's tag contents with no auth at all, and GitHub treats an
+    // *empty* bearer token as invalid credentials rather than as anonymous,
+    // so this must be an absent header, not an empty one.
+    github_token: Option<String>,
 }
 
 impl ManifestPubkeySource {
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
-        github_token: impl Into<String>,
+        github_token: Option<String>,
     ) -> Self {
         Self {
             owner: owner.into(),
             repo: repo.into(),
-            github_token: github_token.into(),
+            github_token,
         }
     }
 
@@ -379,14 +383,17 @@ impl ManifestPubkeySource {
 impl PubkeySource for ManifestPubkeySource {
     fn fetch_pubkey(&self, tag: &str, _version: &str) -> Result<String> {
         let url = raw_manifest_url(&self.owner, &self.repo, tag);
-        let manifest: String = Self::block_on(async {
+        let token = self.github_token.clone();
+        let manifest: String = Self::block_on(async move {
             let client = reqwest::Client::builder()
                 .timeout(MANIFEST_FETCH_TIMEOUT)
                 .build()
                 .context("failed to build an HTTP client")?;
-            let resp = client
-                .get(&url)
-                .bearer_auth(&self.github_token)
+            let mut req = client.get(&url);
+            if let Some(token) = &token {
+                req = req.bearer_auth(token);
+            }
+            let resp = req
                 .send()
                 .await
                 .with_context(|| format!("failed to fetch '{url}'"))?;
@@ -419,12 +426,23 @@ pub(crate) struct PcuAssetSource {
 }
 
 impl PcuAssetSource {
+    /// `github_token: None` builds an unauthenticated client
+    /// (`ReleaseAssetClient::new_unauthenticated`) — fine for
+    /// [`Self::fetch_asset`], which only ever calls
+    /// `download_release_asset`: that method resolves a tag's *published*
+    /// release and its assets entirely via GitHub's REST API, which serves a
+    /// public repo unauthenticated (jerus-org/jci-audit#103); it never needs
+    /// draft visibility, the one thing an anonymous client can't do (that
+    /// needs GitHub's GraphQL API, which has no anonymous path at all).
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
-        github_token: impl Into<String>,
+        github_token: Option<String>,
     ) -> Self {
-        let client = pcu_release_assets::ReleaseAssetClient::new(owner, repo, github_token);
+        let client = match github_token {
+            Some(token) => pcu_release_assets::ReleaseAssetClient::new(owner, repo, token),
+            None => pcu_release_assets::ReleaseAssetClient::new_unauthenticated(owner, repo),
+        };
         Self { client }
     }
 
@@ -487,6 +505,23 @@ mod tests {
         let (owner, repo) = owner_repo_from_repository_url(REPOSITORY_URL).unwrap();
         assert_eq!(owner, "jerus-org");
         assert_eq!(repo, "jci-audit");
+    }
+
+    #[test]
+    fn manifest_pubkey_source_builds_without_a_token() {
+        // jerus-org/jci-audit#103: the remote verify path must not require
+        // GITHUB_TOKEN for a public repo's data. Constructibility only —
+        // exercising the actual unauthenticated HTTP fetch needs a live
+        // network call, outside this module's test doubles.
+        let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", None);
+    }
+
+    #[test]
+    fn pcu_asset_source_builds_without_a_token() {
+        // Same as above, for the release-asset side: `PcuAssetSource::new`
+        // must route `None` to `ReleaseAssetClient::new_unauthenticated`,
+        // not fail or require a token at construction time.
+        let _source = PcuAssetSource::new("jerus-org", "jci-audit", None);
     }
 
     #[test]

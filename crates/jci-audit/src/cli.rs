@@ -442,7 +442,13 @@ fn run_verify(
 ///
 /// The token is read from `GITHUB_TOKEN` only, never a CLI flag — a secret
 /// passed as a command-line argument is visible to anyone on the same
-/// machine who can read `/proc/<pid>/cmdline` or run `ps`.
+/// machine who can read `/proc/<pid>/cmdline` or run `ps`. Unlike
+/// `run_publish_record`, it is **optional** here: the release and its assets
+/// are public, and GitHub's REST API serves a public repo's release-asset
+/// downloads unauthenticated (jerus-org/jci-audit#103) — the whole point of
+/// this no-checkout path is that an independent auditor needs nothing from
+/// the maintainer, which a hard token requirement would defeat. A token,
+/// when present, only raises the rate limit.
 ///
 /// Pulled out of [`run_verify_remote`] so the manifest-first ordering is a
 /// plain, unit-testable fact rather than only an inline array literal.
@@ -459,17 +465,13 @@ fn run_verify_remote(
     output: &ToolOutput,
 ) -> Result<()> {
     preflight::ensure_available(&[Tool::Rsign])?;
-    // `.ok().filter(...)` rather than a bare `Result` check: an empty-string
-    // value (e.g. an unset pipeline parameter interpolated to "") is `Ok("")`
-    // from `env::var`, not `Err` — treat it the same as absent rather than
-    // sending an empty bearer token and getting an opaque 401 from GitHub.
-    let token = std::env::var("GITHUB_TOKEN")
-        .ok()
-        .filter(|t| !t.is_empty())
-        .context(
-            "no local release record, and no GITHUB_TOKEN set to fetch one from the \
-             published release",
-        )?;
+    // `.filter(...)` rather than a bare presence check: an empty-string
+    // value (e.g. an unset pipeline parameter interpolated to "") is
+    // `Ok("")` from `env::var`, not `Err` — treat it the same as absent
+    // rather than sending an empty bearer token and getting an opaque 401
+    // from GitHub. `None` is a legitimate, expected value here (see the doc
+    // comment above), not an error to reject.
+    let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
     let (owner, repo) = remote::owner_repo_from_repository_url(remote::REPOSITORY_URL)?;
     let tag = format!("{}{version}", remote::TAG_PREFIX);
     let source = remote::PcuAssetSource::new(owner.clone(), repo.clone(), token.clone());
@@ -909,9 +911,13 @@ mod tests {
         // manifest tried first (today's only real source), asset as
         // fallback. A future refactor that silently swaps the order should
         // fail this, not just drift the docs' stated behaviour.
-        let manifest_source =
-            remote::ManifestPubkeySource::new("jerus-org", "jci-audit", "unused-token");
-        let asset = remote::PcuAssetSource::new("jerus-org", "jci-audit", "unused-token");
+        let manifest_source = remote::ManifestPubkeySource::new(
+            "jerus-org",
+            "jci-audit",
+            Some("unused-token".to_string()),
+        );
+        let asset =
+            remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()));
         let asset_source = remote::AssetPubkeySource::new(&asset);
 
         let sources = ordered_pubkey_sources(&manifest_source, &asset_source);
