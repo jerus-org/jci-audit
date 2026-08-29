@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- self-contained publish-record subcommand(pr [#112])
+
 ### Changed
 
 - docs-mark #90 and OpenSSF Silver done in roadmap(pr [#99])
@@ -252,6 +256,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#108]: https://github.com/jerus-org/jci-audit/pull/108
 [#109]: https://github.com/jerus-org/jci-audit/pull/109
 [#105]: https://github.com/jerus-org/jci-audit/pull/105
+[#112]: https://github.com/jerus-org/jci-audit/pull/112
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
