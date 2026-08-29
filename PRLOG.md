@@ -11,6 +11,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - docs-mark #90 and OpenSSF Silver done in roadmap(pr [#99])
 - docs-note 0.1.0 yank, add missing backlog issues(pr [#102])
 - refactor-rename release subcommand to release-prep(pr [#104])
+- refactor-verify fetches pubkey as a release asset(pr [#105])
 
 ### Fixed
 
@@ -250,6 +251,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#107]: https://github.com/jerus-org/jci-audit/pull/107
 [#108]: https://github.com/jerus-org/jci-audit/pull/108
 [#109]: https://github.com/jerus-org/jci-audit/pull/109
+[#105]: https://github.com/jerus-org/jci-audit/pull/105
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
