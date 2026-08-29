@@ -68,9 +68,19 @@ jobs:
             # $VERSION in its `path`, and .security/ also holds the tracked
             # README and historical records that don't need re-uploading here.
             cp ".security/release-${VERSION}.json" /tmp/security-record.json
+            # Also stage it under the shared workspace for release-jci-audit's
+            # pre_binary_sign_steps/pre_publish_steps to sign and upload as a
+            # release asset (jerus-org/jci-audit#75 phase 2, path A) — this
+            # keeps the same, still-unsigned filename release-jci-audit reads.
+            mkdir -p /tmp/workspace/release-data
+            cp ".security/release-${VERSION}.json" /tmp/workspace/release-data/
       - store_artifacts:
           path: /tmp/security-record.json
           destination: security-record.json
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - release-data
 
 workflows:
   release:
@@ -114,6 +124,40 @@ workflows:
           # binary tarball/.sig uploads below fail against an already-published
           # release. See digital-prstv/circleci-toolkit#520/#521.
           draft: true
+          # jerus-org/jci-audit#75 phase 2, path A: sign the unsigned record
+          # record-release staged under the shared workspace with the SAME
+          # ephemeral key that signs the binary tarball (crates.io-anchored
+          # trust, via inject_pubkey_and_amend below), then upload it, its
+          # signature, and its pubkey as release assets while the draft is
+          # still open. See digital-prstv/circleci-toolkit#533 for the two
+          # generic hooks this relies on.
+          pre_binary_sign_steps:
+            - attach_workspace:
+                at: /tmp/workspace
+            - toolkit/sign_binary:
+                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json
+                delete_key_after: false
+          pre_publish_steps:
+            - run:
+                name: Write the record's pubkey asset
+                command: |
+                  set -eo pipefail
+                  VERSION="${SEMVER:-${NEXT_VERSION:-none}}"
+                  if [ "$VERSION" = "none" ] || [ "$SKIP_RELEASE" = "true" ]; then
+                    echo "Skipping record pubkey write (no version, or already released)"
+                    exit 0
+                  fi
+                  echo "${BINSTALL_SIGNING_PUBKEY}" \
+                    > /tmp/workspace/release-data/release-${VERSION}.json.pub
+            - toolkit/upload_release_asset:
+                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json
+                release_tag: jci-audit-v${SEMVER}
+            - toolkit/upload_release_asset:
+                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json.sig
+                release_tag: jci-audit-v${SEMVER}
+            - toolkit/upload_release_asset:
+                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json.pub
+                release_tag: jci-audit-v${SEMVER}
           context:
             - release
             - bot-check

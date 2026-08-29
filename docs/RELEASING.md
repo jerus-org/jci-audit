@@ -21,6 +21,7 @@ A jci-audit release carries three independent, cryptographically verifiable sign
 | Git **tag** `jci-audit-v<version>` and its release commit | **GPG** signature | The project's CI signing key, published on its bot account |
 | The published **`.crate`** (crates.io) | **SLSA v0.2 provenance attestation** via Sigstore *keyless* signing | Fulcio root CA + Rekor transparency log + the CircleCI OIDC build identity |
 | The **binary tarball** `jci-audit-<target>.tar.gz` | **minisign/rsign** signature (`.tar.gz.sig`) | The per-release public key published in the crate's `Cargo.toml` |
+| The **security record** `release-<version>.json` | **minisign/rsign** signature (`.json.sig`), same key as the tarball | The per-release public key, both in `Cargo.toml` and its own `release-<version>.json.pub` asset — see [#75](https://github.com/jerus-org/jci-audit/issues/75) |
 
 ## Release process (overview)
 
@@ -30,15 +31,19 @@ Releases run on CircleCI ([`.circleci/release.yml`](../.circleci/release.yml)):
 2. **Manual approval** gate — a reviewer approves the calculated version before anything is
    published.
 3. `build-binary` — builds the release binary from the commit being released.
-4. `record-release` — runs `jci-audit release-prep`: locks validation to a pinned advisory-db commit
-   and writes `.security/release-<version>.json` locally (not committed — see
-   [design.md §5–6](design.md#5-reproducibility-the-release-record) and
-   [#75](https://github.com/jerus-org/jci-audit/issues/75) for how the record is distributed).
+4. `record-release` — runs `jci-audit release-prep`: locks validation to a pinned advisory-db commit,
+   writes `.security/release-<version>.json` locally (not committed — see
+   [design.md §5–6](design.md#5-reproducibility-the-release-record)), and stages an unsigned copy on
+   the shared workspace for `release-jci-audit` to sign and upload.
 5. `release-jci-audit` — builds and **GPG-signs** the release commit + tag, generates an
-   **ephemeral minisign keypair**, **signs the tarball**, injects that keypair's public key into
-   `Cargo.toml` (`[package.metadata.binstall.signing]`), publishes to **crates.io**, and produces
-   the **SLSA provenance attestation** (Sigstore keyless via a CircleCI `sigstore`-audience OIDC
-   token → Fulcio → Rekor).
+   **ephemeral minisign keypair**, signs both **the tarball** and **the staged security record** with
+   it, injects the keypair's public key into `Cargo.toml` (`[package.metadata.binstall.signing]`),
+   uploads the tarball/`.sig` and the record/`.sig`/`.pub` as release assets on the draft release,
+   publishes to **crates.io**, and produces the **SLSA provenance attestation** (Sigstore keyless via
+   a CircleCI `sigstore`-audience OIDC token → Fulcio → Rekor), before publishing the release. This
+   is the release pipeline's own path (jerus-org/jci-audit#75 phase 2, "path A" — reusing the
+   tarball's own key for a crates.io-anchored trust chain); `jci-audit publish-record` is a separate,
+   fully self-contained path for a consumer with no equivalent signing facility of its own.
 6. Pushing the `jci-audit-v*` tag triggers the tag-gated `orb-release` workflow (pack, build
    container, register + publish the `jerus-org/jci-audit` orb).
 
@@ -101,6 +106,18 @@ To verify by hand, obtain that version's public key from its `Cargo.toml` on cra
 rsign verify -P "<pubkey>" -x jci-audit-<target>.tar.gz.sig jci-audit-<target>.tar.gz
 ```
 
+### 4. The security record
+
+`jci-audit verify --release-version <version>`, run from a bare directory (no checkout), fetches
+the record and its signature from the release, finds the pubkey that signed them, and checks it —
+see [design.md §5.4](design.md#54-verifying-without-a-checkout) for what this does and doesn't
+prove. This step is newly wired (jerus-org/jci-audit#75 phase 2); it hasn't yet been proven against
+a real, tagged release — that happens on the next one cut after it lands.
+
+```bash
+jci-audit verify --release-version <version>
+```
+
 ## Trust model summary
 
 - **GPG** — a long-lived CI signing key, published on the bot account; verify against its
@@ -110,3 +127,6 @@ rsign verify -P "<pubkey>" -x jci-audit-<target>.tar.gz.sig jci-audit-<target>.t
   short-lived certificate.
 - **minisign (binary)** — an ephemeral key generated per release; its public key is published in
   the released crate's `Cargo.toml` and used by `cargo binstall`.
+- **minisign (record)** — the same ephemeral key that signs the tarball; its public key is
+  additionally published as the record's own `.pub` release asset, for a consumer verifying with
+  no access to `Cargo.toml`.

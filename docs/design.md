@@ -294,15 +294,16 @@ toolkit-integrated path.
   by any orb consumer today.
 - jci-audit's **own** pipeline does not use that path — it already depends on circleci-toolkit for
   everything else, so it instead reuses the same ephemeral key that already signs the binary
-  tarball, for a stronger, crates.io-anchored trust chain (see `docs/RELEASING.md`). That needs two
-  small, purpose-agnostic hooks in circleci-toolkit's `release_crate` job (merged,
-  digital-prstv/circleci-toolkit#533) to actually release before `.circleci/release.yml` can be
-  wired to use them — still pending.
+  tarball, for a stronger, crates.io-anchored trust chain (see `docs/RELEASING.md`). This uses two
+  small, purpose-agnostic hooks in circleci-toolkit's `release_crate` job
+  (digital-prstv/circleci-toolkit#533, released in toolkit 7.4.0), wired into
+  `.circleci/release.yml`'s `record-release`/`release-jci-audit` jobs.
 
-Until jci-audit's own pipeline is wired, `jci-audit release-prep` still gates every release exactly
-as before — a failing run still blocks the release — but there is no asset yet for `verify`'s
-remote path to fetch against jci-audit's own releases, so it will error with "no such asset" until
-that wiring lands.
+`jci-audit release-prep` still gates every release exactly as before — a failing run still blocks
+the release — regardless of whether the wiring above has run yet on a real release. The wiring
+itself is **not yet proven**: it hasn't run against a real tagged release, so `verify`'s remote path
+against jci-audit's own releases will keep erroring with "no such asset" until the next real release
+confirms the record, its signature, and its `.pub` asset actually land as intended.
 
 ---
 
