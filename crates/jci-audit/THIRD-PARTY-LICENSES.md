@@ -13,7 +13,7 @@ from the dependency graph with [`cargo-about`](https://github.com/EmbarkStudios/
 
 ## Overview
 
-- **Apache License 2.0** — 183 crate(s)
+- **Apache License 2.0** — 186 crate(s)
 - **MIT License** — 45 crate(s)
 - **ISC License** — 21 crate(s)
 - **Unicode License v3** — 19 crate(s)
@@ -1404,7 +1404,7 @@ Used by:
 
 Used by:
 
-- pcu-release-assets 0.1.0
+- pcu-release-assets 0.1.1
 
 ```text
                                  Apache License
@@ -2272,6 +2272,8 @@ Used by:
 
 - futures-channel 0.3.34
 - futures-core 0.3.34
+- futures-io 0.3.34
+- futures-macro 0.3.34
 - futures-sink 0.3.34
 - futures-task 0.3.34
 - futures-util 0.3.34
@@ -3778,7 +3780,7 @@ Used by:
 - hyper-tls 0.6.0
 - idna 1.1.0
 - idna_adapter 1.2.2
-- indexmap 2.14.0
+- indexmap 2.14.1
 - jobserver 0.1.35
 - js-sys 0.3.104
 - lazy_static 1.5.0
@@ -4242,7 +4244,7 @@ Used by:
 
 - block-buffer 0.12.1
 - const-oid 0.10.2
-- cpufeatures 0.3.0
+- cpufeatures 0.3.1
 - crypto-common 0.2.2
 - digest 0.11.3
 - hybrid-array 0.4.14
@@ -4457,7 +4459,7 @@ limitations under the License.
 
 Used by:
 
-- jci-audit 0.1.0
+- jci-audit 0.1.1
 
 ```text
                               Apache License
@@ -5118,7 +5120,7 @@ Used by:
 - shlex 2.0.1
 - simdutf8 0.1.5
 - syn 2.0.119
-- syn 3.0.3
+- syn 3.0.4
 - sync_wrapper 1.0.2
 - thiserror-impl 1.0.69
 - thiserror-impl 2.0.20
@@ -5129,6 +5131,7 @@ Used by:
 - time 0.3.55
 - unicode-ident 1.0.24
 - utf8parse 0.2.2
+- wasm-streams 0.4.2
 
 ```text
 Apache License
@@ -6486,7 +6489,7 @@ THE SOFTWARE.
 
 Used by:
 
-- hyper 1.11.0
+- hyper 1.11.1
 
 ```text
 Copyright (c) 2014-2026 Sean McArthur
@@ -6532,7 +6535,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 Used by:
 
-- h2 0.4.18
+- h2 0.4.19
 
 ```text
 Copyright (c) 2017 h2 authors
@@ -7231,7 +7234,7 @@ SOFTWARE.
 
 Used by:
 
-- combine 4.6.7
+- combine 4.6.8
 
 ```text
 The MIT License (MIT)
