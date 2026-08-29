@@ -18,6 +18,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#110])
 - deps: update rust:1-slim-trixie docker digest to 17d1ba8(pr [#107])
 - deps: update rust crate pcu-release-assets to 0.1.1(pr [#108])
+- deps: update dependency jci-audit to v0.1.0(pr [#109])
 
 ## [0.1.0] - 2026-08-25
 
@@ -248,6 +249,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#110]: https://github.com/jerus-org/jci-audit/pull/110
 [#107]: https://github.com/jerus-org/jci-audit/pull/107
 [#108]: https://github.com/jerus-org/jci-audit/pull/108
+[#109]: https://github.com/jerus-org/jci-audit/pull/109
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
