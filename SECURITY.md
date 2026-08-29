@@ -104,19 +104,19 @@ trust model is important to using it safely:
   policy checks to a **pinned advisory-db commit** (recorded in the release record)
   rather than trusting whatever the live database says at build time, so the same
   inputs produce the same result on re-verification (`jci-audit verify`).
-- **Only one code path ever reads a credential, and even there a token is never
-  required — only optional, to raise GitHub's rate limit.** `jci-audit
+- **Only one code path ever reads a credential, and even there it's optional
+  for this project specifically, because this repo is public.** `jci-audit
   release-prep` writes its validation record to a local file only; it does not
   sign, commit, or push it. `jci-audit verify`'s no-checkout fallback fetches
-  the record, its signature, and the signing pubkey from the **public**
-  release (and, as a fallback pubkey source, the release tag's `Cargo.toml`).
-  If `GITHUB_TOKEN` is set — never a CLI flag — it authenticates those
-  requests; if unset, the same requests go out unauthenticated instead
-  (jerus-org/jci-audit#103), keeping this path usable by an auditor with no
-  maintainer contact at all. Whichever pubkey source succeeds, the signature
-  is checked before trusting anything in the record — see
-  `docs/assurance-case.md`'s T9 entry for what that check does and doesn't
-  prove, which differs by source.
+  the record, its signature, and the signing pubkey from the release (and, as
+  a fallback pubkey source, the release tag's `Cargo.toml`). If `GITHUB_TOKEN`
+  is set — never a CLI flag — it authenticates those requests; if unset, the
+  same requests go out unauthenticated instead (jerus-org/jci-audit#103) —
+  which works here because jerus-org/jci-audit is public. A private repo's
+  release would need a token, and the fetch would simply fail unauthenticated
+  without one. Whichever pubkey source succeeds, the signature is checked
+  before trusting anything in the record — see `docs/assurance-case.md`'s T9
+  entry for what that check does and doesn't prove, which differs by source.
   See [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75)
   for the CI side (uploading the record, signature, and pubkey as release
   assets) that still has to land before the asset source has anything to fetch.

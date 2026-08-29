@@ -443,9 +443,10 @@ fn run_verify(
 /// The token is read from `GITHUB_TOKEN` only, never a CLI flag — a secret
 /// passed as a command-line argument is visible to anyone on the same
 /// machine who can read `/proc/<pid>/cmdline` or run `ps`. Unlike
-/// `run_publish_record`, it's **optional** here (jerus-org/jci-audit#103):
-/// the release is public, so an auditor needs no token at all — one, when
-/// present, only raises the rate limit.
+/// `run_publish_record`, it's **optional** here (jerus-org/jci-audit#103) —
+/// but only because this crate's own repo (`REPOSITORY_URL`) is public: an
+/// unset token falls back to an unauthenticated request, which works for a
+/// public release and simply fails for a private one.
 ///
 /// Pulled out of [`run_verify_remote`] so the manifest-first ordering is a
 /// plain, unit-testable fact rather than only an inline array literal.
