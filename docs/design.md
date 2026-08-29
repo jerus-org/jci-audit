@@ -278,11 +278,31 @@ the crate, tarball, and their signatures already come from.
 Distribution as a signed release asset — alongside the crate's other signed artifacts — is
 tracked in [jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75); this is a
 phased rollout. §5.4 describes the *consumer* of that asset (`verify`'s remote fetch path), which
-has landed; the *producer* — CI uploading the record and its signature to the draft release before
-it is published — is phase 2 and has not landed yet. Until it does, `jci-audit release-prep` still
-gates every release exactly as before — a failing run still blocks the release — but there is no
-asset yet for `verify`'s remote path to fetch, so it will error with "no such asset" until phase 2
-ships.
+has landed. Phase 2 is the *producer* — CI uploading the record and its signature to the release
+before it is published — and there are two ways to do it, per PR review on #105/#75: a private key
+must never cross a job boundary, encrypted or not, so a consumer with no equivalent facility of its
+own needs a self-contained alternative rather than being pointed at jci-audit's own
+toolkit-integrated path.
+
+- **`jci-audit publish-record`** (and its matching generated orb job) is the self-contained path:
+  in one process it generates a one-use minisign keypair, signs an already-written record, uploads
+  the record/`.sig`/`.pub` to the named release, and (with `--publish`) un-drafts it — the key is
+  generated, used, and discarded inside that single call, never passed to or from another step.
+  It takes an explicit `--record-path` because `release-prep` and this command commonly run in
+  separate CI jobs: the record travels via an attached workspace, landing at whatever
+  `workspace_root` names, not inside this job's own fresh `checkout`. This path is done and usable
+  by any orb consumer today.
+- jci-audit's **own** pipeline does not use that path — it already depends on circleci-toolkit for
+  everything else, so it instead reuses the same ephemeral key that already signs the binary
+  tarball, for a stronger, crates.io-anchored trust chain (see `docs/RELEASING.md`). That needs two
+  small, purpose-agnostic hooks in circleci-toolkit's `release_crate` job (merged,
+  digital-prstv/circleci-toolkit#533) to actually release before `.circleci/release.yml` can be
+  wired to use them — still pending.
+
+Until jci-audit's own pipeline is wired, `jci-audit release-prep` still gates every release exactly
+as before — a failing run still blocks the release — but there is no asset yet for `verify`'s
+remote path to fetch against jci-audit's own releases, so it will error with "no such asset" until
+that wiring lands.
 
 ---
 

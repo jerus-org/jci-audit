@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
 use crate::preflight::{self, Tool};
-use crate::{check, diagnostics, init, prune, release, remote, sync, verify};
+use crate::{check, diagnostics, init, prune, publish_record, release, remote, sync, verify};
 
 /// Context-aware Rust security gate over cargo-audit and cargo-deny.
 #[derive(Debug, Parser)]
@@ -124,6 +124,53 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Self-contained: sign and upload the release record.
+    ///
+    /// For a consumer with no circleci-toolkit-style signing facility of its
+    /// own. Generates a one-use minisign keypair, signs the local record
+    /// `release-prep` already wrote, uploads the record/.sig/.pub to the
+    /// named release, and (with --publish) un-drafts it. The private key
+    /// never leaves this one process. See jerus-org/jci-audit#75.
+    #[command(name = "publish-record")]
+    PublishRecord {
+        /// The release version whose record to publish (e.g. "1.2.0").
+        ///
+        /// Falls back to an environment variable when omitted, matching
+        /// release-prep.
+        #[arg(long, value_name = "VERSION")]
+        release_version: Option<String>,
+
+        /// Env var NAME holding the release version (default SEMVER).
+        #[arg(long)]
+        version_env: Option<String>,
+
+        /// The exact release tag to attach assets to (e.g. "myapp-v1.2.0").
+        #[arg(long)]
+        tag: String,
+
+        /// GitHub repository owner that owns the release.
+        #[arg(long)]
+        owner: String,
+
+        /// GitHub repository name that owns the release.
+        #[arg(long)]
+        repo: String,
+
+        /// Un-draft the release once the assets are attached.
+        #[arg(long)]
+        publish: bool,
+
+        /// Where to find the record to sign and upload.
+        ///
+        /// Defaults to `.security/release-<VERSION>.json` relative to the
+        /// nearest deny.toml above the current directory — the same
+        /// discovery `verify` uses. Override when release-prep and this
+        /// command run in different jobs and the record arrives via an
+        /// attached workspace instead, e.g.
+        /// `${WORKSPACE_ROOT}/.security/release-<VERSION>.json`.
+        #[arg(long, value_name = "PATH")]
+        record_path: Option<std::path::PathBuf>,
+    },
 }
 
 impl Cli {
@@ -162,6 +209,23 @@ impl Cli {
                 output,
             } => run_verify(release_version, advisory_db.as_deref(), output, detail),
             Commands::Init { force } => run_init(*force),
+            Commands::PublishRecord {
+                release_version,
+                version_env,
+                tag,
+                owner,
+                repo,
+                publish,
+                record_path,
+            } => {
+                let version = release::resolve_version(
+                    release_version.as_deref(),
+                    version_env
+                        .as_deref()
+                        .unwrap_or(release::DEFAULT_VERSION_ENV),
+                )?;
+                run_publish_record(&version, tag, owner, repo, *publish, record_path.as_deref())
+            }
         }
     }
 }
@@ -476,6 +540,79 @@ fn run_init(force: bool) -> Result<()> {
     Ok(())
 }
 
+/// The explicit override wins; otherwise fall back to the same
+/// deny.toml-relative discovery `verify`'s local path uses
+/// ([`discover_local_record`]'s sibling, without the "does it exist"
+/// short-circuit — `publish_record_with` already reports a missing record
+/// clearly on its own). Takes `start` rather than reading `cwd` itself, so
+/// it's testable without touching the process's actual working directory —
+/// same reason [`discover_local_record`] does.
+fn resolve_publish_record_path(
+    start: &std::path::Path,
+    version: &str,
+    record_path_override: Option<&std::path::Path>,
+) -> Result<std::path::PathBuf> {
+    if let Some(p) = record_path_override {
+        return Ok(p.to_path_buf());
+    }
+    let (deny_path, _) = sync::locate_paths(start)?;
+    let root = deny_path
+        .parent()
+        .context("deny.toml has no parent directory")?;
+    Ok(release::record_path(root, version))
+}
+
+/// The token is read from `GITHUB_TOKEN` only, never a CLI flag — same
+/// rationale as [`run_verify_remote`]. Uploading genuinely needs write
+/// access, unlike `verify`'s read-only fetch, so no unauthenticated fallback
+/// applies here.
+///
+/// `record_path_override` matters because `release-prep` and this command
+/// commonly run in different CI jobs: a fresh `checkout` has deny.toml but
+/// not the uncommitted `.security/` record, which only exists in the prior
+/// job's working directory unless it travels via an attached workspace —
+/// landing at whatever `workspace_root` names, not inside this job's
+/// checkout. See [`resolve_publish_record_path`].
+fn run_publish_record(
+    version: &str,
+    tag: &str,
+    owner: &str,
+    repo: &str,
+    publish: bool,
+    record_path_override: Option<&std::path::Path>,
+) -> Result<()> {
+    preflight::ensure_available(&[Tool::Rsign])?;
+    let token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty())
+        .context("GITHUB_TOKEN must be set to upload release assets")?;
+    let cwd = std::env::current_dir()?;
+    let record_path = resolve_publish_record_path(&cwd, version, record_path_override)?;
+    let publisher = publish_record::PcuAssetWriter::new(owner, repo, token);
+    let work = publish_record::work_dir();
+    tracing::info!(version, tag, owner, repo, publish, "publish-record");
+
+    let outcome = publish_record::publish_record_with(
+        &check::SystemRunner,
+        &publisher,
+        &record_path,
+        tag,
+        &work,
+        publish,
+    );
+    let _ = std::fs::remove_dir_all(&work);
+    let outcome = outcome?;
+
+    println!("signed and uploaded the release record for '{tag}'");
+    for name in &outcome.uploaded {
+        println!("  - {name}");
+    }
+    if outcome.published {
+        println!("  release published (un-drafted)");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,6 +652,35 @@ mod tests {
         let repo = tempfile::tempdir().unwrap();
         write(&repo.path().join("deny.toml"), "");
         assert_eq!(discover_local_record(repo.path(), "9.9.9"), None);
+    }
+
+    #[test]
+    fn resolve_publish_record_path_prefers_the_explicit_override() {
+        // Must not even need a deny.toml when an override is given — the
+        // workspace-attach case has one (a fresh checkout always has it) but
+        // this proves the override short-circuits before that lookup.
+        let bare = tempfile::tempdir().unwrap();
+        let override_path = std::path::Path::new("/tmp/workspace/.security/release-1.2.0.json");
+        let resolved =
+            resolve_publish_record_path(bare.path(), "1.2.0", Some(override_path)).unwrap();
+        assert_eq!(resolved, override_path);
+    }
+
+    #[test]
+    fn resolve_publish_record_path_falls_back_to_deny_toml_relative_discovery() {
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        let subdir = repo.path().join("crates/jci-audit");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let resolved = resolve_publish_record_path(&subdir, "1.2.0", None).unwrap();
+        assert_eq!(resolved, repo.path().join(".security/release-1.2.0.json"));
+    }
+
+    #[test]
+    fn resolve_publish_record_path_errors_with_no_override_and_no_deny_toml() {
+        let bare = tempfile::tempdir().unwrap();
+        assert!(resolve_publish_record_path(bare.path(), "1.2.0", None).is_err());
     }
 
     #[test]
@@ -610,6 +776,97 @@ mod tests {
     }
 
     #[test]
+    fn parse_publish_record_requires_tag_owner_and_repo() {
+        for missing in [
+            vec!["jci-audit", "publish-record", "--owner", "o", "--repo", "r"],
+            vec!["jci-audit", "publish-record", "--tag", "t", "--repo", "r"],
+            vec!["jci-audit", "publish-record", "--tag", "t", "--owner", "o"],
+        ] {
+            assert!(
+                Cli::try_parse_from(&missing).is_err(),
+                "{missing:?} must be rejected"
+            );
+        }
+
+        let cli = Cli::try_parse_from([
+            "jci-audit",
+            "publish-record",
+            "--tag",
+            "myapp-v1.2.0",
+            "--owner",
+            "jerus-org",
+            "--repo",
+            "myapp",
+        ])
+        .expect("parses");
+        match cli.command {
+            Commands::PublishRecord {
+                tag,
+                owner,
+                repo,
+                publish,
+                release_version,
+                record_path,
+                ..
+            } => {
+                assert_eq!(tag, "myapp-v1.2.0");
+                assert_eq!(owner, "jerus-org");
+                assert_eq!(repo, "myapp");
+                assert!(!publish, "--publish defaults to false");
+                assert!(release_version.is_none());
+                assert!(record_path.is_none(), "--record-path defaults to discovery");
+            }
+            other => panic!("expected PublishRecord, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_publish_record_accepts_a_record_path_override() {
+        let cli = Cli::try_parse_from([
+            "jci-audit",
+            "publish-record",
+            "--tag",
+            "t",
+            "--owner",
+            "o",
+            "--repo",
+            "r",
+            "--record-path",
+            "/tmp/workspace/.security/release-1.2.0.json",
+        ])
+        .expect("parses");
+        match cli.command {
+            Commands::PublishRecord { record_path, .. } => assert_eq!(
+                record_path,
+                Some(std::path::PathBuf::from(
+                    "/tmp/workspace/.security/release-1.2.0.json"
+                ))
+            ),
+            other => panic!("expected PublishRecord, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_publish_record_publish_flag() {
+        let cli = Cli::try_parse_from([
+            "jci-audit",
+            "publish-record",
+            "--tag",
+            "t",
+            "--owner",
+            "o",
+            "--repo",
+            "r",
+            "--publish",
+        ])
+        .expect("parses");
+        match cli.command {
+            Commands::PublishRecord { publish, .. } => assert!(publish),
+            other => panic!("expected PublishRecord, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn every_subcommand_has_a_long_about_distinct_from_its_about() {
         // A doc comment without a blank-line split leaves long_about unset,
         // so clap falls back to `about` for --help too, matching -h exactly.
@@ -619,7 +876,15 @@ mod tests {
         // for a subcommand whose split is missing (caught in review on #74).
         use clap::CommandFactory;
         let cmd = Cli::command();
-        for name in ["check", "release-prep", "sync", "prune", "verify", "init"] {
+        for name in [
+            "check",
+            "release-prep",
+            "sync",
+            "prune",
+            "verify",
+            "init",
+            "publish-record",
+        ] {
             let sub = cmd
                 .find_subcommand(name)
                 .unwrap_or_else(|| panic!("no '{name}' subcommand"));

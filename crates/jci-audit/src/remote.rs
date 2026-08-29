@@ -138,14 +138,15 @@ fn bool_field(record: &Value, path: &[&str]) -> Result<bool> {
         .with_context(|| format!("release record '{}' is not a boolean", path.join(".")))
 }
 
-/// Extract the bare minisign pubkey from a fetched `.pub` asset's text.
-/// Tolerates either a bare single-line key or the full `rsign`/minisign
-/// pubkey-file format (an `untrusted comment: ...` line followed by the
-/// key) — the same `grep -v '^untrusted'` extraction
+/// Extract the bare minisign pubkey from a fetched or freshly-generated
+/// `.pub` file's text. Tolerates either a bare single-line key or the full
+/// `rsign`/minisign pubkey-file format (an `untrusted comment: ...` line
+/// followed by the key) — the same `grep -v '^untrusted'` extraction
 /// `circleci-toolkit`'s own `generate_signing_key` command already applies
 /// for the tarball's pubkey, so this doesn't assume whatever produces the
-/// `.pub` asset has pre-stripped it.
-fn parse_pubkey_asset(text: &str) -> Result<String> {
+/// `.pub` asset has pre-stripped it. Shared with [`crate::publish_record`],
+/// which reads the same file shape straight out of `rsign generate -W`.
+pub(crate) fn parse_pubkey_asset(text: &str) -> Result<String> {
     let mut lines = text
         .lines()
         .map(str::trim)
