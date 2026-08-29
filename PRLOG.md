@@ -26,6 +26,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency jci-audit to v0.1.0(pr [#109])
 - RUST_LOG="" no longer silences logging(pr [#113])
 - verify's remote fetch works unauthenticated(pr [#114])
+- deps: update jerusdp/ci-rust:rolling-6mo docker digest to a0be475(pr [#115])
 
 ## [0.1.0] - 2026-08-25
 
@@ -261,6 +262,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#112]: https://github.com/jerus-org/jci-audit/pull/112
 [#113]: https://github.com/jerus-org/jci-audit/pull/113
 [#114]: https://github.com/jerus-org/jci-audit/pull/114
+[#115]: https://github.com/jerus-org/jci-audit/pull/115
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
