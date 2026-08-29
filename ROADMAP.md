@@ -61,17 +61,19 @@ version tag itself, and still gate consumer migration.
   subcommand and its matching orb job, needs nothing beyond this orb and a GitHub token — done,
   usable today by any consumer with no equivalent signing facility of its own. **Path A**, jci-audit's
   own pipeline reusing the same ephemeral key that already signs the binary tarball (a stronger,
-  crates.io-anchored trust chain), needs two generic hooks in circleci-toolkit's `release_crate`
-  job (merged, digital-prstv/circleci-toolkit#533) to actually release before `.circleci/release.yml`
-  can be wired to use them — still pending. Its absence caused real damage: `0.1.0`'s own record
-  fell through every available path (no commit, no release asset, and the CI build-artifact copy
-  expired) and can never be reconstructed. **`0.1.0` has been yanked from crates.io** as a result —
-  not a verifiable release. This isn't jci-audit's first release with a record, though:
-  `0.0.4`–`0.0.7` each carry a real, GPG-signed, git-committed record and are still independently
-  verifiable from a checkout — they're separately yanked, for the unrelated #90 reason. The gap
-  phase 2 closes is that *every* release since phase 1 removed the commit path has had no record
-  at all; the next release, cut after path A is wired, will be the first since then to be both
-  installable and verifiable.
+  crates.io-anchored trust chain), needed two generic hooks in circleci-toolkit's `release_crate`
+  job (digital-prstv/circleci-toolkit#533, released in toolkit 7.4.0) — now wired into
+  `.circleci/release.yml`, but **not yet proven**: it hasn't run against a real tagged release yet,
+  so it isn't marked done until one confirms the record, its signature, and its `.pub` asset
+  actually land and `jci-audit verify` reproduces against them. Absence of this gap caused real
+  damage before it was even wired: `0.1.0`'s own record fell through every available path (no
+  commit, no release asset, and the CI build-artifact copy expired) and can never be reconstructed.
+  **`0.1.0` has been yanked from crates.io** as a result — not a verifiable release. This isn't
+  jci-audit's first release with a record, though: `0.0.4`–`0.0.7` each carry a real, GPG-signed,
+  git-committed record and are still independently verifiable from a checkout — they're separately
+  yanked, for the unrelated #90 reason. The gap phase 2 closes is that *every* release since phase 1
+  removed the commit path has had no record at all; the next release will be the first since then to
+  be both installable and verifiable, if path A's wiring holds up in practice.
 - **Project hardening / OpenSSF Best Practices badge.** ✅ Done — the project has reached
   [Silver](https://www.bestpractices.dev/projects/14065) (confirmed 2026-08-25; 100% of Silver's
   55 criteria met, Gold at 35%).
