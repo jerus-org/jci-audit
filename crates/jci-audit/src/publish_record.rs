@@ -65,11 +65,18 @@ fn path_str(path: &Path) -> Result<&str> {
 /// Sign `record_path` with a freshly generated, one-use minisign keypair and
 /// upload the record, its signature, and its pubkey to the release for
 /// `tag`. `record_path` must already exist — this never re-runs the gate,
-/// only distributes an already-produced record.
+/// only distributes an already-produced record. `version` must be the
+/// version `record_path` was actually written for — checked against its file
+/// name before anything is signed, so a stale or mismatched `--record-path`
+/// override fails loudly here instead of uploading the record under the
+/// wrong asset name (silently making `verify --release-version <version>`
+/// find nothing, later, with no clue why — the exact unverifiable-record
+/// failure mode jerus-org/jci-audit#75 exists to prevent).
 pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
     runner: &R,
     publisher: &P,
     record_path: &Path,
+    version: &str,
     tag: &str,
     work_dir: &Path,
     publish: bool,
@@ -85,6 +92,15 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
         .and_then(|n| n.to_str())
         .with_context(|| format!("'{}' has no valid file name", record_path.display()))?
         .to_string();
+    let expected_name = format!("release-{version}.json");
+    if record_name != expected_name {
+        bail!(
+            "'--record-path' points at '{record_name}', but '--release-version' is '{version}' \
+             (expected file name '{expected_name}') — refusing to upload it under a name that \
+             doesn't match the version, since `verify --release-version {version}` would then \
+             find nothing"
+        );
+    }
 
     std::fs::create_dir_all(work_dir)
         .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
@@ -382,12 +398,47 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             false,
         )
         .unwrap_err();
         assert!(err.to_string().contains("release-prep"), "got: {err}");
+    }
+
+    #[test]
+    fn errors_when_the_record_path_does_not_match_the_release_version() {
+        // A mismatched --record-path/--release-version pair (stale workspace
+        // artifact, copy-paste version drift) would otherwise upload the
+        // record under the wrong asset name, silently — `verify` for the
+        // intended version would then find nothing and fail with no clue why.
+        // Catch it loudly here instead, before any signing happens.
+        let dir = tempfile::tempdir().unwrap();
+        let record_path = write_record(dir.path(), "release-1.2.1.json");
+        let runner = MockRunner::ok();
+        let publisher = MockPublisher::ok();
+        let work = tempfile::tempdir().unwrap();
+
+        let err = publish_record_with(
+            &runner,
+            &publisher,
+            &record_path,
+            "1.2.0",
+            "myapp-v1.2.0",
+            work.path(),
+            false,
+        )
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(msg.contains("release-1.2.1.json"), "got: {msg}");
+        assert!(msg.contains("release-1.2.0.json"), "got: {msg}");
+        assert!(msg.contains("1.2.0"), "got: {msg}");
+        assert!(
+            publisher.uploads.borrow().is_empty(),
+            "must not sign or upload anything on a mismatched record path"
+        );
     }
 
     #[test]
@@ -402,6 +453,7 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             false,
@@ -447,6 +499,7 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             false,
@@ -468,6 +521,7 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             false,
@@ -494,6 +548,7 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             false,
@@ -517,6 +572,7 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             false,
@@ -542,6 +598,7 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             true,
@@ -568,6 +625,7 @@ mod tests {
             &runner,
             &publisher,
             &record_path,
+            "1.2.0",
             "myapp-v1.2.0",
             work.path(),
             true,

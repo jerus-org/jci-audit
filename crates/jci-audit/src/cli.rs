@@ -596,6 +596,7 @@ fn run_publish_record(
         &check::SystemRunner,
         &publisher,
         &record_path,
+        version,
         tag,
         &work,
         publish,
