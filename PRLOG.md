@@ -16,6 +16,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - docs-note 0.1.0 yank, add missing backlog issues(pr [#102])
 - refactor-rename release subcommand to release-prep(pr [#104])
 - refactor-verify fetches pubkey as a release asset(pr [#105])
+- ci-sign and upload the release record (path A)(pr [#117])
 
 ### Fixed
 
@@ -265,6 +266,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#114]: https://github.com/jerus-org/jci-audit/pull/114
 [#115]: https://github.com/jerus-org/jci-audit/pull/115
 [#116]: https://github.com/jerus-org/jci-audit/pull/116
+[#117]: https://github.com/jerus-org/jci-audit/pull/117
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
