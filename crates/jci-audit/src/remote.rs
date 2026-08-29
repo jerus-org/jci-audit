@@ -4,9 +4,49 @@
 //! `deny.toml` — the full reproduction. This module exists for the auditor
 //! who has neither: it downloads the record and its signature from the
 //! **published** GitHub release (never a draft — a draft's assets can still
-//! be replaced) and checks the signature against the pubkey published in
-//! that release's own `Cargo.toml`, so the fetched record is provably the
-//! one the release's signing key produced.
+//! be replaced), finds the pubkey that signed it from one of several
+//! [`PubkeySource`]s, and checks that the signature matches, so a record
+//! that doesn't match its accompanying signature fails closed instead of
+//! being silently trusted.
+//!
+//! **Why more than one pubkey source.** The long-term intent
+//! (jerus-org/jci-audit#75) is for the pubkey to be published as its own
+//! release asset (`release-<VERSION>.json.pub`) — [`AssetPubkeySource`] —
+//! needing nothing beyond the release's own assets, and the only source
+//! generally available to a non-Rust/non-crates.io consumer. But the CI
+//! wiring that uploads it is a separate, not-yet-shipped piece, and until it
+//! ships every real release still only has its pubkey where it always has:
+//! injected into `Cargo.toml` by the existing tarball-signing step —
+//! [`ManifestPubkeySource`]. `verify_remote_with` takes an ordered list of
+//! sources and tries each in turn ([`fetch_pubkey_from_sources`]) with no
+//! built-in preference of its own; the *caller* decides the order.
+//! `cli.rs::run_verify_remote` puts [`ManifestPubkeySource`] first — today
+//! that's the only source with real data, **not** because it's
+//! independently stronger (see below). Deliberately built as a small trait
+//! rather than hardcoded fetches: a future source (a different registry, a
+//! different language's convention) is just another implementation, not a
+//! change to this flow.
+//!
+//! **Be honest about what the signature check does and doesn't buy**,
+//! because it differs by source, and neither is as strong as it might
+//! sound. For [`AssetPubkeySource`]: unless a given release's pubkey *also*
+//! has an anchor independent of the release itself, anyone with only
+//! release-asset-upload access can mint their own key, sign a forged
+//! record, and upload a self-consistent fake triple — the check alone
+//! doesn't rule that out. For [`ManifestPubkeySource`]: **do not assume
+//! this is that independent anchor.** In jci-audit's own release pipeline
+//! (see `docs/RELEASING.md`), the same CI job that injects the pubkey into
+//! `Cargo.toml` and pushes the tag is also the job that (once #75 phase 2
+//! lands) uploads the record and its signature as release assets — one
+//! job, one credential set. Compromising that job's credentials compromises
+//! both at once; there is no separately-operated second channel to also
+//! break. It also trusts a **mutable** git ref (`refs/tags/<tag>`) with no
+//! platform-enforced immutability, unlike the published-release-only
+//! guarantee [`AssetPubkeySource`] gets from GitHub Immutable Releases — a
+//! force-moved tag silently changes what this source fetches. A genuinely
+//! independent, stronger anchor would need the git-push and
+//! release-asset-upload credentials to actually be separate; today they
+//! aren't. See `docs/assurance-case.md`'s T9 entry for the full accounting.
 //!
 //! It does **not** re-run cargo-deny — that needs the checked-out policy and
 //! lockfile a bare directory doesn't have. What it proves is narrower but
@@ -25,14 +65,47 @@ use crate::check::CommandRunner;
 use crate::verify::field;
 
 /// Where the remote fetch path gets its bytes from — a published release's
-/// named assets, and the raw `Cargo.toml` at that release's tag. A trait so
-/// [`verify_remote_with`] is testable without real network access.
+/// named assets. A trait so [`verify_remote_with`] is testable without real
+/// network access.
 pub(crate) trait ReleaseAssetSource {
     /// Fetch a named asset from the **published** release for `tag`.
     fn fetch_asset(&self, tag: &str, asset_name: &str) -> Result<Vec<u8>>;
-    /// Fetch the raw `crates/jci-audit/Cargo.toml` as it stood at `tag`, to
-    /// extract the historical signing pubkey.
-    fn fetch_manifest(&self, tag: &str) -> Result<String>;
+}
+
+/// One place `verify`'s remote path might find a release's signing pubkey.
+/// See the module-level docs for why there's more than one implementation.
+/// Dyn-compatible and minimal on purpose — adding a source later means
+/// implementing this trait, not touching [`verify_remote_with`] itself.
+pub(crate) trait PubkeySource {
+    /// Fetch the pubkey for this release, or fail — including "not
+    /// available from this source", which is a normal outcome
+    /// [`fetch_pubkey_from_sources`] handles by trying the next one, not a
+    /// caller-visible error on its own.
+    fn fetch_pubkey(&self, tag: &str, version: &str) -> Result<String>;
+    /// Short label identifying this source in a combined failure message.
+    fn name(&self) -> &str;
+}
+
+/// Try each source in order, returning the first success. If all of them
+/// fail, bail with every source's name and reason so a real outage is
+/// diagnosable — not just "no pubkey found," with no way to tell whether
+/// that's because none exists yet or because a fetch is genuinely broken.
+fn fetch_pubkey_from_sources(
+    sources: &[&dyn PubkeySource],
+    tag: &str,
+    version: &str,
+) -> Result<String> {
+    let mut failures = Vec::new();
+    for source in sources {
+        match source.fetch_pubkey(tag, version) {
+            Ok(pubkey) => return Ok(pubkey),
+            Err(e) => failures.push(format!("{}: {e}", source.name())),
+        }
+    }
+    bail!(
+        "could not find a pubkey for release '{tag}' from any source:\n  {}",
+        failures.join("\n  ")
+    );
 }
 
 /// What a remote (no-checkout) verification concluded.
@@ -65,10 +138,31 @@ fn bool_field(record: &Value, path: &[&str]) -> Result<bool> {
         .with_context(|| format!("release record '{}' is not a boolean", path.join(".")))
 }
 
+/// Extract the bare minisign pubkey from a fetched `.pub` asset's text.
+/// Tolerates either a bare single-line key or the full `rsign`/minisign
+/// pubkey-file format (an `untrusted comment: ...` line followed by the
+/// key) — the same `grep -v '^untrusted'` extraction
+/// `circleci-toolkit`'s own `generate_signing_key` command already applies
+/// for the tarball's pubkey, so this doesn't assume whatever produces the
+/// `.pub` asset has pre-stripped it.
+fn parse_pubkey_asset(text: &str) -> Result<String> {
+    let mut lines = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("untrusted"));
+    let key = lines
+        .next()
+        .context("no key line found (only comment/blank lines)")?;
+    if lines.next().is_some() {
+        bail!("more than one non-comment line — ambiguous which is the key");
+    }
+    Ok(key.to_string())
+}
+
 /// Extract `[package.metadata.binstall.signing].pubkey` from a crate
 /// manifest's text. This is where the release pipeline publishes each
 /// release's ephemeral minisign public key (see `docs/RELEASING.md`).
-pub(crate) fn extract_pubkey(cargo_toml: &str) -> Result<String> {
+fn extract_pubkey_from_manifest(cargo_toml: &str) -> Result<String> {
     let doc: toml_edit::DocumentMut = cargo_toml.parse().context("failed to parse Cargo.toml")?;
     doc.get("package")
         .and_then(|p| p.get("metadata"))
@@ -85,9 +179,16 @@ pub(crate) fn extract_pubkey(cargo_toml: &str) -> Result<String> {
 
 /// Re-verify a published release's record from its release assets alone, no
 /// checkout required. `tag` is the full release tag (e.g. `jci-audit-v1.2.0`).
+/// `pubkey_sources` are tried in the order given — the caller decides that
+/// order, deliberately: this function has no built-in opinion on which
+/// source to prefer. Callers should put the strongest available source
+/// first (e.g. [`ManifestPubkeySource`] before [`AssetPubkeySource`] — see
+/// the module docs for why the manifest source is the stronger one) rather
+/// than defaulting to whichever is more convenient to construct.
 pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     runner: &R,
     source: &S,
+    pubkey_sources: &[&dyn PubkeySource],
     version: &str,
     tag: &str,
     work_dir: &Path,
@@ -101,10 +202,8 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     let sig_bytes = source
         .fetch_asset(tag, &sig_name)
         .with_context(|| format!("failed to fetch '{sig_name}' from release '{tag}'"))?;
-    let manifest = source
-        .fetch_manifest(tag)
-        .with_context(|| format!("failed to fetch Cargo.toml at '{tag}'"))?;
-    let pubkey = extract_pubkey(&manifest)?;
+
+    let pubkey = fetch_pubkey_from_sources(pubkey_sources, tag, version)?;
 
     std::fs::create_dir_all(work_dir)
         .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
@@ -149,6 +248,38 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     })
 }
 
+/// [`PubkeySource`] that fetches the pubkey as its own release asset
+/// (`release-<VERSION>.json.pub`) via the same [`ReleaseAssetSource`]
+/// already used for the record and signature — the intended long-term path,
+/// and the only source generally available to a non-Rust/non-crates.io
+/// consumer. Weaker than [`ManifestPubkeySource`] when both exist for the
+/// same release — see the module docs.
+pub(crate) struct AssetPubkeySource<'a, S: ReleaseAssetSource>(&'a S);
+
+impl<'a, S: ReleaseAssetSource> AssetPubkeySource<'a, S> {
+    pub(crate) fn new(source: &'a S) -> Self {
+        Self(source)
+    }
+}
+
+impl<S: ReleaseAssetSource> PubkeySource for AssetPubkeySource<'_, S> {
+    fn fetch_pubkey(&self, tag: &str, version: &str) -> Result<String> {
+        let pub_name = format!("release-{version}.json.pub");
+        let pub_bytes = self
+            .0
+            .fetch_asset(tag, &pub_name)
+            .with_context(|| format!("failed to fetch '{pub_name}' from release '{tag}'"))?;
+        let pub_text = String::from_utf8(pub_bytes)
+            .with_context(|| format!("'{pub_name}' from release '{tag}' is not valid UTF-8"))?;
+        parse_pubkey_asset(&pub_text)
+            .with_context(|| format!("failed to extract a pubkey from '{pub_name}'"))
+    }
+
+    fn name(&self) -> &str {
+        "release asset (release-<VERSION>.json.pub)"
+    }
+}
+
 /// The crate's own repository, e.g. `https://github.com/jerus-org/jci-audit`
 /// — `CARGO_PKG_REPOSITORY` at compile time, so this only ever tracks the
 /// real value in `Cargo.toml`, never a value that can drift from it.
@@ -189,25 +320,102 @@ fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
     format!("https://raw.githubusercontent.com/{owner}/{repo}/refs/tags/{tag}/{MANIFEST_PATH}")
 }
 
-/// Real [`ReleaseAssetSource`], backed by `pcu-release-assets` for the
-/// record + signature and a plain HTTPS fetch for the raw `Cargo.toml` at
-/// the release tag — `pcu-release-assets` only fetches release *assets*,
-/// not arbitrary repo file contents.
-pub(crate) struct PcuAssetSource {
-    client: pcu_release_assets::ReleaseAssetClient,
-    owner: String,
-    repo: String,
-    // pcu-release-assets' ReleaseAssetClient doesn't expose the token it was
-    // built with (no getter), and fetch_manifest needs it too — for the same
-    // repo, an authenticated request avoids the unauthenticated rate limit
-    // and works if the repo is ever made private.
-    github_token: String,
-}
-
 /// How long the manifest fetch waits before giving up. Without this, an
 /// unresponsive `raw.githubusercontent.com` hangs the whole CLI invocation
 /// indefinitely inside the single-threaded runtime below.
 const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// [`PubkeySource`] that fetches the release tag's raw `Cargo.toml` and
+/// reads the pubkey `inject_pubkey_and_amend` already writes there.
+/// Currently the **only** source that actually has data for any real
+/// jci-audit release, since the CI wiring to also upload a `.pub` asset
+/// (jerus-org/jci-audit#75) hasn't shipped yet — that alone is why a caller
+/// should try this source before [`AssetPubkeySource`], not any assumed
+/// independence between the two (see the module docs' "be honest" section —
+/// in jci-audit's own pipeline both sources' trust currently traces back to
+/// the same CI job and credentials). Also trusts a **mutable** git tag ref,
+/// with no immutability guarantee — see the module docs.
+/// This reads exactly the content crates.io itself received for that
+/// release: `cargo publish` packages the commit at the pushed tag verbatim,
+/// so the tag's `Cargo.toml` and the one crates.io has are byte-identical.
+/// Fetched via the git tag rather than crates.io's own API because
+/// crates.io has no endpoint that serves raw file contents — only package
+/// metadata and the packed `.crate` tarball.
+pub(crate) struct ManifestPubkeySource {
+    owner: String,
+    repo: String,
+    // reqwest's client doesn't need a matching getter on anything else here
+    // — this is the only place in the module that makes an authenticated
+    // HTTP call outside pcu-release-assets, so the token is just stored
+    // plainly rather than threaded through a shared client.
+    github_token: String,
+}
+
+impl ManifestPubkeySource {
+    pub(crate) fn new(
+        owner: impl Into<String>,
+        repo: impl Into<String>,
+        github_token: impl Into<String>,
+    ) -> Self {
+        Self {
+            owner: owner.into(),
+            repo: repo.into(),
+            github_token: github_token.into(),
+        }
+    }
+
+    /// One call, one runtime — this is an occasional CLI invocation, not a
+    /// server; there is no benefit to keeping a runtime alive across calls.
+    fn block_on<F: std::future::Future>(fut: F) -> Result<F::Output> {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("failed to start an async runtime for the manifest fetch")
+            .map(|rt| rt.block_on(fut))
+    }
+}
+
+impl PubkeySource for ManifestPubkeySource {
+    fn fetch_pubkey(&self, tag: &str, _version: &str) -> Result<String> {
+        let url = raw_manifest_url(&self.owner, &self.repo, tag);
+        let manifest: String = Self::block_on(async {
+            let client = reqwest::Client::builder()
+                .timeout(MANIFEST_FETCH_TIMEOUT)
+                .build()
+                .context("failed to build an HTTP client")?;
+            let resp = client
+                .get(&url)
+                .bearer_auth(&self.github_token)
+                .send()
+                .await
+                .with_context(|| format!("failed to fetch '{url}'"))?;
+            if !resp.status().is_success() {
+                bail!("failed to fetch '{url}': HTTP {}", resp.status());
+            }
+            let body = resp
+                .bytes()
+                .await
+                .with_context(|| format!("failed to read body of '{url}'"))?;
+            // `.bytes()` + an explicit UTF-8 check, not `.text()` — `.text()`
+            // lossy-replaces invalid bytes instead of erroring, which would
+            // let corrupted transport silently produce a wrong-but-parseable
+            // manifest instead of failing closed (matches AssetPubkeySource's
+            // explicit `String::from_utf8` check on the same failure class).
+            String::from_utf8(body.to_vec())
+                .with_context(|| format!("body of '{url}' is not valid UTF-8"))
+        })??;
+        extract_pubkey_from_manifest(&manifest)
+    }
+
+    fn name(&self) -> &str {
+        "Cargo.toml at the release tag"
+    }
+}
+
+/// Real [`ReleaseAssetSource`], backed by `pcu-release-assets`.
+pub(crate) struct PcuAssetSource {
+    client: pcu_release_assets::ReleaseAssetClient,
+}
 
 impl PcuAssetSource {
     pub(crate) fn new(
@@ -215,20 +423,8 @@ impl PcuAssetSource {
         repo: impl Into<String>,
         github_token: impl Into<String>,
     ) -> Self {
-        let owner = owner.into();
-        let repo = repo.into();
-        let github_token = github_token.into();
-        let client = pcu_release_assets::ReleaseAssetClient::new(
-            owner.clone(),
-            repo.clone(),
-            github_token.clone(),
-        );
-        Self {
-            client,
-            owner,
-            repo,
-            github_token,
-        }
+        let client = pcu_release_assets::ReleaseAssetClient::new(owner, repo, github_token);
+        Self { client }
     }
 
     /// One call, one runtime — this is an occasional CLI invocation, not a
@@ -246,28 +442,6 @@ impl ReleaseAssetSource for PcuAssetSource {
     fn fetch_asset(&self, tag: &str, asset_name: &str) -> Result<Vec<u8>> {
         Self::block_on(self.client.download_release_asset(tag, asset_name))?
             .map_err(|e| anyhow::anyhow!("{e}"))
-    }
-
-    fn fetch_manifest(&self, tag: &str) -> Result<String> {
-        let url = raw_manifest_url(&self.owner, &self.repo, tag);
-        Self::block_on(async {
-            let client = reqwest::Client::builder()
-                .timeout(MANIFEST_FETCH_TIMEOUT)
-                .build()
-                .context("failed to build an HTTP client")?;
-            let resp = client
-                .get(&url)
-                .bearer_auth(&self.github_token)
-                .send()
-                .await
-                .with_context(|| format!("failed to fetch '{url}'"))?;
-            if !resp.status().is_success() {
-                bail!("failed to fetch '{url}': HTTP {}", resp.status());
-            }
-            resp.text()
-                .await
-                .with_context(|| format!("failed to read body of '{url}'"))
-        })?
     }
 }
 
@@ -332,20 +506,49 @@ mod tests {
     }
 
     #[test]
-    fn extract_pubkey_reads_the_binstall_signing_table() {
+    fn extract_pubkey_from_manifest_reads_the_binstall_signing_table() {
         let manifest = manifest_with(PUBKEY);
-        assert_eq!(extract_pubkey(&manifest).unwrap(), PUBKEY);
+        assert_eq!(extract_pubkey_from_manifest(&manifest).unwrap(), PUBKEY);
     }
 
     #[test]
-    fn extract_pubkey_errors_when_the_table_is_absent() {
-        let err = extract_pubkey("[package]\nname = \"jci-audit\"\n").unwrap_err();
+    fn extract_pubkey_from_manifest_errors_when_the_table_is_absent() {
+        let err = extract_pubkey_from_manifest("[package]\nname = \"jci-audit\"\n").unwrap_err();
         assert!(err.to_string().contains("pubkey"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_pubkey_asset_accepts_a_bare_key() {
+        assert_eq!(parse_pubkey_asset(PUBKEY).unwrap(), PUBKEY);
+        // Trailing newline, as a real uploaded asset would have.
+        assert_eq!(parse_pubkey_asset(&format!("{PUBKEY}\n")).unwrap(), PUBKEY);
+    }
+
+    #[test]
+    fn parse_pubkey_asset_strips_the_rsign_comment_line() {
+        // The exact shape `rsign generate`/circleci-toolkit's
+        // generate_signing_key command produce: an `untrusted comment: ...`
+        // line above the key, matching what a future upload step might
+        // publish verbatim if it doesn't pre-strip it itself.
+        let raw = format!("untrusted comment: minisign public key ABCDEF\n{PUBKEY}\n");
+        assert_eq!(parse_pubkey_asset(&raw).unwrap(), PUBKEY);
+    }
+
+    #[test]
+    fn parse_pubkey_asset_errors_on_comment_only_input() {
+        let err = parse_pubkey_asset("untrusted comment: nothing else\n").unwrap_err();
+        assert!(err.to_string().contains("no key line"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_pubkey_asset_errors_on_multiple_key_lines() {
+        let raw = format!("{PUBKEY}\nsome-other-line\n");
+        let err = parse_pubkey_asset(&raw).unwrap_err();
+        assert!(err.to_string().contains("more than one"), "got: {err}");
     }
 
     struct MockSource {
         assets: HashMap<(String, String), Vec<u8>>,
-        manifest: String,
     }
 
     impl MockSource {
@@ -366,10 +569,17 @@ mod tests {
                 ),
                 b"untrusted comment: signature\nfake-signature-bytes\n".to_vec(),
             );
-            Self {
-                assets,
-                manifest: manifest_with(PUBKEY),
-            }
+            assets.insert(
+                (
+                    "jci-audit-v1.2.0".to_string(),
+                    format!("release-{version}.json.pub"),
+                ),
+                // A trailing newline, as a real published pubkey file would
+                // have — trimmed by parse_pubkey_asset, not passed through
+                // raw.
+                format!("{PUBKEY}\n").into_bytes(),
+            );
+            Self { assets }
         }
     }
 
@@ -380,9 +590,46 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("no such asset '{asset_name}' on '{tag}'"))
         }
+    }
 
-        fn fetch_manifest(&self, _tag: &str) -> Result<String> {
-            Ok(self.manifest.clone())
+    /// A [`PubkeySource`] under direct test control — succeeds with a fixed
+    /// key, or fails with a fixed message, so fallback ordering can be
+    /// tested without any real network/manifest-fetch machinery.
+    struct StubPubkeySource {
+        result: Result<String>,
+        name: &'static str,
+        calls: RefCell<u32>,
+    }
+
+    impl StubPubkeySource {
+        fn ok(key: &str, name: &'static str) -> Self {
+            Self {
+                result: Ok(key.to_string()),
+                name,
+                calls: RefCell::new(0),
+            }
+        }
+
+        fn err(message: &str, name: &'static str) -> Self {
+            Self {
+                result: Err(anyhow::anyhow!(message.to_string())),
+                name,
+                calls: RefCell::new(0),
+            }
+        }
+    }
+
+    impl PubkeySource for StubPubkeySource {
+        fn fetch_pubkey(&self, _tag: &str, _version: &str) -> Result<String> {
+            *self.calls.borrow_mut() += 1;
+            match &self.result {
+                Ok(key) => Ok(key.clone()),
+                Err(e) => Err(anyhow::anyhow!(e.to_string())),
+            }
+        }
+
+        fn name(&self) -> &str {
+            self.name
         }
     }
 
@@ -433,11 +680,19 @@ mod tests {
     fn a_valid_signature_reproduces_the_recorded_verdict() {
         let rec = record_v4("abc1234def", true);
         let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
         let runner = MockRunner::new(true);
         let work = tempfile::tempdir().unwrap();
 
-        let out =
-            verify_remote_with(&runner, &source, "1.2.0", "jci-audit-v1.2.0", work.path()).unwrap();
+        let out = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap();
 
         assert_eq!(out.db_commit, "abc1234def");
         assert!(out.recorded_pass);
@@ -448,10 +703,19 @@ mod tests {
     fn rsign_is_invoked_with_the_fetched_pubkey_and_files() {
         let rec = record_v4("abc1234def", true);
         let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
         let runner = MockRunner::new(true);
         let work = tempfile::tempdir().unwrap();
 
-        verify_remote_with(&runner, &source, "1.2.0", "jci-audit-v1.2.0", work.path()).unwrap();
+        verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap();
 
         let calls = runner.calls.borrow();
         let call = calls
@@ -478,11 +742,19 @@ mod tests {
         // record cannot be trusted at all — there is nothing left to report.
         let rec = record_v4("abc1234def", true);
         let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
         let runner = MockRunner::new(false);
         let work = tempfile::tempdir().unwrap();
 
-        let err = verify_remote_with(&runner, &source, "1.2.0", "jci-audit-v1.2.0", work.path())
-            .unwrap_err();
+        let err = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap_err();
         assert!(
             err.to_string().contains("signature verification failed"),
             "got: {err}"
@@ -493,12 +765,205 @@ mod tests {
     fn a_missing_asset_is_a_clear_error() {
         let rec = record_v4("abc1234def", true);
         let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
         let runner = MockRunner::new(true);
         let work = tempfile::tempdir().unwrap();
 
-        let err = verify_remote_with(&runner, &source, "9.9.9", "jci-audit-v1.2.0", work.path())
-            .unwrap_err();
+        let err = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "9.9.9",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("release-9.9.9.json"), "got: {err}");
+    }
+
+    #[test]
+    fn no_pubkey_source_available_is_a_combined_clear_error() {
+        // The record and signature alone aren't enough — a release with no
+        // pubkey asset AND no extra fallback source configured must fail
+        // clearly rather than trying to verify against an empty/garbage key.
+        let rec = record_v4("abc1234def", true);
+        let mut source = MockSource::new("1.2.0", &rec);
+        source.assets.remove(&(
+            "jci-audit-v1.2.0".to_string(),
+            "release-1.2.0.json.pub".to_string(),
+        ));
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+
+        let err = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("release-1.2.0.json.pub"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_the_next_pubkey_source_when_the_asset_is_missing() {
+        // The exact "next jci-audit release" scenario the maintainer flagged
+        // on PR #105: no .pub asset yet (CI wiring hasn't shipped), but a
+        // fallback source (standing in for ManifestPubkeySource) has it.
+        let rec = record_v4("abc1234def", true);
+        let mut source = MockSource::new("1.2.0", &rec);
+        source.assets.remove(&(
+            "jci-audit-v1.2.0".to_string(),
+            "release-1.2.0.json.pub".to_string(),
+        ));
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+        let fallback = StubPubkeySource::ok(PUBKEY, "stub fallback");
+
+        let out = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source, &fallback],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap();
+
+        assert!(out.recorded_pass);
+        assert_eq!(*fallback.calls.borrow(), 1, "fallback must be tried");
+    }
+
+    #[test]
+    fn does_not_try_the_fallback_when_the_asset_source_succeeds() {
+        // A working fallback must not be consulted when the source ahead of
+        // it in the caller-chosen order already succeeded.
+        let rec = record_v4("abc1234def", true);
+        let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+        let fallback = StubPubkeySource::ok("a-different-key-entirely", "stub fallback");
+
+        verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source, &fallback],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            *fallback.calls.borrow(),
+            0,
+            "fallback must not be tried when an earlier source already succeeded"
+        );
+    }
+
+    #[test]
+    fn all_pubkey_sources_failing_names_every_attempt() {
+        let rec = record_v4("abc1234def", true);
+        let mut source = MockSource::new("1.2.0", &rec);
+        source.assets.remove(&(
+            "jci-audit-v1.2.0".to_string(),
+            "release-1.2.0.json.pub".to_string(),
+        ));
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+        let fallback = StubPubkeySource::err("network unreachable", "stub fallback");
+
+        let err = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source, &fallback],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap_err();
+
+        let msg = err.to_string();
+        assert!(msg.contains("release asset"), "got: {msg}");
+        assert!(msg.contains("stub fallback"), "got: {msg}");
+        assert!(msg.contains("network unreachable"), "got: {msg}");
+    }
+
+    #[test]
+    fn a_non_utf8_pub_asset_is_a_clear_error() {
+        let rec = record_v4("abc1234def", true);
+        let mut source = MockSource::new("1.2.0", &rec);
+        source.assets.insert(
+            (
+                "jci-audit-v1.2.0".to_string(),
+                "release-1.2.0.json.pub".to_string(),
+            ),
+            vec![0xff, 0xfe, 0xfd],
+        );
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+
+        let err = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not valid UTF-8"), "got: {err}");
+    }
+
+    #[test]
+    fn end_to_end_accepts_a_pub_asset_in_the_full_rsign_file_format() {
+        // Not just parse_pubkey_asset in isolation: a future upload step that
+        // publishes the raw rsign-generated pubkey file (comment line and
+        // all) must still work through the whole verify_remote_with flow,
+        // not just the unit-level parser.
+        let rec = record_v4("abc1234def", true);
+        let mut source = MockSource::new("1.2.0", &rec);
+        source.assets.insert(
+            (
+                "jci-audit-v1.2.0".to_string(),
+                "release-1.2.0.json.pub".to_string(),
+            ),
+            format!("untrusted comment: minisign public key ABCDEF\n{PUBKEY}\n").into_bytes(),
+        );
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+
+        let out = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap();
+        assert!(out.recorded_pass);
+
+        let calls = runner.calls.borrow();
+        let call = calls
+            .iter()
+            .find(|c| c[0] == "rsign")
+            .expect("must call rsign");
+        assert!(
+            call.contains(&PUBKEY.to_string()),
+            "rsign must be called with the bare key, not the raw file text: {call:?}"
+        );
     }
 
     #[test]
@@ -514,11 +979,19 @@ mod tests {
             "checks": { "deny": {} },
         });
         let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
         let runner = MockRunner::new(true);
         let work = tempfile::tempdir().unwrap();
 
-        let err = verify_remote_with(&runner, &source, "1.2.0", "jci-audit-v1.2.0", work.path())
-            .unwrap_err();
+        let err = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("checks.deny.passed"), "got: {err}");
     }
 }

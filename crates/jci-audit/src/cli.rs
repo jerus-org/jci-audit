@@ -372,12 +372,23 @@ fn run_verify(
     }
 }
 
-/// No local `.security/release-<VERSION>.json` — fetch the record and its
-/// signature from the published GitHub release instead. See [`remote`].
+/// No local `.security/release-<VERSION>.json` — fetch the record, its
+/// signature, and its pubkey from the published GitHub release instead. See
+/// [`remote`].
 ///
 /// The token is read from `GITHUB_TOKEN` only, never a CLI flag — a secret
 /// passed as a command-line argument is visible to anyone on the same
 /// machine who can read `/proc/<pid>/cmdline` or run `ps`.
+///
+/// Pulled out of [`run_verify_remote`] so the manifest-first ordering is a
+/// plain, unit-testable fact rather than only an inline array literal.
+fn ordered_pubkey_sources<'a>(
+    manifest_source: &'a remote::ManifestPubkeySource,
+    asset_source: &'a remote::AssetPubkeySource<'a, remote::PcuAssetSource>,
+) -> [&'a dyn remote::PubkeySource; 2] {
+    [manifest_source, asset_source]
+}
+
 fn run_verify_remote(
     version: &str,
     advisory_db: Option<&std::path::Path>,
@@ -397,11 +408,28 @@ fn run_verify_remote(
         )?;
     let (owner, repo) = remote::owner_repo_from_repository_url(remote::REPOSITORY_URL)?;
     let tag = format!("{}{version}", remote::TAG_PREFIX);
-    let source = remote::PcuAssetSource::new(owner, repo, token);
+    let source = remote::PcuAssetSource::new(owner.clone(), repo.clone(), token.clone());
+    // Two pubkey sources, manifest first: until the CI upload step for the
+    // release's own .pub asset ships (jerus-org/jci-audit#75), every real
+    // release's pubkey only exists where inject_pubkey_and_amend already
+    // writes it — Cargo.toml at the release tag. Manifest-first is NOT
+    // preferred because it's independently stronger — in jci-audit's own
+    // pipeline both sources currently trace back to the same CI job and
+    // credentials. See remote.rs's module docs for the full reasoning.
+    let manifest_source = remote::ManifestPubkeySource::new(owner, repo, token);
+    let asset_source = remote::AssetPubkeySource::new(&source);
+    let pubkey_sources = ordered_pubkey_sources(&manifest_source, &asset_source);
     let work = release::work_dir();
     tracing::info!(version, tag, "verify (remote fetch, no local record)");
 
-    let outcome = remote::verify_remote_with(&check::SystemRunner, &source, version, &tag, &work);
+    let outcome = remote::verify_remote_with(
+        &check::SystemRunner,
+        &source,
+        &pubkey_sources,
+        version,
+        &tag,
+        &work,
+    );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -607,5 +635,22 @@ mod tests {
     #[test]
     fn unknown_subcommand_is_error() {
         assert!(Cli::try_parse_from(["jci-audit", "bogus"]).is_err());
+    }
+
+    #[test]
+    fn verify_remote_orders_the_manifest_pubkey_source_before_the_asset_source() {
+        // Guards the production ordering `run_verify_remote` relies on:
+        // manifest tried first (today's only real source), asset as
+        // fallback. A future refactor that silently swaps the order should
+        // fail this, not just drift the docs' stated behaviour.
+        let manifest_source =
+            remote::ManifestPubkeySource::new("jerus-org", "jci-audit", "unused-token");
+        let asset = remote::PcuAssetSource::new("jerus-org", "jci-audit", "unused-token");
+        let asset_source = remote::AssetPubkeySource::new(&asset);
+
+        let sources = ordered_pubkey_sources(&manifest_source, &asset_source);
+
+        assert_eq!(sources[0].name(), "Cargo.toml at the release tag");
+        assert!(sources[1].name().starts_with("release asset"));
     }
 }
