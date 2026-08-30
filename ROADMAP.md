@@ -16,16 +16,16 @@ into themes and horizons.
 
 ## Current status
 
-jci-audit is **pre-1.0, currently `0.1.0`** — published bin-only (no importable `[lib]` target,
-[#90](https://github.com/jerus-org/jci-audit/issues/90)). **Every published crates.io version,
-`0.0.1`–`0.1.0`, is currently yanked**: `0.0.1`–`0.0.7` for the accidentally-importable library
-(#90), and `0.1.0` because its release-security-record was unrecoverable (never committed, never
-uploaded as a release asset, and the CI build-artifact copy expired — see
-[#75](https://github.com/jerus-org/jci-audit/issues/75)) — `jci-audit verify` would have nothing
-to check `0.1.0` against, so it isn't a verifiable release. There is currently no installable
-version on crates.io; that clears once the next release ships #75's remaining phase and produces
-a genuinely retrievable record. All six subcommands (`check`, `release-prep`, `sync`, `prune`,
-`verify`, `init`) are implemented and tested; the crate and its generated orb
+jci-audit is **pre-1.0, currently `0.1.1`** — published bin-only (no importable `[lib]` target,
+[#90](https://github.com/jerus-org/jci-audit/issues/90)) and, unlike every earlier version, both
+installable and verifiable. **`0.0.1`–`0.1.0` are yanked**: `0.0.1`–`0.0.7` for the
+accidentally-importable library (#90), and `0.1.0` because its release-security-record was
+unrecoverable (never committed, never uploaded as a release asset, and the CI build-artifact copy
+expired — see [#75](https://github.com/jerus-org/jci-audit/issues/75)) and can never be
+reconstructed. `0.1.1` closed that gap: it's the first release cut after #75 phase 2's release-asset
+distribution landed, and `jci-audit verify --release-version 0.1.1`, run unauthenticated from a bare
+directory, confirmed it end-to-end. All seven subcommands (`check`, `release-prep`, `sync`, `prune`,
+`verify`, `init`, `publish-record`) are implemented and tested; the crate and its generated orb
 (`jerus-org/jci-audit`) publish in tag-lockstep. `deny.toml` is the single source of truth for
 both advisory ignores and license policy — `.cargo/audit.toml` and every crate's `about.toml` are
 derived from it.
@@ -54,26 +54,27 @@ version tag itself, and still gate consumer migration.
   the accidentally-importable library (their docs.rs pages stay published regardless — yanking
   only affects dependency resolution).
 - **[#75 — release record retrievability.](https://github.com/jerus-org/jci-audit/issues/75)**
-  In progress, now top priority. Phase 1 (stop git-committing the record) shipped before `0.1.0`;
-  phase 3 (`verify`'s signed remote-fetch path) is already built and wired. Phase 2 signs the
-  record and uploads it, with its signature and pubkey, to the release before publish — two ways,
-  per PR review on #105/#75: **path B**, the fully self-contained `jci-audit publish-record`
-  subcommand and its matching orb job, needs nothing beyond this orb and a GitHub token — done,
-  usable today by any consumer with no equivalent signing facility of its own. **Path A**, jci-audit's
-  own pipeline reusing the same ephemeral key that already signs the binary tarball (a stronger,
-  crates.io-anchored trust chain), needed two generic hooks in circleci-toolkit's `release_crate`
-  job (digital-prstv/circleci-toolkit#533, released in toolkit 7.4.0) — now wired into
-  `.circleci/release.yml`, but **not yet proven**: it hasn't run against a real tagged release yet,
-  so it isn't marked done until one confirms the record, its signature, and its `.pub` asset
-  actually land and `jci-audit verify` reproduces against them. Absence of this gap caused real
-  damage before it was even wired: `0.1.0`'s own record fell through every available path (no
-  commit, no release asset, and the CI build-artifact copy expired) and can never be reconstructed.
-  **`0.1.0` has been yanked from crates.io** as a result — not a verifiable release. This isn't
+  ✅ **Done** — both phase-2 distribution paths are shipped and confirmed working, and phases 1/3
+  are unchanged. Phase 1 (stop git-committing the record) shipped before `0.1.0`; phase 3
+  (`verify`'s signed remote-fetch path) is built and wired. Phase 2 signs the record and uploads it,
+  with its signature and pubkey, to the release before publish — two ways, per PR review on
+  #105/#75: **path B**, the fully self-contained `jci-audit publish-record` subcommand and its
+  matching orb job, needs nothing beyond this orb and a GitHub token — usable today by any consumer
+  with no equivalent signing facility of its own. **Path A**, jci-audit's own pipeline reusing the
+  same ephemeral key that already signs the binary tarball (a stronger, crates.io-anchored trust
+  chain), needed two generic hooks in circleci-toolkit's `release_crate` job
+  (digital-prstv/circleci-toolkit#533, released in toolkit 7.4.0), wired into `.circleci/release.yml`
+  — and **confirmed on a real release**: `jci-audit-v0.1.1` produced `release-0.1.1.json`, `.sig`,
+  and `.pub` on the published release (the `.pub` key matching `Cargo.toml`'s), and
+  `jci-audit verify --release-version 0.1.1`, run unauthenticated from a bare directory, fetched and
+  authenticated it successfully. `0.1.1` is the first release since phase 1 removed the commit path
+  to be both installable and verifiable — closing the gap `0.1.0`'s yanking exposed. That damage is
+  now historical: `0.1.0`'s own record fell through every available path (no commit, no release
+  asset, and the CI build-artifact copy expired) and can never be reconstructed, so **`0.1.0` stays
+  yanked from crates.io** — not a verifiable release, and not retroactively fixable. This isn't
   jci-audit's first release with a record, though: `0.0.4`–`0.0.7` each carry a real, GPG-signed,
   git-committed record and are still independently verifiable from a checkout — they're separately
-  yanked, for the unrelated #90 reason. The gap phase 2 closes is that *every* release since phase 1
-  removed the commit path has had no record at all; the next release will be the first since then to
-  be both installable and verifiable, if path A's wiring holds up in practice.
+  yanked, for the unrelated #90 reason.
 - **Project hardening / OpenSSF Best Practices badge.** ✅ Done — the project has reached
   [Silver](https://www.bestpractices.dev/projects/14065) (confirmed 2026-08-25; 100% of Silver's
   55 criteria met, Gold at 35%).
@@ -99,9 +100,6 @@ version tag itself, and still gate consumer migration.
 - **[#49 — accept warnings at release time and record the acceptances.](https://github.com/jerus-org/jci-audit/issues/49)**
 - **[#36 — run `licenses-check` in validation so notices cannot go stale.](https://github.com/jerus-org/jci-audit/issues/36)**
 - **[#31 — resolve the cargo-deny warnings (unmatched license allowances, duplicate syn).](https://github.com/jerus-org/jci-audit/issues/31)**
-- **[#86 — `RUST_LOG=""` (set-but-empty) silently disables all logging.](https://github.com/jerus-org/jci-audit/issues/86)**
-  The `-v`/`-q`-derived fallback filter only kicks in when `RUST_LOG` is unset, not when it's set
-  but empty.
 - **[#100 — `about.toml` sync assumes a `crates/*/` layout instead of reading the workspace manifest.](https://github.com/jerus-org/jci-audit/issues/100)**
   A workspace laid out any other way silently never gets its `about.toml` synced.
 - **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
@@ -110,6 +108,9 @@ version tag itself, and still gate consumer migration.
 - **[#80 — fold the `cargo-about` license-policy resolution check into `check`/`release-prep`.](https://github.com/jerus-org/jci-audit/issues/80)**
   Today it only runs as a hand-authored job in this repo's own CI, so a consumer who adopts the
   generated orb doesn't get it.
+- **[#111 — redundant per-call tokio runtime construction in `block_on`-based network clients.](https://github.com/jerus-org/jci-audit/issues/111)**
+  Not a correctness bug — `PcuAssetWriter`/`PcuAssetSource`/`ManifestPubkeySource` each build a
+  fresh runtime per call instead of one per invocation. Low priority.
 
 ## Medium term — toward 1.0
 
