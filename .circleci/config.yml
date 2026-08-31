@@ -10,28 +10,14 @@ orbs:
 
   orb-tools: circleci/orb-tools@12.5.0
 
+  # Self-contained: jci-audit/check runs the published binary in its own
+  # public image (orb/Dockerfile) — no dependency on the private toolkit's
+  # executors or container.
+  jci-audit: jerus-org/jci-audit@0.1.1
+
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.9
   # <<< gen-circleci-orb
-jobs:
-  # An unaccepted licence stops the release in its pre-release hook — after the
-  # approval gate and the build, at the most expensive point in the pipeline.
-  # This asks the same question at PR time instead.
-  #
-  # It checks that cargo-about can RESOLVE the licences, not that the committed
-  # notices match byte for byte: the rendered text varies with what the local
-  # cargo cache has unpacked, so comparing bytes here would fail on a correct
-  # tree. See the comment in scripts/licenses.sh. `just` is not in the CI image,
-  # so the invocation is shared through the script rather than copied here.
-  licenses_policy:
-    executor: toolkit/rust_env_rolling
-    resource_class: medium
-    steps:
-      - checkout
-      - run:
-          name: Check every dependency's licence is accepted by the policy
-          command: ./scripts/licenses.sh --policy
-
 workflows:
   validation:
     jobs:
@@ -80,21 +66,17 @@ workflows:
       - toolkit/common_tests:
           min_rust_version: << pipeline.parameters.min_rust_version >>
 
-      # Unfiltered, like the other correctness gates: a dependency arrives with its
-      # licence on whatever branch it lands on, and this is the only thing that
-      # catches an unaccepted one before a release does.
-      - licenses_policy
-
-      - toolkit/security:
-          name: security audit only
-          sonarcloud: false
-          filters:
-            branches:
-              only:
-                - /pull\/[0-9]+/
+      # Unfiltered, like the other correctness gates: a dependency arrives with
+      # its licence and advisory status on whatever branch it lands on. Runs
+      # cargo-deny, cargo-audit, and both license-policy checks in one job —
+      # dogfoods the published orb exactly as any consumer would.
+      - jci-audit/check
 
       - toolkit/security:
           name: security with sonarcloud
+          # jci-audit/check above already covers cargo-audit unfiltered; this
+          # job now exists for SonarCloud only.
+          cargo_audit: false
           clippy_report: true
           no_sonarcloud_on_main: false
           requires:

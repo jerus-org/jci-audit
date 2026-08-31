@@ -99,7 +99,7 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
 | static_analysis | Met | Clippy + SonarCloud (`sonar-project.properties`) |
-| static_analysis_common_vulnerabilities | Met | `cargo audit` (live) runs on every PR; `cargo-about` license-policy resolution runs on every PR (`licenses_policy` job); full `cargo deny` policy checks (bans/licenses/sources) run locally (`just audit`) and are enforced as a hard release gate (`jci-audit release-prep`) — CI-time wiring of `jci-audit check` on every PR is tracked in `ROADMAP.md` (post-migration) |
+| static_analysis_common_vulnerabilities | Met | `jci-audit/check` (the published, self-contained orb job) runs on every PR: `cargo deny` (advisories/bans/licenses/sources), `cargo audit` (live), the about.toml/deny.toml drift check, and the cargo-about resolution check, all blocking |
 | static_analysis_fixed | Met | Findings addressed; CI enforces |
 | static_analysis_often | Met | Runs on every PR |
 | dynamic_analysis | N/A | Memory-safe Rust; the only `unsafe` blocks are in test code (`std::env::set_var`/`remove_var`), none in production logic |
