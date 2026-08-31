@@ -24,13 +24,18 @@ Options:
       --deny-warnings                  Fail if the tools report any warning
 ```
 
-The PR/dev gate. Runs three independently-blocking steps and aggregates the results — a failure
+The PR/dev gate. Runs four independently-blocking steps and aggregates the results — a failure
 in one never hides a failure in another; the error message names every step that failed:
 
 1. `cargo deny check advisories bans licenses sources` (policy).
 2. A **live** `cargo audit` scan (fresh RustSec database).
 3. The `about.toml`/`deny.toml` drift check ([`sync`](#sync)'s check mode) — a stale derived
    license-policy file fails `check` on its own, even when both tools above pass.
+4. The `cargo-about` license-policy resolution check — can `cargo-about` actually attribute every
+   reachable dependency's licence with what's on disk right now? Independent of drift: an
+   in-sync `about.toml` can still fail this if an SPDX expression isn't covered by any
+   allow/exception combination. Previously only `release-prep` caught this, at the most
+   expensive point in the pipeline (jerus-org/jci-audit#80).
 
 `--deny-warnings` escalates warnings (e.g. cargo-deny's `unmaintained = "all"` scope, which
 reports as a warning rather than an error by default) to failures. Use this on a schedule or a

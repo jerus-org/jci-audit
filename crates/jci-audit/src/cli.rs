@@ -38,9 +38,11 @@ struct ToolOutput {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// PR/dev gate: cargo-deny policy plus a live cargo-audit scan.
+    /// PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.
     ///
-    /// Both blocking. Aggregates exit codes and surfaces stderr.
+    /// All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml
+    /// drift check, and the cargo-about resolution check. Aggregates exit
+    /// codes and surfaces stderr.
     Check {
         /// Path to the Cargo.toml (or its directory) to check.
         #[arg(long, default_value = ".")]
@@ -235,14 +237,20 @@ fn run_check(
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
-    // Tool::Cargo: the about.toml step shells out to `cargo metadata` per
-    // crate, unlike the other two (standalone binaries, work cargo-less).
-    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit, Tool::Cargo])?;
+    // Tool::Cargo: the about.toml drift step shells out to `cargo metadata`
+    // per crate. Tool::CargoAbout: the resolution step — the others are
+    // standalone binaries and work cargo-less.
+    preflight::ensure_available(&[
+        Tool::CargoDeny,
+        Tool::CargoAudit,
+        Tool::CargoAbout,
+        Tool::Cargo,
+    ])?;
     tracing::info!(?manifest_path, "check");
     let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
     diagnostics::enforce(&report.warnings, output.deny_warnings)?;
     if report.success() {
-        println!("security check passed (cargo deny + cargo audit)");
+        println!("security check passed (cargo deny + cargo audit + license policy)");
         Ok(())
     } else {
         bail!("security check failed: {}", report.failures().join(", "))
