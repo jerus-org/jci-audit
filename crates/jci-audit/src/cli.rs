@@ -116,21 +116,19 @@ enum Commands {
 
         /// GitHub repository owner that published the release (e.g. "jerus-org").
         ///
-        /// Required by the remote-fetch fallback (no local record found);
-        /// ignored when verifying from a checkout.
+        /// Needed to fetch the release when no local record is found.
         #[arg(long)]
         owner: Option<String>,
 
         /// GitHub repository name that published the release (e.g. "jci-audit").
         ///
-        /// Only used by the remote-fetch fallback.
+        /// Needed to fetch the release when no local record is found.
         #[arg(long)]
         repo: Option<String>,
 
         /// Release tag prefix (e.g. "jci-audit-v"); combined with
-        /// --release-version to form the tag to fetch.
-        ///
-        /// Only used by the remote-fetch fallback.
+        /// --release-version to form the tag to fetch when no local record
+        /// is found.
         #[arg(long)]
         tag_prefix: Option<String>,
 
@@ -491,8 +489,7 @@ fn resolve_remote_target<'a>(
         _ => bail!(
             "no local record for this version — the remote-fetch fallback needs --owner, \
              --repo, and --tag-prefix to know which release to check (e.g. --owner jerus-org \
-             --repo jci-audit --tag-prefix jci-audit-v); it no longer assumes jci-audit's own \
-             repository (jerus-org/jci-audit#121)"
+             --repo jci-audit --tag-prefix jci-audit-v)"
         ),
     }
 }
@@ -535,11 +532,10 @@ fn run_verify_remote(
     let tag = format!("{tag_prefix}{version}");
     let source = remote::PcuAssetSource::new(owner, repo, token.clone());
     // Asset first: the release's own `.pub` asset (jerus-org/jci-audit#75
-    // phase 2) is the source that actually works for any consumer, since
-    // every `publish-record` invocation uploads one — a third party's
-    // Cargo.toml won't carry jci-audit's signing convention at all. The
-    // manifest fallback only ever has data for jci-audit's own releases (see
-    // remote.rs's module docs for the full reasoning).
+    // phase 2) depends on nothing about how the release was published, so
+    // it's tried before the manifest source, which depends on the
+    // crates.io/cargo-binstall signing convention (see remote.rs's module
+    // docs for the full reasoning).
     let manifest_source = remote::ManifestPubkeySource::new(owner, repo, token);
     let asset_source = remote::AssetPubkeySource::new(&source);
     let pubkey_sources = ordered_pubkey_sources(&asset_source, &manifest_source);
@@ -966,11 +962,10 @@ mod tests {
     #[test]
     fn verify_remote_orders_the_asset_pubkey_source_before_the_manifest_source() {
         // Guards the production ordering `run_verify_remote` relies on:
-        // asset tried first (the only source with data for any consumer's
-        // release, jerus-org/jci-audit#75 phase 2), manifest as the
-        // jci-audit-specific fallback. A future refactor that silently swaps
-        // the order should fail this, not just drift the docs' stated
-        // behaviour.
+        // asset tried first, since it depends on nothing about how the
+        // release was published, then manifest. A future refactor that
+        // silently swaps the order should fail this, not just drift the
+        // docs' stated behaviour.
         let manifest_source = remote::ManifestPubkeySource::new(
             "jerus-org",
             "jci-audit",
@@ -1047,14 +1042,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_remote_target_errors_name_jci_audit_121() {
+    fn resolve_remote_target_error_names_the_missing_flags() {
         // The error message must point at how to actually fix it, not just
         // that something is missing.
         let err = resolve_remote_target(None, None, None).unwrap_err();
         assert!(err.to_string().contains("--owner"));
         assert!(err.to_string().contains("--repo"));
         assert!(err.to_string().contains("--tag-prefix"));
-        assert!(err.to_string().contains("jerus-org/jci-audit#121"));
     }
 
     #[test]

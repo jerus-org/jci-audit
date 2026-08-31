@@ -236,9 +236,8 @@ or treated as a mismatch — the report says plainly how much assurance it actua
 `jci-audit verify` tries the local record first (`.security/release-<VERSION>.json`); when it is
 absent, it falls back to `src/remote.rs` instead of erroring — the auditor's no-clone path
 [#75](https://github.com/jerus-org/jci-audit/issues/75) phase 3 exists for. This is a different,
-narrower check than §5.3, not the same one run against fetched bytes. Which repository and tag to
-fetch from is never assumed: the fallback requires `--owner`/`--repo`/`--tag-prefix`, so it can
-check any consumer's release, not only jci-audit's own
+narrower check than §5.3, not the same one run against fetched bytes. The fallback takes
+`--owner`/`--repo`/`--tag-prefix` to name the release to check
 ([#121](https://github.com/jerus-org/jci-audit/issues/121)).
 
 1. Fetch `release-<VERSION>.json` and its `.sig` from the **published** release for the tag
@@ -248,12 +247,12 @@ check any consumer's release, not only jci-audit's own
 2. Find the pubkey that signed it from an ordered list of `PubkeySource`s — `cli.rs::
    run_verify_remote` tries `AssetPubkeySource` (the record's own `.pub` release asset, parsed for
    the bare key) before `ManifestPubkeySource` (the release tag's raw `Cargo.toml`, read for
-   `[package.metadata.binstall.signing].pubkey`). Asset first because it's the only source with
-   real data for *any* consumer's release — every `jci-audit publish-record` invocation uploads
-   one — while the manifest source only ever has data for jci-audit's own releases. Neither is an
-   independently stronger guarantee than the other where both apply: in jci-audit's own pipeline
-   both sources currently trace back to the same CI job and credentials (T9 of
-   `docs/assurance-case.md` has the full, honest accounting).
+   `[package.metadata.binstall.signing].pubkey`, the convention `cargo binstall` itself defines).
+   Asset first because it depends on nothing about how the release was published; the manifest
+   source depends on that crates.io/cargo-binstall convention, which jci-audit's own release
+   pipeline uses. Neither is an independently stronger guarantee than the other where both apply:
+   in jci-audit's own pipeline both sources currently trace back to the same CI job and credentials
+   (T9 of `docs/assurance-case.md` has the full, honest accounting).
 3. Check the record's minisign signature against that pubkey, by shelling to `rsign verify`
    (`preflight::Tool::Rsign`) — not by linking a crypto crate.
 4. On a valid signature, report the record's attested content (advisory-db commit, recorded

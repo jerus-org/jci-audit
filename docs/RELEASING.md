@@ -112,10 +112,9 @@ rsign verify -P "<pubkey>" -x jci-audit-<target>.tar.gz.sig jci-audit-<target>.t
 run from a bare directory (no checkout), fetches the record and its signature from the release,
 finds the pubkey that signed them, and checks it — see
 [design.md §5.4](design.md#54-verifying-without-a-checkout) for what this does and doesn't prove.
-The `--owner`/`--repo`/`--tag-prefix` flags are required on this fetch-only path: `verify` no
-longer assumes jci-audit's own repository, so it can check any consumer's release
-([jerus-org/jci-audit#121](https://github.com/jerus-org/jci-audit/issues/121)). Confirmed working
-end-to-end against a real release
+The `--owner`/`--repo`/`--tag-prefix` flags are required on this fetch-only path, to name the
+release to check ([jerus-org/jci-audit#121](https://github.com/jerus-org/jci-audit/issues/121)).
+Confirmed working end-to-end against a real release
 ([jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) phase 2):
 `jci-audit-v0.1.1` was the first release cut after path A landed, and this exact command, run
 unauthenticated from a bare directory, fetched and authenticated the record with no local checkout

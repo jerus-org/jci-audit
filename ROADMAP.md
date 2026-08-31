@@ -116,11 +116,10 @@ version tag itself, and still gate consumer migration.
 - **[#111 — redundant per-call tokio runtime construction in `block_on`-based network clients.](https://github.com/jerus-org/jci-audit/issues/111)**
   Not a correctness bug — `PcuAssetWriter`/`PcuAssetSource`/`ManifestPubkeySource` each build a
   fresh runtime per call instead of one per invocation. Low priority.
-- **[#121 — verify's remote path can only verify jci-audit's own releases.](https://github.com/jerus-org/jci-audit/issues/121)**
-  ✅ Done — `verify` now takes required `--owner`/`--repo`/`--tag-prefix` on the remote-fetch
-  fallback, so it can check any consumer's release, not only jci-audit's own. Also reordered the
-  pubkey sources to asset-first (the source that actually works for any consumer) now that #75
-  phase 2's asset upload has shipped, and corrected several stale doc comments that predated it.
+- **[#121 — verify's remote path takes an explicit owner/repo/tag-prefix.](https://github.com/jerus-org/jci-audit/issues/121)**
+  ✅ Done — `verify` takes `--owner`/`--repo`/`--tag-prefix` on the remote-fetch fallback, naming
+  which release to check. Pubkey sources are tried asset-first: the source that depends on nothing
+  about how the release was published, ahead of the crates.io/cargo-binstall manifest convention.
 - **[#120 — verify's remote fallback misreports Cargo.lock/deny.toml as absent.](https://github.com/jerus-org/jci-audit/issues/120)**
   Still open — the misleading "not checked" message when a checkout has Cargo.lock/deny.toml but
   is only missing the version-specific `.security/release-<VERSION>.json` (gitignored by design).

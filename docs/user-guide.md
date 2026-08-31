@@ -157,8 +157,7 @@ jci-audit verify --release-version 1.2.0
 **With no local record** (no checkout, or a checkout whose `.security/` doesn't carry this
 version), `verify` falls back to fetching the record and its signature from the published GitHub
 release instead — see [design.md §5.4](design.md#54-verifying-without-a-checkout). That path
-needs `--owner`/`--repo`/`--tag-prefix` to know which release to check; it does not assume
-jci-audit's own repository, so it can verify any consumer's release:
+needs `--owner`/`--repo`/`--tag-prefix` to know which release to check:
 
 ```bash
 jci-audit verify --release-version 1.2.0 \

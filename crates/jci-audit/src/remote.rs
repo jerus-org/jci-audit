@@ -12,21 +12,20 @@
 //! **Why more than one pubkey source.** [`AssetPubkeySource`] reads the
 //! release's own `.pub` asset (`release-<VERSION>.json.pub`,
 //! jerus-org/jci-audit#75 phase 2) — needing nothing beyond the release's
-//! own assets, and the *only* source with data for any consumer's release,
-//! since every `jci-audit publish-record` invocation uploads one.
+//! own assets, so it works regardless of how the release was published.
 //! [`ManifestPubkeySource`] reads the pubkey `inject_pubkey_and_amend`
-//! injects into `Cargo.toml` — real data only for jci-audit's own releases
-//! ([`MANIFEST_PATH`] is this repo's own workspace layout), so it exists as
-//! a fallback for jci-audit's own self-verification, not something a third
-//! party's release can satisfy. `verify_remote_with` takes an ordered list
+//! injects into `Cargo.toml` at the release tag — the
+//! `[package.metadata.binstall.signing]` convention `cargo binstall` itself
+//! defines, so it has data for any crates.io release that uses it, jci-audit's
+//! own release pipeline included. `verify_remote_with` takes an ordered list
 //! of sources and tries each in turn ([`fetch_pubkey_from_sources`]) with no
 //! built-in preference of its own; the *caller* decides the order.
-//! `cli.rs::run_verify_remote` puts [`AssetPubkeySource`] first — the source
-//! that actually works for any consumer — with [`ManifestPubkeySource`] as
-//! the jci-audit-specific fallback. Deliberately built as a small trait
-//! rather than hardcoded fetches: a future source (a different registry, a
-//! different language's convention) is just another implementation, not a
-//! change to this flow.
+//! `cli.rs::run_verify_remote` tries [`AssetPubkeySource`] first, since it
+//! depends on nothing about how the release was published, then
+//! [`ManifestPubkeySource`]. Deliberately built as a small trait rather than
+//! hardcoded fetches: a future source (a different registry, a different
+//! language's convention) is just another implementation, not a change to
+//! this flow.
 //!
 //! **Be honest about what the signature check does and doesn't buy**,
 //! because it differs by source, and neither is as strong as it might
@@ -282,11 +281,9 @@ impl<S: ReleaseAssetSource> PubkeySource for AssetPubkeySource<'_, S> {
     }
 }
 
-/// Where jci-audit's own release pipeline publishes this crate's manifest,
-/// relative to the repo root — this repo's workspace layout, not a general
-/// convention (jerus-org/jci-audit#124). [`ManifestPubkeySource`] therefore
-/// only ever has data for jci-audit's own releases; a third party's release
-/// relies on [`AssetPubkeySource`] instead (see its own doc comment).
+/// This crate's manifest path, relative to the repo root — used to build
+/// the raw-content URL [`ManifestPubkeySource`] fetches. Hardcoded rather
+/// than derived from the target repo's own layout (jerus-org/jci-audit#124).
 const MANIFEST_PATH: &str = "crates/jci-audit/Cargo.toml";
 
 /// The raw-content URL for this repo's `Cargo.toml` as it stood at `tag`.
@@ -300,14 +297,11 @@ fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
 const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// [`PubkeySource`] that fetches the release tag's raw `Cargo.toml` and
-/// reads the pubkey `inject_pubkey_and_amend` already writes there. Only
-/// ever has data for jci-audit's own releases ([`MANIFEST_PATH`] is this
-/// repo's own layout) — a fallback tried after [`AssetPubkeySource`], not a
-/// source any other consumer's release can satisfy. Not independently
-/// stronger than the asset source either: in jci-audit's own pipeline both
-/// sources' trust currently traces back to the same CI job and credentials
-/// (see the module docs' "be honest" section). Also trusts a **mutable** git
-/// tag ref, with no immutability guarantee — see the module docs.
+/// reads the pubkey `inject_pubkey_and_amend` writes there under
+/// `[package.metadata.binstall.signing]` — the convention `cargo binstall`
+/// itself defines. [`MANIFEST_PATH`] is currently hardcoded to this repo's
+/// own layout (jerus-org/jci-audit#124). Also trusts a **mutable** git tag
+/// ref, with no immutability guarantee — see the module docs.
 /// This reads exactly the content crates.io itself received for that
 /// release: `cargo publish` packages the commit at the pushed tag verbatim,
 /// so the tag's `Cargo.toml` and the one crates.io has are byte-identical.

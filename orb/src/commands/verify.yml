@@ -17,15 +17,15 @@ parameters:
     default: false
   owner:
     type: string
-    description: GitHub repository owner that published the release (e.g. "jerus-org"). Required by the remote-fetch fallback (no local record found); ignored when verifying from a checkout.
+    description: GitHub repository owner that published the release (e.g. "jerus-org"). Needed to fetch the release when no local record is found.
     default: ''
   repo:
     type: string
-    description: GitHub repository name that published the release (e.g. "jci-audit"). Only used by the remote-fetch fallback.
+    description: GitHub repository name that published the release (e.g. "jci-audit"). Needed to fetch the release when no local record is found.
     default: ''
   tag_prefix:
     type: string
-    description: Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch. Only used by the remote-fetch fallback.
+    description: Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch when no local record is found
     default: ''
   deny_warnings:
     type: boolean
