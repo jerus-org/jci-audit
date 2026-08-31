@@ -305,10 +305,12 @@ toolkit-integrated path.
   `.circleci/release.yml`'s `record-release`/`release-jci-audit` jobs.
 
 `jci-audit release-prep` still gates every release exactly as before — a failing run still blocks
-the release — regardless of whether the wiring above has run yet on a real release. The wiring
-itself is **not yet proven**: it hasn't run against a real tagged release, so `verify`'s remote path
-against jci-audit's own releases will keep erroring with "no such asset" until the next real release
-confirms the record, its signature, and its `.pub` asset actually land as intended.
+the release, independent of the distribution wiring above. That wiring is now **confirmed working**:
+`jci-audit-v0.1.1` was the release it first ran against, and produced `release-0.1.1.json`,
+`.json.sig`, and `.json.pub` on the published release, with the `.pub` asset's key matching
+`Cargo.toml`'s. `jci-audit verify --release-version 0.1.1`, run unauthenticated from a bare
+directory, fetched and authenticated the record successfully — `0.1.1` is the first release since
+phase 1 removed the git-commit path to be both installable and verifiable this way.
 
 ---
 
