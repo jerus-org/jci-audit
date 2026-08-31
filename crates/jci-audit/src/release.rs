@@ -283,11 +283,10 @@ pub(crate) fn release_with<R: CommandRunner>(
 
     // Then policy resolvability: can cargo-about actually attribute every
     // reachable dependency's license, not just is about.toml internally
-    // consistent with deny.toml? Shared with `check`'s identical PR-time step
-    // so the two gates can't drift apart (jerus-org/jci-audit#80). Aggregated
-    // across every crate before bailing, matching the drift check above — one
-    // release attempt should surface every unresolvable crate, not just
-    // whichever happened to sort first.
+    // consistent with deny.toml? Shared with `check`'s identical PR-time
+    // step. Aggregated across every crate before bailing, matching the drift
+    // check above — one release attempt should surface every unresolvable
+    // crate, not just whichever happened to sort first.
     let unresolved = crate::check::resolve_license_policy(runner, &about_sync);
     if !unresolved.is_empty() {
         bail!(

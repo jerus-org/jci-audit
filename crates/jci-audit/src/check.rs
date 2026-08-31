@@ -7,14 +7,13 @@
 //! scan against the live RustSec database; the drift check confirms each
 //! crate's `about.toml` still reflects `deny.toml`'s license policy — a pure
 //! derivation, the same one `jci-audit sync --check` performs, no
-//! `cargo-about` invocation needed. The resolution check is a separate,
-//! independent question: given what's on disk right now, can `cargo-about`
-//! actually attribute every reachable dependency's licence? (see issue #80 —
-//! previously only `release-prep` caught this, at the most expensive point in
-//! the pipeline). All four run — exit codes are **aggregated**, not
-//! short-circuited, so one failing check never hides another's findings —
-//! and each tool's stderr is surfaced (per the CI-diagnostics discipline:
-//! never swallow the output of a tool whose result drives a decision).
+//! `cargo-about` invocation needed; the resolution check confirms
+//! `cargo-about` can actually attribute every reachable dependency's licence
+//! with what's on disk right now, independent of drift. All four run — exit
+//! codes are **aggregated**, not short-circuited, so one failing check never
+//! hides another's findings — and each tool's stderr is surfaced (per the
+//! CI-diagnostics discipline: never swallow the output of a tool whose
+//! result drives a decision).
 
 use std::{path::Path, process::Command};
 
@@ -158,13 +157,8 @@ pub(crate) fn check_with<R: CommandRunner>(
                 success: drift_ok,
             });
 
-            // Independent of drift: can cargo-about actually attribute every
-            // reachable dependency's licence using what's on disk right now,
-            // not just is about.toml internally consistent with deny.toml?
-            // Always runs, even when the drift check above failed, so a PR
-            // fixing drift can't also be hiding an unresolvable licence the
-            // same push would only otherwise be caught by `release-prep`
-            // (see issue #80).
+            // Runs even when the drift check above failed, so a PR fixing
+            // drift can't also leave an unresolvable licence unnoticed.
             println!("$ cargo-about license policy resolution");
             let unresolved = resolve_license_policy(runner, &about_results);
             steps.push(CheckStep {
@@ -195,7 +189,7 @@ pub(crate) fn check_with<R: CommandRunner>(
 /// `scripts/licenses.sh`'s own comment on why rendered bytes aren't
 /// reproducible across machines). Shared by `check`'s PR-time gate and
 /// `release-prep`'s release-time gate so the two invocations can't drift
-/// apart from each other (jerus-org/jci-audit#80).
+/// apart from each other.
 pub(crate) fn resolve_license_policy<R: CommandRunner>(
     runner: &R,
     about_results: &[sync::AboutSyncResult],

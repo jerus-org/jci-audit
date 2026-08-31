@@ -238,7 +238,7 @@ fn run_check(
     detail: diagnostics::Detail,
 ) -> Result<()> {
     // Tool::Cargo: the about.toml drift step shells out to `cargo metadata`
-    // per crate. Tool::CargoAbout: the resolution step (#80) — the others are
+    // per crate. Tool::CargoAbout: the resolution step — the others are
     // standalone binaries and work cargo-less.
     preflight::ensure_available(&[
         Tool::CargoDeny,
