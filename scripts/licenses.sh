@@ -4,13 +4,12 @@
 #
 #   (no argument)  regenerate crates/jci-audit/THIRD-PARTY-LICENSES.md
 #   --check        regenerate and fail if the committed copy differs
-#   --policy       fail only if cargo-about cannot resolve the licences at all
 #
-# Shared by the justfile recipes and by CI so the invocation has one definition.
-# CI cannot call the recipes — `just` is not installed in the CI image — which is
-# why this exists as a script rather than living in the justfile.
+# Shared by the justfile recipes. `jci-audit check`/`release-prep` run the
+# equivalent cargo-about resolution check natively now (jerus-org/jci-audit#80)
+# — this script only regenerates/verifies the rendered notices file.
 #
-# WHY CI USES --policy AND NOT --check
+# WHY THERE IS NO CI EQUIVALENT OF --check
 #
 # The generated text is not reproducible across machines. cargo-about resolves a
 # crate's licence partly by reading files from the extracted crate sources under
@@ -22,13 +21,10 @@
 #
 # A CI job that checks out and compares bytes would therefore fail on a correct
 # tree, and a gate that cries wolf is worse than no gate — this one guards
-# attribution correctness, so it has to be believed.
-#
-# --policy keeps what actually matters. The release that prompted all this was
-# aborted by cargo-about *erroring* on a licence the policy did not accept, not
-# by stale text. That error is unaffected by cache state (verified both cold and
-# warm), so CI catches the release-aborting condition at PR time and leaves the
-# byte comparison to maintainers, whose environment is the one that commits.
+# attribution correctness, so it has to be believed. `jci-audit check`'s
+# resolution check keeps what actually matters instead: it fails only when
+# cargo-about *errors* on a licence the policy doesn't accept, which is
+# unaffected by cache state.
 #
 # Making the text itself reproducible is jci-audit#36.
 set -euo pipefail
@@ -43,28 +39,6 @@ mode="${1:-write}"
 case "$mode" in
 write)
     (cd "$CRATE_DIR" && cargo about generate --locked about.hbs --output-file "$NOTICES")
-    ;;
-
---policy)
-    # Resolution only — the rendered text is discarded, so nothing here depends
-    # on how the cache happens to be populated.
-    if ! (cd "$CRATE_DIR" && cargo about generate --locked about.hbs --output-file /dev/null); then
-        cat >&2 <<MSG
-
-cargo-about could not resolve the licences of this dependency graph.
-
-'jci-audit release-prep' runs this same check earlier, before the approval gate and
-the build — so this is caught here at PR time, not there at the most expensive
-point in the pipeline.
-
-A dependency has almost certainly arrived carrying a licence that is not accepted
-yet. Grant it in deny.toml, then run 'jci-audit sync' to derive the matching
-$CRATE_DIR/about.toml entry — deny.toml is the single source of truth, about.toml
-is derived from it. Scope it to the crate that carries it rather than adding it
-globally, so the next such dependency also stops here.
-MSG
-        exit 1
-    fi
     ;;
 
 --check)
@@ -83,7 +57,7 @@ MSG
     ;;
 
 *)
-    echo "usage: $0 [--check|--policy]" >&2
+    echo "usage: $0 [--check]" >&2
     exit 2
     ;;
 esac

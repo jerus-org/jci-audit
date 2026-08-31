@@ -70,10 +70,7 @@ licenses:
 
 # Verify the committed license notices are current (fails if stale).
 # Local only — the rendered text depends on the local cargo cache, so CI runs
-# licenses-policy instead. See the comment in scripts/licenses.sh.
+# `jci-audit check` instead (its cargo-about resolution step is cache-independent).
+# See the comment in scripts/licenses.sh.
 licenses-check:
     ./scripts/licenses.sh --check
-
-# The gate CI runs: every dependency's license must be accepted by the policy.
-licenses-policy:
-    ./scripts/licenses.sh --policy

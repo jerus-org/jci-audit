@@ -106,12 +106,13 @@ version tag itself, and still gate consumer migration.
   Today it's a manual copy-the-YAML step; `gen-circleci-orb init`/`update` already automates the
   equivalent for its own consumers.
 - **[#80 — fold the `cargo-about` license-policy resolution check into `check`/`release-prep`.](https://github.com/jerus-org/jci-audit/issues/80)**
-  `check` now runs it (previously only `release-prep` did); the generated orb's `check` job
-  inherits it automatically, so a consumer who adopts the orb now gets it too. **Remaining**: this
-  repo's own `.circleci/config.yml` still runs it via the hand-authored `licenses_policy` job
-  (`scripts/licenses.sh --policy`) instead of dogfooding `jci-audit check` itself — retiring that
-  job is tracked as CI-wiring cleanup alongside `.circleci/release.yml`'s `record-release`
-  workaround (see that job's own `TEMPORARY WORKAROUND` comment).
+  ✅ Done — `check` now runs it too (previously only `release-prep` did), and this repo's own
+  `.circleci/config.yml` dogfoods the published `jci-audit/check` orb job directly (self-contained,
+  its own public image — no dependency on the private toolkit's executors), replacing the
+  hand-authored `licenses_policy` job. `toolkit/security`'s redundant `cargo_audit` calls were
+  dropped in the same change. **Separately still open**: `.circleci/release.yml`'s `record-release`
+  job carries its own `TEMPORARY WORKAROUND` — a different hand-authored job, not part of #80,
+  still pending its own cleanup once the orb's release-time constraints allow it.
 - **[#111 — redundant per-call tokio runtime construction in `block_on`-based network clients.](https://github.com/jerus-org/jci-audit/issues/111)**
   Not a correctness bug — `PcuAssetWriter`/`PcuAssetSource`/`ManifestPubkeySource` each build a
   fresh runtime per call instead of one per invocation. Low priority.
