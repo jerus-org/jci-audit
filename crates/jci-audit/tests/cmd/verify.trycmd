@@ -9,6 +9,9 @@ Options:
   -v, --verbose...                 Increase logging verbosity
       --advisory-db <ADVISORY_DB>  Advisory-db root; the checkout is moved to the recorded commit
   -q, --quiet...                   Decrease logging verbosity
+      --owner <OWNER>              GitHub repository owner that published the release (e.g. "jerus-org")
+      --repo <REPO>                GitHub repository name that published the release (e.g. "jci-audit")
+      --tag-prefix <TAG_PREFIX>    Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch
       --deny-warnings              Fail if the tools report any warning
   -h, --help                       Print help (see more with '--help')
 
@@ -33,6 +36,21 @@ Options:
 
   -q, --quiet...
           Decrease logging verbosity
+
+      --owner <OWNER>
+          GitHub repository owner that published the release (e.g. "jerus-org").
+          
+          Required by the remote-fetch fallback (no local record found); ignored when verifying from a checkout.
+
+      --repo <REPO>
+          GitHub repository name that published the release (e.g. "jci-audit").
+          
+          Only used by the remote-fetch fallback.
+
+      --tag-prefix <TAG_PREFIX>
+          Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch.
+          
+          Only used by the remote-fetch fallback.
 
       --deny-warnings
           Fail if the tools report any warning

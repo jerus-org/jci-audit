@@ -114,6 +114,26 @@ enum Commands {
         #[arg(long)]
         advisory_db: Option<std::path::PathBuf>,
 
+        /// GitHub repository owner that published the release (e.g. "jerus-org").
+        ///
+        /// Required by the remote-fetch fallback (no local record found);
+        /// ignored when verifying from a checkout.
+        #[arg(long)]
+        owner: Option<String>,
+
+        /// GitHub repository name that published the release (e.g. "jci-audit").
+        ///
+        /// Only used by the remote-fetch fallback.
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Release tag prefix (e.g. "jci-audit-v"); combined with
+        /// --release-version to form the tag to fetch.
+        ///
+        /// Only used by the remote-fetch fallback.
+        #[arg(long)]
+        tag_prefix: Option<String>,
+
         #[command(flatten)]
         output: ToolOutput,
     },
@@ -208,8 +228,19 @@ impl Cli {
             Commands::Verify {
                 release_version,
                 advisory_db,
+                owner,
+                repo,
+                tag_prefix,
                 output,
-            } => run_verify(release_version, advisory_db.as_deref(), output, detail),
+            } => run_verify(
+                release_version,
+                advisory_db.as_deref(),
+                owner.as_deref(),
+                repo.as_deref(),
+                tag_prefix.as_deref(),
+                output,
+                detail,
+            ),
             Commands::Init { force } => run_init(*force),
             Commands::PublishRecord {
                 release_version,
@@ -404,6 +435,9 @@ fn discover_local_record(start: &std::path::Path, version: &str) -> Option<std::
 fn run_verify(
     version: &str,
     advisory_db: Option<&std::path::Path>,
+    owner: Option<&str>,
+    repo: Option<&str>,
+    tag_prefix: Option<&str>,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -440,7 +474,26 @@ fn run_verify(
             bail!("verification failed: the gate did not reproduce the recorded verdict")
         }
     } else {
-        run_verify_remote(version, advisory_db, output)
+        run_verify_remote(version, advisory_db, owner, repo, tag_prefix, output)
+    }
+}
+
+/// Requires all three of owner/repo/tag-prefix, or none — the remote-fetch
+/// fallback needs to know exactly which release to check. Pulled out of
+/// [`run_verify_remote`] so the validation is a plain, unit-testable fact.
+fn resolve_remote_target<'a>(
+    owner: Option<&'a str>,
+    repo: Option<&'a str>,
+    tag_prefix: Option<&'a str>,
+) -> Result<(&'a str, &'a str, &'a str)> {
+    match (owner, repo, tag_prefix) {
+        (Some(o), Some(r), Some(t)) => Ok((o, r, t)),
+        _ => bail!(
+            "no local record for this version — the remote-fetch fallback needs --owner, \
+             --repo, and --tag-prefix to know which release to check (e.g. --owner jerus-org \
+             --repo jci-audit --tag-prefix jci-audit-v); it no longer assumes jci-audit's own \
+             repository (jerus-org/jci-audit#121)"
+        ),
     }
 }
 
@@ -450,45 +503,46 @@ fn run_verify(
 ///
 /// The token is read from `GITHUB_TOKEN` only, never a CLI flag — a secret
 /// passed as a command-line argument is visible to anyone on the same
-/// machine who can read `/proc/<pid>/cmdline` or run `ps`. Unlike
-/// `run_publish_record`, it's **optional** here (jerus-org/jci-audit#103) —
-/// but only because this crate's own repo (`REPOSITORY_URL`) is public: an
-/// unset token falls back to an unauthenticated request, which works for a
-/// public release and simply fails for a private one.
+/// machine who can read `/proc/<pid>/cmdline` or run `ps`. It's **optional**
+/// (jerus-org/jci-audit#103): an unset token falls back to an unauthenticated
+/// request, which works for a public release and simply fails for a private
+/// one.
 ///
-/// Pulled out of [`run_verify_remote`] so the manifest-first ordering is a
+/// Pulled out of [`run_verify_remote`] so the asset-first ordering is a
 /// plain, unit-testable fact rather than only an inline array literal.
 fn ordered_pubkey_sources<'a>(
-    manifest_source: &'a remote::ManifestPubkeySource,
     asset_source: &'a remote::AssetPubkeySource<'a, remote::PcuAssetSource>,
+    manifest_source: &'a remote::ManifestPubkeySource,
 ) -> [&'a dyn remote::PubkeySource; 2] {
-    [manifest_source, asset_source]
+    [asset_source, manifest_source]
 }
 
 fn run_verify_remote(
     version: &str,
     advisory_db: Option<&std::path::Path>,
+    owner: Option<&str>,
+    repo: Option<&str>,
+    tag_prefix: Option<&str>,
     output: &ToolOutput,
 ) -> Result<()> {
+    let (owner, repo, tag_prefix) = resolve_remote_target(owner, repo, tag_prefix)?;
     preflight::ensure_available(&[Tool::Rsign])?;
     // An empty-but-set value (e.g. an unset pipeline parameter interpolated
     // to "") is `Ok("")` from `env::var`, not `Err` — `.filter(...)` treats
     // it the same as absent rather than sending an empty bearer token and
     // getting an opaque 401 from GitHub.
     let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
-    let (owner, repo) = remote::owner_repo_from_repository_url(remote::REPOSITORY_URL)?;
-    let tag = format!("{}{version}", remote::TAG_PREFIX);
-    let source = remote::PcuAssetSource::new(owner.clone(), repo.clone(), token.clone());
-    // Two pubkey sources, manifest first: until the CI upload step for the
-    // release's own .pub asset ships (jerus-org/jci-audit#75), every real
-    // release's pubkey only exists where inject_pubkey_and_amend already
-    // writes it — Cargo.toml at the release tag. Manifest-first is NOT
-    // preferred because it's independently stronger — in jci-audit's own
-    // pipeline both sources currently trace back to the same CI job and
-    // credentials. See remote.rs's module docs for the full reasoning.
+    let tag = format!("{tag_prefix}{version}");
+    let source = remote::PcuAssetSource::new(owner, repo, token.clone());
+    // Asset first: the release's own `.pub` asset (jerus-org/jci-audit#75
+    // phase 2) is the source that actually works for any consumer, since
+    // every `publish-record` invocation uploads one — a third party's
+    // Cargo.toml won't carry jci-audit's signing convention at all. The
+    // manifest fallback only ever has data for jci-audit's own releases (see
+    // remote.rs's module docs for the full reasoning).
     let manifest_source = remote::ManifestPubkeySource::new(owner, repo, token);
     let asset_source = remote::AssetPubkeySource::new(&source);
-    let pubkey_sources = ordered_pubkey_sources(&manifest_source, &asset_source);
+    let pubkey_sources = ordered_pubkey_sources(&asset_source, &manifest_source);
     let work = release::work_dir();
     tracing::info!(version, tag, "verify (remote fetch, no local record)");
 
@@ -910,11 +964,13 @@ mod tests {
     }
 
     #[test]
-    fn verify_remote_orders_the_manifest_pubkey_source_before_the_asset_source() {
+    fn verify_remote_orders_the_asset_pubkey_source_before_the_manifest_source() {
         // Guards the production ordering `run_verify_remote` relies on:
-        // manifest tried first (today's only real source), asset as
-        // fallback. A future refactor that silently swaps the order should
-        // fail this, not just drift the docs' stated behaviour.
+        // asset tried first (the only source with data for any consumer's
+        // release, jerus-org/jci-audit#75 phase 2), manifest as the
+        // jci-audit-specific fallback. A future refactor that silently swaps
+        // the order should fail this, not just drift the docs' stated
+        // behaviour.
         let manifest_source = remote::ManifestPubkeySource::new(
             "jerus-org",
             "jci-audit",
@@ -924,9 +980,90 @@ mod tests {
             remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()));
         let asset_source = remote::AssetPubkeySource::new(&asset);
 
-        let sources = ordered_pubkey_sources(&manifest_source, &asset_source);
+        let sources = ordered_pubkey_sources(&asset_source, &manifest_source);
 
-        assert_eq!(sources[0].name(), "Cargo.toml at the release tag");
-        assert!(sources[1].name().starts_with("release asset"));
+        assert!(sources[0].name().starts_with("release asset"));
+        assert_eq!(sources[1].name(), "Cargo.toml at the release tag");
+    }
+
+    #[test]
+    fn verify_owner_repo_tag_prefix_are_optional_at_parse_time() {
+        // Only the remote-fetch fallback needs these; a local-checkout
+        // invocation never touches them, so they must not be required on
+        // every `verify` call (jerus-org/jci-audit#121).
+        let cli = Cli::try_parse_from(["jci-audit", "verify", "--release-version", "1.2.0"])
+            .expect("parses");
+        match cli.command {
+            Commands::Verify {
+                owner,
+                repo,
+                tag_prefix,
+                ..
+            } => {
+                assert_eq!(owner, None);
+                assert_eq!(repo, None);
+                assert_eq!(tag_prefix, None);
+            }
+            other => panic!("expected Verify, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn verify_owner_repo_tag_prefix_parse_when_given() {
+        let cli = Cli::try_parse_from([
+            "jci-audit",
+            "verify",
+            "--release-version",
+            "1.2.0",
+            "--owner",
+            "some-org",
+            "--repo",
+            "some-repo",
+            "--tag-prefix",
+            "some-repo-v",
+        ])
+        .expect("parses");
+        match cli.command {
+            Commands::Verify {
+                owner,
+                repo,
+                tag_prefix,
+                ..
+            } => {
+                assert_eq!(owner.as_deref(), Some("some-org"));
+                assert_eq!(repo.as_deref(), Some("some-repo"));
+                assert_eq!(tag_prefix.as_deref(), Some("some-repo-v"));
+            }
+            other => panic!("expected Verify, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_remote_target_errors_when_any_flag_is_missing() {
+        assert!(resolve_remote_target(None, Some("r"), Some("p")).is_err());
+        assert!(resolve_remote_target(Some("o"), None, Some("p")).is_err());
+        assert!(resolve_remote_target(Some("o"), Some("r"), None).is_err());
+        assert!(resolve_remote_target(None, None, None).is_err());
+    }
+
+    #[test]
+    fn resolve_remote_target_errors_name_jci_audit_121() {
+        // The error message must point at how to actually fix it, not just
+        // that something is missing.
+        let err = resolve_remote_target(None, None, None).unwrap_err();
+        assert!(err.to_string().contains("--owner"));
+        assert!(err.to_string().contains("--repo"));
+        assert!(err.to_string().contains("--tag-prefix"));
+        assert!(err.to_string().contains("jerus-org/jci-audit#121"));
+    }
+
+    #[test]
+    fn resolve_remote_target_succeeds_when_all_present() {
+        let (owner, repo, tag_prefix) =
+            resolve_remote_target(Some("some-org"), Some("some-repo"), Some("some-repo-v"))
+                .unwrap();
+        assert_eq!(owner, "some-org");
+        assert_eq!(repo, "some-repo");
+        assert_eq!(tag_prefix, "some-repo-v");
     }
 }

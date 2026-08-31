@@ -9,20 +9,21 @@
 //! that doesn't match its accompanying signature fails closed instead of
 //! being silently trusted.
 //!
-//! **Why more than one pubkey source.** The long-term intent
-//! (jerus-org/jci-audit#75) is for the pubkey to be published as its own
-//! release asset (`release-<VERSION>.json.pub`) — [`AssetPubkeySource`] —
-//! needing nothing beyond the release's own assets, and the only source
-//! generally available to a non-Rust/non-crates.io consumer. But the CI
-//! wiring that uploads it is a separate, not-yet-shipped piece, and until it
-//! ships every real release still only has its pubkey where it always has:
-//! injected into `Cargo.toml` by the existing tarball-signing step —
-//! [`ManifestPubkeySource`]. `verify_remote_with` takes an ordered list of
-//! sources and tries each in turn ([`fetch_pubkey_from_sources`]) with no
+//! **Why more than one pubkey source.** [`AssetPubkeySource`] reads the
+//! release's own `.pub` asset (`release-<VERSION>.json.pub`,
+//! jerus-org/jci-audit#75 phase 2) — needing nothing beyond the release's
+//! own assets, and the *only* source with data for any consumer's release,
+//! since every `jci-audit publish-record` invocation uploads one.
+//! [`ManifestPubkeySource`] reads the pubkey `inject_pubkey_and_amend`
+//! injects into `Cargo.toml` — real data only for jci-audit's own releases
+//! ([`MANIFEST_PATH`] is this repo's own workspace layout), so it exists as
+//! a fallback for jci-audit's own self-verification, not something a third
+//! party's release can satisfy. `verify_remote_with` takes an ordered list
+//! of sources and tries each in turn ([`fetch_pubkey_from_sources`]) with no
 //! built-in preference of its own; the *caller* decides the order.
-//! `cli.rs::run_verify_remote` puts [`ManifestPubkeySource`] first — today
-//! that's the only source with real data, **not** because it's
-//! independently stronger (see below). Deliberately built as a small trait
+//! `cli.rs::run_verify_remote` puts [`AssetPubkeySource`] first — the source
+//! that actually works for any consumer — with [`ManifestPubkeySource`] as
+//! the jci-audit-specific fallback. Deliberately built as a small trait
 //! rather than hardcoded fetches: a future source (a different registry, a
 //! different language's convention) is just another implementation, not a
 //! change to this flow.
@@ -36,13 +37,13 @@
 //! doesn't rule that out. For [`ManifestPubkeySource`]: **do not assume
 //! this is that independent anchor.** In jci-audit's own release pipeline
 //! (see `docs/RELEASING.md`), the same CI job that injects the pubkey into
-//! `Cargo.toml` and pushes the tag is also the job that (once #75 phase 2
-//! lands) uploads the record and its signature as release assets — one
-//! job, one credential set. Compromising that job's credentials compromises
-//! both at once; there is no separately-operated second channel to also
-//! break. It also trusts a **mutable** git ref (`refs/tags/<tag>`) with no
-//! platform-enforced immutability, unlike the published-release-only
-//! guarantee [`AssetPubkeySource`] gets from GitHub Immutable Releases — a
+//! `Cargo.toml` and pushes the tag is also the job that uploads the record
+//! and its signature as release assets — one job, one credential set.
+//! Compromising that job's credentials compromises both at once; there is
+//! no separately-operated second channel to also break. It also trusts a
+//! **mutable** git ref (`refs/tags/<tag>`) with no platform-enforced
+//! immutability, unlike the published-release-only guarantee
+//! [`AssetPubkeySource`] gets from GitHub Immutable Releases — a
 //! force-moved tag silently changes what this source fetches. A genuinely
 //! independent, stronger anchor would need the git-push and
 //! release-asset-upload credentials to actually be separate; today they
@@ -281,40 +282,12 @@ impl<S: ReleaseAssetSource> PubkeySource for AssetPubkeySource<'_, S> {
     }
 }
 
-/// The crate's own repository, e.g. `https://github.com/jerus-org/jci-audit`
-/// — `CARGO_PKG_REPOSITORY` at compile time, so this only ever tracks the
-/// real value in `Cargo.toml`, never a value that can drift from it.
-pub(crate) const REPOSITORY_URL: &str = env!("CARGO_PKG_REPOSITORY");
-
-/// This repo's release tag prefix — fixed, like the rest of this crate's
-/// hardcoded self-knowledge (`release::DEFAULT_VERSION_ENV`, the
-/// `.security/release-<VERSION>.json` path). `verify` only ever verifies
-/// jci-audit's own releases, not an arbitrary repo's.
-pub(crate) const TAG_PREFIX: &str = "jci-audit-v";
-
-/// Where the release pipeline publishes this crate's manifest, relative to
-/// the repo root — this repo's workspace layout, not a general convention.
+/// Where jci-audit's own release pipeline publishes this crate's manifest,
+/// relative to the repo root — this repo's workspace layout, not a general
+/// convention (jerus-org/jci-audit#124). [`ManifestPubkeySource`] therefore
+/// only ever has data for jci-audit's own releases; a third party's release
+/// relies on [`AssetPubkeySource`] instead (see its own doc comment).
 const MANIFEST_PATH: &str = "crates/jci-audit/Cargo.toml";
-
-/// Split a GitHub repository URL into `(owner, repo)`.
-///
-/// Accepts the exact form `CARGO_PKG_REPOSITORY` publishes
-/// (`https://github.com/<owner>/<repo>`), with or without a trailing `.git`
-/// or slash.
-pub(crate) fn owner_repo_from_repository_url(url: &str) -> Result<(String, String)> {
-    let path = url
-        .trim_end_matches('/')
-        .trim_end_matches(".git")
-        .strip_prefix("https://github.com/")
-        .with_context(|| format!("'{url}' is not a github.com repository URL"))?;
-    let mut parts = path.splitn(2, '/');
-    let owner = parts.next().filter(|s| !s.is_empty());
-    let repo = parts.next().filter(|s| !s.is_empty());
-    match (owner, repo) {
-        (Some(owner), Some(repo)) => Ok((owner.to_string(), repo.to_string())),
-        _ => bail!("'{url}' is missing an owner or repo segment"),
-    }
-}
 
 /// The raw-content URL for this repo's `Cargo.toml` as it stood at `tag`.
 fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
@@ -327,15 +300,14 @@ fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
 const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// [`PubkeySource`] that fetches the release tag's raw `Cargo.toml` and
-/// reads the pubkey `inject_pubkey_and_amend` already writes there.
-/// Currently the **only** source that actually has data for any real
-/// jci-audit release, since the CI wiring to also upload a `.pub` asset
-/// (jerus-org/jci-audit#75) hasn't shipped yet — that alone is why a caller
-/// should try this source before [`AssetPubkeySource`], not any assumed
-/// independence between the two (see the module docs' "be honest" section —
-/// in jci-audit's own pipeline both sources' trust currently traces back to
-/// the same CI job and credentials). Also trusts a **mutable** git tag ref,
-/// with no immutability guarantee — see the module docs.
+/// reads the pubkey `inject_pubkey_and_amend` already writes there. Only
+/// ever has data for jci-audit's own releases ([`MANIFEST_PATH`] is this
+/// repo's own layout) — a fallback tried after [`AssetPubkeySource`], not a
+/// source any other consumer's release can satisfy. Not independently
+/// stronger than the asset source either: in jci-audit's own pipeline both
+/// sources' trust currently traces back to the same CI job and credentials
+/// (see the module docs' "be honest" section). Also trusts a **mutable** git
+/// tag ref, with no immutability guarantee — see the module docs.
 /// This reads exactly the content crates.io itself received for that
 /// release: `cargo publish` packages the commit at the pushed tag verbatim,
 /// so the tag's `Cargo.toml` and the one crates.io has are byte-identical.
@@ -466,38 +438,6 @@ mod tests {
     use crate::check::ToolOutput;
 
     const PUBKEY: &str = "RWSImK6yfWBJsXrcL0Pj4rGeuKAZBAHz1LtaE677qZGJ4Pd/O+L2A9vl";
-
-    #[test]
-    fn owner_repo_parses_the_standard_github_url() {
-        let (owner, repo) =
-            owner_repo_from_repository_url("https://github.com/jerus-org/jci-audit").unwrap();
-        assert_eq!(owner, "jerus-org");
-        assert_eq!(repo, "jci-audit");
-    }
-
-    #[test]
-    fn owner_repo_tolerates_a_trailing_git_suffix_and_slash() {
-        let (owner, repo) =
-            owner_repo_from_repository_url("https://github.com/jerus-org/jci-audit.git/").unwrap();
-        assert_eq!(owner, "jerus-org");
-        assert_eq!(repo, "jci-audit");
-    }
-
-    #[test]
-    fn owner_repo_rejects_a_non_github_url() {
-        let err =
-            owner_repo_from_repository_url("https://gitlab.com/jerus-org/jci-audit").unwrap_err();
-        assert!(err.to_string().contains("github.com"), "got: {err}");
-    }
-
-    #[test]
-    fn the_compiled_in_repository_matches_this_crates_manifest() {
-        // A drift here would silently point verify's remote fetch at the
-        // wrong repository.
-        let (owner, repo) = owner_repo_from_repository_url(REPOSITORY_URL).unwrap();
-        assert_eq!(owner, "jerus-org");
-        assert_eq!(repo, "jci-audit");
-    }
 
     #[test]
     fn manifest_pubkey_source_builds_without_a_token() {

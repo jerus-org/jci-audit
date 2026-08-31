@@ -16,6 +16,18 @@ parameters:
     type: boolean
     description: Decrease logging verbosity
     default: false
+  owner:
+    type: string
+    description: GitHub repository owner that published the release (e.g. "jerus-org"). Required by the remote-fetch fallback (no local record found); ignored when verifying from a checkout.
+    default: ''
+  repo:
+    type: string
+    description: GitHub repository name that published the release (e.g. "jci-audit"). Only used by the remote-fetch fallback.
+    default: ''
+  tag_prefix:
+    type: string
+    description: Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch. Only used by the remote-fetch fallback.
+    default: ''
   deny_warnings:
     type: boolean
     description: Fail if the tools report any warning
@@ -45,4 +57,7 @@ steps:
     verbose: << parameters.verbose >>
     advisory_db: << parameters.advisory_db >>
     quiet: << parameters.quiet >>
+    owner: << parameters.owner >>
+    repo: << parameters.repo >>
+    tag_prefix: << parameters.tag_prefix >>
     deny_warnings: << parameters.deny_warnings >>

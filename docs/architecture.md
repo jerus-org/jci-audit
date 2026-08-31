@@ -81,11 +81,12 @@ flowchart LR
   verification, `verify`'s remote path only). Never a caller-supplied program — see
   [assurance-case.md](assurance-case.md).
 - **Git** — none. `verify`'s remote path needs no checkout at all, by design.
-- **Network** — `verify`'s remote path (no local record present) makes outbound HTTPS calls of
-  jci-audit's own: fetching the record and its signature as named assets from a **published**
-  GitHub release via `pcu-release-assets` (REST + GraphQL, authenticated), and — for the pubkey —
-  either a direct authenticated fetch of the release tag's `Cargo.toml` (tried first) or the
-  pubkey's own release asset (the fallback). Every other subcommand, and `verify` when a local
+- **Network** — `verify`'s remote path (no local record present, requires `--owner`/`--repo`/
+  `--tag-prefix` — jerus-org/jci-audit#121) makes outbound HTTPS calls of jci-audit's own: fetching
+  the record and its signature as named assets from a **published** GitHub release via
+  `pcu-release-assets` (REST + GraphQL, authenticated), and — for the pubkey — either the pubkey's
+  own release asset (tried first) or a direct authenticated fetch of the release tag's
+  `Cargo.toml` (the jci-audit-specific fallback). Every other subcommand, and `verify` when a local
   record exists, makes no network calls of its own — see [assurance-case.md](assurance-case.md)
   §3/§7.
 - **Its own orb** — the project dogfoods `gen-circleci-orb` to generate the orb published from
