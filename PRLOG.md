@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - docs-confirm #75 phase 2 proven on v0.1.1(pr [#119])
+- ci-dogfood jci-audit/check, drop licenses_policy(pr [#123])
 
 ### Fixed
 
@@ -284,6 +285,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#118]: https://github.com/jerus-org/jci-audit/pull/118
 [#119]: https://github.com/jerus-org/jci-audit/pull/119
 [#122]: https://github.com/jerus-org/jci-audit/pull/122
+[#123]: https://github.com/jerus-org/jci-audit/pull/123
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
