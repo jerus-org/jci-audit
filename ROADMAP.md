@@ -108,8 +108,12 @@ version tag itself, and still gate consumer migration.
   Today it's a manual copy-the-YAML step; `gen-circleci-orb init`/`update` already automates the
   equivalent for its own consumers.
 - **[#80 — fold the `cargo-about` license-policy resolution check into `check`/`release-prep`.](https://github.com/jerus-org/jci-audit/issues/80)**
-  Today it only runs as a hand-authored job in this repo's own CI, so a consumer who adopts the
-  generated orb doesn't get it.
+  `check` now runs it (previously only `release-prep` did); the generated orb's `check` job
+  inherits it automatically, so a consumer who adopts the orb now gets it too. **Remaining**: this
+  repo's own `.circleci/config.yml` still runs it via the hand-authored `licenses_policy` job
+  (`scripts/licenses.sh --policy`) instead of dogfooding `jci-audit check` itself — retiring that
+  job is tracked as CI-wiring cleanup alongside `.circleci/release.yml`'s `record-release`
+  workaround (see that job's own `TEMPORARY WORKAROUND` comment).
 
 ## Medium term — toward 1.0
 

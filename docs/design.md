@@ -65,12 +65,17 @@ flowchart LR
     CHECK --> DENY["cargo deny check\nadvisories bans licenses sources"]
     CHECK --> AUDIT["cargo audit\n(live database)"]
     CHECK --> DRIFT["about.toml drift check\n(sync, no subprocess)"]
+    CHECK --> POLICY1["cargo-about policy resolution\n(cache-independent --locked check)"]
     DENY --> RESULT["aggregated pass/fail"]
     AUDIT --> RESULT
     DRIFT --> RESULT
+    POLICY1 --> RESULT
 ```
 
-Both tool results and the drift check are aggregated — a failure in one does not hide the others.
+All four checks are aggregated — a failure in one does not hide the others. The policy-resolution
+check runs even when the drift check above it failed, matching `release-prep`'s identical check
+(§3.2) — a PR fixing drift can't also be hiding an unresolvable licence
+([#80](https://github.com/jerus-org/jci-audit/issues/80)).
 
 ### 3.2 Release gate
 

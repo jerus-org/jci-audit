@@ -1,12 +1,17 @@
 //! The PR / dev gate: run cargo-deny policy checks, a live cargo-audit scan,
-//! and the about.toml/deny.toml license-policy drift check, all blocking.
+//! the about.toml/deny.toml license-policy drift check, and the cargo-about
+//! license-policy resolution check, all blocking.
 //!
 //! `cargo deny` enforces policy (advisories, bans, licenses, sources) with the
 //! justified, file-based ignores in `deny.toml`; `cargo audit` adds a fresh
 //! scan against the live RustSec database; the drift check confirms each
-//! crate's `about.toml` still reflects `deny.toml`'s license policy — no
-//! `cargo-about` invocation needed, it's the same pure derivation `jci-audit
-//! sync --check` performs. All three run — exit codes are **aggregated**, not
+//! crate's `about.toml` still reflects `deny.toml`'s license policy — a pure
+//! derivation, the same one `jci-audit sync --check` performs, no
+//! `cargo-about` invocation needed. The resolution check is a separate,
+//! independent question: given what's on disk right now, can `cargo-about`
+//! actually attribute every reachable dependency's licence? (see issue #80 —
+//! previously only `release-prep` caught this, at the most expensive point in
+//! the pipeline). All four run — exit codes are **aggregated**, not
 //! short-circuited, so one failing check never hides another's findings —
 //! and each tool's stderr is surfaced (per the CI-diagnostics discipline:
 //! never swallow the output of a tool whose result drives a decision).
@@ -95,9 +100,10 @@ const DENY_ARGS: &[&str] = &["check", "advisories", "bans", "licenses", "sources
 const AUDIT_ARGS: &[&str] = &["audit"];
 
 /// Run cargo-deny and cargo-audit in `cwd` (the workspace root — both need to
-/// find `deny.toml`/`Cargo.lock` there), then the about.toml drift check,
-/// surfacing each one's output, and return the aggregated report. All three
-/// always run — a failing check never skips the others.
+/// find `deny.toml`/`Cargo.lock` there), then the about.toml drift check and
+/// the cargo-about resolution check, surfacing each one's output, and return
+/// the aggregated report. All four always run — a failing check never skips
+/// the others.
 ///
 /// The drift check isn't scoped to `cwd`: `deny.toml` is located by walking
 /// up from `cwd`, but each crate's `cargo metadata` call runs with *that
@@ -109,7 +115,7 @@ pub(crate) fn check_with<R: CommandRunner>(
     cwd: &Path,
     detail: crate::diagnostics::Detail,
 ) -> Result<CheckReport> {
-    let mut steps = Vec::with_capacity(3);
+    let mut steps = Vec::with_capacity(4);
 
     let deny = runner.run("cargo-deny", DENY_ARGS, cwd)?;
     let mut warnings = surface(
@@ -135,29 +141,92 @@ pub(crate) fn check_with<R: CommandRunner>(
     // rather than propagated with `?`, so it becomes this step's own failure
     // instead of discarding the deny/audit results already computed above.
     println!("$ about.toml license policy (deny.toml -> about.toml)");
-    let about_ok = match sync::sync_about_toml_at(runner, cwd, true) {
+    match sync::sync_about_toml_at(runner, cwd, true) {
         Ok(about_results) => {
-            let mut ok = true;
+            let mut drift_ok = true;
             for result in &about_results {
                 if result.outcome == sync::SyncOutcome::Drift {
-                    ok = false;
+                    drift_ok = false;
                     println!(
                         "  {} is out of sync with deny.toml",
                         result.about_toml_path.display()
                     );
                 }
             }
-            ok
+            steps.push(CheckStep {
+                label: "about.toml license policy".to_string(),
+                success: drift_ok,
+            });
+
+            // Independent of drift: can cargo-about actually attribute every
+            // reachable dependency's licence using what's on disk right now,
+            // not just is about.toml internally consistent with deny.toml?
+            // Always runs, even when the drift check above failed, so a PR
+            // fixing drift can't also be hiding an unresolvable licence the
+            // same push would only otherwise be caught by `release-prep`
+            // (see issue #80). Cache-independent (`--output-file /dev/null`
+            // discards the rendered text — see release.rs's identical check
+            // and scripts/licenses.sh's comment on why rendered bytes aren't
+            // reproducible across machines).
+            println!("$ cargo-about license policy resolution");
+            let mut unresolved = Vec::new();
+            for result in &about_results {
+                let crate_dir = match result.about_toml_path.parent() {
+                    Some(p) => p,
+                    None => {
+                        unresolved.push(format!(
+                            "{}: about.toml path has no parent directory",
+                            result.about_toml_path.display()
+                        ));
+                        continue;
+                    }
+                };
+                match runner.run(
+                    "cargo-about",
+                    &[
+                        "generate",
+                        "--locked",
+                        "about.hbs",
+                        "--output-file",
+                        "/dev/null",
+                    ],
+                    crate_dir,
+                ) {
+                    Ok(resolve) if !resolve.success => {
+                        println!(
+                            "  {}: cargo-about could not resolve licences",
+                            crate_dir.display()
+                        );
+                        unresolved.push(format!(
+                            "{}: {}",
+                            crate_dir.display(),
+                            resolve.stderr.trim()
+                        ));
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        println!("  {}: {e:#}", crate_dir.display());
+                        unresolved.push(format!("{}: {e:#}", crate_dir.display()));
+                    }
+                }
+            }
+            steps.push(CheckStep {
+                label: "cargo-about license policy".to_string(),
+                success: unresolved.is_empty(),
+            });
         }
         Err(e) => {
             println!("  error: {e:#}");
-            false
+            steps.push(CheckStep {
+                label: "about.toml license policy".to_string(),
+                success: false,
+            });
+            steps.push(CheckStep {
+                label: "cargo-about license policy".to_string(),
+                success: false,
+            });
         }
-    };
-    steps.push(CheckStep {
-        label: "about.toml license policy".to_string(),
-        success: about_ok,
-    });
+    }
 
     Ok(CheckReport { steps, warnings })
 }
@@ -315,10 +384,96 @@ mod tests {
                 stdout: metadata.to_string(),
                 stderr: String::new(),
             },
+            // cargo-about resolution still runs even though drift already
+            // failed (aggregated, not short-circuited) — this one succeeds,
+            // so only the drift step ends up in `failures()`.
+            ok(),
         ]);
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["about.toml license policy"]);
+    }
+
+    /// Independent of drift: about.toml can be perfectly in sync with
+    /// deny.toml and cargo-about can still fail to resolve a reachable
+    /// dependency's licence (e.g. an SPDX expression no allow/exception
+    /// combination covers) — this is exactly the gap issue #80 identifies:
+    /// today only `release-prep` catches it, not the PR-time `check` gate.
+    #[test]
+    fn cargo_about_resolution_failure_fails_even_when_in_sync() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = [\"MIT\"]\n",
+        )
+        .unwrap();
+        let crate_dir = dir.path().join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+        // In sync: the derivation for a no-deps graph is an empty `accepted`.
+        std::fs::write(crate_dir.join("about.toml"), "accepted = []\n").unwrap();
+
+        let metadata = r#"{
+          "packages": [ { "name": "root", "version": "0.0.0", "id": "path+file:///demo#0.0.0", "license": null } ],
+          "resolve": { "root": "path+file:///demo#0.0.0", "nodes": [ { "id": "path+file:///demo#0.0.0", "deps": [] } ] }
+        }"#;
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            ToolOutput {
+                success: true,
+                stdout: metadata.to_string(),
+                stderr: String::new(),
+            },
+            fail("error: failed to satisfy license requirements"),
+        ]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert!(!report.success());
+        assert_eq!(report.failures(), vec!["cargo-about license policy"]);
+
+        let calls = runner.calls.borrow();
+        assert_eq!(
+            calls[3],
+            vec![
+                "cargo-about",
+                "generate",
+                "--locked",
+                "about.hbs",
+                "--output-file",
+                "/dev/null"
+            ]
+        );
+    }
+
+    #[test]
+    fn about_toml_in_sync_and_resolvable_all_steps_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = [\"MIT\"]\n",
+        )
+        .unwrap();
+        let crate_dir = dir.path().join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+        std::fs::write(crate_dir.join("about.toml"), "accepted = []\n").unwrap();
+
+        let metadata = r#"{
+          "packages": [ { "name": "root", "version": "0.0.0", "id": "path+file:///demo#0.0.0", "license": null } ],
+          "resolve": { "root": "path+file:///demo#0.0.0", "nodes": [ { "id": "path+file:///demo#0.0.0", "deps": [] } ] }
+        }"#;
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            ToolOutput {
+                success: true,
+                stdout: metadata.to_string(),
+                stderr: String::new(),
+            },
+            ok(),
+        ]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert!(report.success());
     }
 
     #[test]
@@ -351,6 +506,12 @@ mod tests {
                      it must become a failed CheckStep so deny/audit results survive",
         );
         assert!(!report.success());
-        assert_eq!(report.failures(), vec!["about.toml license policy"]);
+        // Both about-related steps fail together: sync_about_toml_at errored
+        // before it could tell us which crates even have an about.toml, so
+        // there's nothing to run cargo-about against either.
+        assert_eq!(
+            report.failures(),
+            vec!["about.toml license policy", "cargo-about license policy"]
+        );
     }
 }

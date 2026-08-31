@@ -235,14 +235,20 @@ fn run_check(
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
-    // Tool::Cargo: the about.toml step shells out to `cargo metadata` per
-    // crate, unlike the other two (standalone binaries, work cargo-less).
-    preflight::ensure_available(&[Tool::CargoDeny, Tool::CargoAudit, Tool::Cargo])?;
+    // Tool::Cargo: the about.toml drift step shells out to `cargo metadata`
+    // per crate. Tool::CargoAbout: the resolution step (#80) — the others are
+    // standalone binaries and work cargo-less.
+    preflight::ensure_available(&[
+        Tool::CargoDeny,
+        Tool::CargoAudit,
+        Tool::CargoAbout,
+        Tool::Cargo,
+    ])?;
     tracing::info!(?manifest_path, "check");
     let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
     diagnostics::enforce(&report.warnings, output.deny_warnings)?;
     if report.success() {
-        println!("security check passed (cargo deny + cargo audit)");
+        println!("security check passed (cargo deny + cargo audit + license policy)");
         Ok(())
     } else {
         bail!("security check failed: {}", report.failures().join(", "))

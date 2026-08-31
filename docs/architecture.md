@@ -52,7 +52,7 @@ flowchart LR
 
 | Module | Responsibility |
 |--------|----------------|
-| `check.rs` | PR/dev gate: runs `cargo-deny` (policy), `cargo-audit` (live advisories), and the `about.toml`/`deny.toml` drift check, aggregates all three results, never short-circuits on the first failure. Defines the `CommandRunner` trait used to mock subprocess calls in tests. |
+| `check.rs` | PR/dev gate: runs `cargo-deny` (policy), `cargo-audit` (live advisories), the `about.toml`/`deny.toml` drift check, and the `cargo-about` license-policy resolution check, aggregates all four results, never short-circuits on the first failure. Defines the `CommandRunner` trait used to mock subprocess calls in tests. |
 | `sync.rs` | Derives `.cargo/audit.toml` and every crate's `about.toml` from `deny.toml`'s canonical advisory-ignore and license policy. Writing is a `toml_edit` **merge**, not a rewrite — hand-authored comments and `.clarify` attribution blocks pass through untouched. `--check` reports drift without writing. |
 | `license_scope.rs` | Computes each crate's *own* license-acceptance list by walking `cargo metadata`'s reachable dependency graph (excluding dev-only edges) and evaluating each package's SPDX expression against `deny.toml`'s allow-list — a crate-scoped subset, not the whole workspace policy copied verbatim. |
 | `release.rs` | Release gate: locks `cargo-deny` to a pinned `advisory-db` commit and runs it offline for reproducibility; `cargo-audit` runs live as a non-blocking currency check, not a second pinned pass; writes `.security/release-<version>.json` locally (see [#75](https://github.com/jerus-org/jci-audit/issues/75) for how it's distributed). |
@@ -67,7 +67,7 @@ flowchart LR
 
 | Subcommand | Context | Purpose |
 |------------|---------|---------|
-| `check` | PR / dev gate | Both tools plus the about.toml drift check, all blocking, live data. |
+| `check` | PR / dev gate | Both tools plus the about.toml drift check and the cargo-about resolution check, all blocking, live data. |
 | `release --release-version X` | Release gate | Reproducible offline validation against a pinned advisory-db commit; writes the record locally. |
 | `sync [--check]` | PR + dev | Regenerate (or check drift of) `.cargo/audit.toml` and every `about.toml` from `deny.toml`. |
 | `prune [--check]` | PR + scheduled | Detect advisory ignores that no longer fire. |
