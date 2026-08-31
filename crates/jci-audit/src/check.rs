@@ -164,52 +164,9 @@ pub(crate) fn check_with<R: CommandRunner>(
             // Always runs, even when the drift check above failed, so a PR
             // fixing drift can't also be hiding an unresolvable licence the
             // same push would only otherwise be caught by `release-prep`
-            // (see issue #80). Cache-independent (`--output-file /dev/null`
-            // discards the rendered text — see release.rs's identical check
-            // and scripts/licenses.sh's comment on why rendered bytes aren't
-            // reproducible across machines).
+            // (see issue #80).
             println!("$ cargo-about license policy resolution");
-            let mut unresolved = Vec::new();
-            for result in &about_results {
-                let crate_dir = match result.about_toml_path.parent() {
-                    Some(p) => p,
-                    None => {
-                        unresolved.push(format!(
-                            "{}: about.toml path has no parent directory",
-                            result.about_toml_path.display()
-                        ));
-                        continue;
-                    }
-                };
-                match runner.run(
-                    "cargo-about",
-                    &[
-                        "generate",
-                        "--locked",
-                        "about.hbs",
-                        "--output-file",
-                        "/dev/null",
-                    ],
-                    crate_dir,
-                ) {
-                    Ok(resolve) if !resolve.success => {
-                        println!(
-                            "  {}: cargo-about could not resolve licences",
-                            crate_dir.display()
-                        );
-                        unresolved.push(format!(
-                            "{}: {}",
-                            crate_dir.display(),
-                            resolve.stderr.trim()
-                        ));
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("  {}: {e:#}", crate_dir.display());
-                        unresolved.push(format!("{}: {e:#}", crate_dir.display()));
-                    }
-                }
-            }
+            let unresolved = resolve_license_policy(runner, &about_results);
             steps.push(CheckStep {
                 label: "cargo-about license policy".to_string(),
                 success: unresolved.is_empty(),
@@ -229,6 +186,66 @@ pub(crate) fn check_with<R: CommandRunner>(
     }
 
     Ok(CheckReport { steps, warnings })
+}
+
+/// Run cargo-about's resolution check for every crate in `about_results`,
+/// returning a description of each crate cargo-about couldn't attribute
+/// (empty when every crate resolves cleanly). Cache-independent
+/// (`--output-file /dev/null` discards the rendered text — see
+/// `scripts/licenses.sh`'s own comment on why rendered bytes aren't
+/// reproducible across machines). Shared by `check`'s PR-time gate and
+/// `release-prep`'s release-time gate so the two invocations can't drift
+/// apart from each other (jerus-org/jci-audit#80).
+pub(crate) fn resolve_license_policy<R: CommandRunner>(
+    runner: &R,
+    about_results: &[sync::AboutSyncResult],
+) -> Vec<String> {
+    let mut unresolved = Vec::new();
+    for result in about_results {
+        let crate_dir = match result.about_toml_path.parent() {
+            Some(p) => p,
+            None => {
+                println!(
+                    "  {}: about.toml path has no parent directory",
+                    result.about_toml_path.display()
+                );
+                unresolved.push(format!(
+                    "{}: about.toml path has no parent directory",
+                    result.about_toml_path.display()
+                ));
+                continue;
+            }
+        };
+        match runner.run(
+            "cargo-about",
+            &[
+                "generate",
+                "--locked",
+                "about.hbs",
+                "--output-file",
+                "/dev/null",
+            ],
+            crate_dir,
+        ) {
+            Ok(resolve) if !resolve.success => {
+                println!(
+                    "  {}: cargo-about could not resolve licences",
+                    crate_dir.display()
+                );
+                unresolved.push(format!(
+                    "{}: {}",
+                    crate_dir.display(),
+                    resolve.stderr.trim()
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                println!("  {}: {e:#}", crate_dir.display());
+                unresolved.push(format!("{}: {e:#}", crate_dir.display()));
+            }
+        }
+    }
+    unresolved
 }
 
 /// Print a tool's output under a labelled command header, returning its warnings.

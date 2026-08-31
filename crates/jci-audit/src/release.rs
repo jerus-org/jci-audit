@@ -283,37 +283,12 @@ pub(crate) fn release_with<R: CommandRunner>(
 
     // Then policy resolvability: can cargo-about actually attribute every
     // reachable dependency's license, not just is about.toml internally
-    // consistent with deny.toml? Cache-independent (`--output-file /dev/null`
-    // discards the rendered text — see `scripts/licenses.sh`'s own comment on
-    // why the rendered bytes are not reproducible across machines). Aggregated
-    // across every crate before bailing, matching the drift check above —
-    // one release attempt should surface every unresolvable crate, not just
+    // consistent with deny.toml? Shared with `check`'s identical PR-time step
+    // so the two gates can't drift apart (jerus-org/jci-audit#80). Aggregated
+    // across every crate before bailing, matching the drift check above — one
+    // release attempt should surface every unresolvable crate, not just
     // whichever happened to sort first.
-    let mut unresolved = Vec::new();
-    for result in &about_sync {
-        let crate_dir = result
-            .about_toml_path
-            .parent()
-            .context("about.toml path has no parent directory")?;
-        let resolve = runner.run(
-            "cargo-about",
-            &[
-                "generate",
-                "--locked",
-                "about.hbs",
-                "--output-file",
-                "/dev/null",
-            ],
-            crate_dir,
-        )?;
-        if !resolve.success {
-            unresolved.push(format!(
-                "{}: {}",
-                crate_dir.display(),
-                resolve.stderr.trim()
-            ));
-        }
-    }
+    let unresolved = crate::check::resolve_license_policy(runner, &about_sync);
     if !unresolved.is_empty() {
         bail!(
             "release gate failed: cargo-about could not resolve licences for {} crate(s) \

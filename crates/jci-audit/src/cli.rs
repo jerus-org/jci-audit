@@ -38,9 +38,11 @@ struct ToolOutput {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// PR/dev gate: cargo-deny policy plus a live cargo-audit scan.
+    /// PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.
     ///
-    /// Both blocking. Aggregates exit codes and surfaces stderr.
+    /// All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml
+    /// drift check, and the cargo-about resolution check. Aggregates exit
+    /// codes and surfaces stderr.
     Check {
         /// Path to the Cargo.toml (or its directory) to check.
         #[arg(long, default_value = ".")]
