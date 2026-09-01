@@ -18,6 +18,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.1(pr [#118])
+- verify takes owner/repo/tag-prefix(pr [#125])
 
 ## [0.1.1] - 2026-08-29
 
@@ -286,6 +287,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#119]: https://github.com/jerus-org/jci-audit/pull/119
 [#122]: https://github.com/jerus-org/jci-audit/pull/122
 [#123]: https://github.com/jerus-org/jci-audit/pull/123
+[#125]: https://github.com/jerus-org/jci-audit/pull/125
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.1.0
