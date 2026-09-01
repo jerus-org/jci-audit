@@ -108,7 +108,7 @@ rsign verify -P "<pubkey>" -x jci-audit-<target>.tar.gz.sig jci-audit-<target>.t
 
 ### 4. The security record
 
-`jci-audit verify --release-version <version> --owner <owner> --repo <repo> --tag-prefix <prefix>`,
+`jci-audit verify <version> --owner <owner> --repo <repo> --tag-prefix <prefix>`,
 run from a bare directory (no checkout), fetches the record and its signature from the release,
 finds the pubkey that signed them, and checks it — see
 [design.md §5.4](design.md#54-verifying-without-a-checkout) for what this does and doesn't prove.
@@ -121,7 +121,7 @@ unauthenticated from a bare directory, fetched and authenticated the record with
 or `GITHUB_TOKEN` at all.
 
 ```bash
-jci-audit verify --release-version <version> \
+jci-audit verify <version> \
   --owner jerus-org --repo jci-audit --tag-prefix jci-audit-v
 ```
 

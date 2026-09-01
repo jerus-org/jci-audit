@@ -53,7 +53,7 @@ surfaced (counted and printed) but don't affect the exit code.
 
 ## Troubleshooting a `verify` mismatch
 
-`jci-audit verify --release-version <V>` prints one line per input it couldn't verify or that
+`jci-audit verify <V>` prints one line per input it couldn't verify or that
 didn't match, then a final verdict. On success (an old-schema record can still print `not
 verified` notes and pass):
 

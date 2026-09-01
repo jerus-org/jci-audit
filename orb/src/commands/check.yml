@@ -4,10 +4,6 @@ parameters:
     type: string
     description: Path to the Cargo.toml (or its directory) to check
     default: .
-  deny_warnings:
-    type: boolean
-    description: Fail if the tools report any warning
-    default: false
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -16,13 +12,11 @@ parameters:
     type: boolean
     description: Decrease logging verbosity
     default: false
+  deny_warnings:
+    type: boolean
+    description: Fail if the tools report any warning
+    default: false
 steps:
-- when:
-    condition: << parameters.deny_warnings >>
-    steps:
-    - run:
-        name: Set DENY_WARNINGS flag
-        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.verbose >>
     steps:
@@ -35,6 +29,12 @@ steps:
     - run:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.deny_warnings >>
+    steps:
+    - run:
+        name: Set DENY_WARNINGS flag
+        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
     name: 'PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy. All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml drift check, and the cargo-about resolution check. Aggregates exit codes and surfaces stderr.'
     command: <<include(scripts/check.sh)>>

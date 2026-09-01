@@ -66,7 +66,7 @@ jci-audit prune [--check]
 
 # Re-verify a past release against the advisory snapshot it was locked to;
 # run from a checkout of the released tag
-jci-audit verify --release-version 1.2.0
+jci-audit verify 1.2.0
 
 # Scaffold a standard deny.toml + derived .cargo/audit.toml
 jci-audit init

@@ -23,7 +23,7 @@ accidentally-importable library (#90), and `0.1.0` because its release-security-
 unrecoverable (never committed, never uploaded as a release asset, and the CI build-artifact copy
 expired — see [#75](https://github.com/jerus-org/jci-audit/issues/75)) and can never be
 reconstructed. `0.1.1` closed that gap: it's the first release cut after #75 phase 2's release-asset
-distribution landed, and `jci-audit verify --release-version 0.1.1`, run unauthenticated from a bare
+distribution landed, and `jci-audit verify 0.1.1`, run unauthenticated from a bare
 directory, confirmed it end-to-end. All seven subcommands (`check`, `release-prep`, `sync`, `prune`,
 `verify`, `init`, `publish-record`) are implemented and tested; the crate and its generated orb
 (`jerus-org/jci-audit`) publish in tag-lockstep. `deny.toml` is the single source of truth for
@@ -66,7 +66,7 @@ version tag itself, and still gate consumer migration.
   (digital-prstv/circleci-toolkit#533, released in toolkit 7.4.0), wired into `.circleci/release.yml`
   — and **confirmed on a real release**: `jci-audit-v0.1.1` produced `release-0.1.1.json`, `.sig`,
   and `.pub` on the published release (the `.pub` key matching `Cargo.toml`'s), and
-  `jci-audit verify --release-version 0.1.1`, run unauthenticated from a bare directory, fetched and
+  `jci-audit verify 0.1.1`, run unauthenticated from a bare directory, fetched and
   authenticated it successfully. `0.1.1` is the first release since phase 1 removed the commit path
   to be both installable and verifiable — closing the gap `0.1.0`'s yanking exposed. That damage is
   now historical: `0.1.0`'s own record fell through every available path (no commit, no release

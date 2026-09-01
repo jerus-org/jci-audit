@@ -1,9 +1,17 @@
 description: Run verify command in a dedicated job.
 executor: default
 parameters:
-  release_version:
+  version:
     type: string
     description: The released version to verify (e.g. "1.2.0")
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
   advisory_db:
     type: string
     description: Advisory-db root; the checkout is moved to the recorded commit. Defaults to ~/.cargo/advisory-db.
@@ -18,19 +26,11 @@ parameters:
     default: ''
   tag_prefix:
     type: string
-    description: Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch when no local record is found
+    description: Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
     default: ''
   deny_warnings:
     type: boolean
     description: Fail if the tools report any warning
-    default: false
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
     default: false
   attach_workspace:
     type: boolean
@@ -53,11 +53,11 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - verify:
-    release_version: << parameters.release_version >>
+    version: << parameters.version >>
+    verbose: << parameters.verbose >>
+    quiet: << parameters.quiet >>
     advisory_db: << parameters.advisory_db >>
     owner: << parameters.owner >>
     repo: << parameters.repo >>
     tag_prefix: << parameters.tag_prefix >>
     deny_warnings: << parameters.deny_warnings >>
-    verbose: << parameters.verbose >>
-    quiet: << parameters.quiet >>

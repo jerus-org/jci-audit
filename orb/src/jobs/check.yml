@@ -5,10 +5,6 @@ parameters:
     type: string
     description: Path to the Cargo.toml (or its directory) to check
     default: .
-  deny_warnings:
-    type: boolean
-    description: Fail if the tools report any warning
-    default: false
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -16,6 +12,10 @@ parameters:
   quiet:
     type: boolean
     description: Decrease logging verbosity
+    default: false
+  deny_warnings:
+    type: boolean
+    description: Fail if the tools report any warning
     default: false
   attach_workspace:
     type: boolean
@@ -39,6 +39,6 @@ steps:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - check:
     manifest_path: << parameters.manifest_path >>
-    deny_warnings: << parameters.deny_warnings >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
+    deny_warnings: << parameters.deny_warnings >>

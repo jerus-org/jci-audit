@@ -6,16 +6,14 @@ Usage: jci-audit release-prep [OPTIONS]
 
 Options:
       --release-version <VERSION>  The release version being validated (e.g. "1.2.0")
+  -v, --verbose...                 Increase logging verbosity
+  -q, --quiet...                   Decrease logging verbosity
       --version-env <VERSION_ENV>  Env var NAME holding the release version (default SEMVER)
       --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny's checkout lives beneath it
+  -h, --help                       Print help (see more with '--help')
 
 Output:
       --deny-warnings  Fail if the tools report any warning
-
-Standard:
-  -v, --verbose...  Increase logging verbosity
-  -q, --quiet...    Decrease logging verbosity
-  -h, --help        Print help
 
 $ jci-audit release-prep --help
 Release gate: reproducible, pinned-advisory-db validation.
@@ -30,6 +28,12 @@ Options:
           
           Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
 
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
       --version-env <VERSION_ENV>
           Env var NAME holding the release version (default SEMVER).
           
@@ -40,18 +44,11 @@ Options:
           
           Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
 
+  -h, --help
+          Print help (see a summary with '-h')
+
 Output:
       --deny-warnings
           Fail if the tools report any warning
-
-Standard:
-  -v, --verbose...
-          Increase logging verbosity
-
-  -q, --quiet...
-          Decrease logging verbosity
-
-  -h, --help
-          Print help
 
 ```

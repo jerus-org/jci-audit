@@ -2,10 +2,15 @@
 $ jci-audit verify -h
 Re-verify a past release against its recorded advisory snapshot
 
-Usage: jci-audit verify [OPTIONS] --release-version <VERSION>
+Usage: jci-audit verify [OPTIONS] <VERSION>
 
-Verify:
-      --release-version <VERSION>  The released version to verify (e.g. "1.2.0")
+Arguments:
+  <VERSION>  The released version to verify (e.g. "1.2.0")
+
+Options:
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
 
 Security:
       --advisory-db <ADVISORY_DB>  Advisory-db root; the checkout is moved to the recorded commit
@@ -13,26 +18,31 @@ Security:
 Remote release:
       --owner <OWNER>            GitHub repository owner that published the release (e.g. "jerus-org")
       --repo <REPO>              GitHub repository name that published the release (e.g. "jci-audit")
-      --tag-prefix <TAG_PREFIX>  Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch when no local record is found
+      --tag-prefix <TAG_PREFIX>  Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
 
 Output:
       --deny-warnings  Fail if the tools report any warning
-
-Standard:
-  -v, --verbose...  Increase logging verbosity
-  -q, --quiet...    Decrease logging verbosity
-  -h, --help        Print help
 
 $ jci-audit verify --help
 Re-verify a past release against its recorded advisory snapshot.
 
 Uses the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag.
 
-Usage: jci-audit verify [OPTIONS] --release-version <VERSION>
+Usage: jci-audit verify [OPTIONS] <VERSION>
 
-Verify:
-      --release-version <VERSION>
+Arguments:
+  <VERSION>
           The released version to verify (e.g. "1.2.0")
+
+Options:
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+  -h, --help
+          Print help (see a summary with '-h')
 
 Security:
       --advisory-db <ADVISORY_DB>
@@ -52,20 +62,10 @@ Remote release:
           Needed to fetch the release when no local record is found.
 
       --tag-prefix <TAG_PREFIX>
-          Release tag prefix (e.g. "jci-audit-v"); combined with --release-version to form the tag to fetch when no local record is found
+          Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
 
 Output:
       --deny-warnings
           Fail if the tools report any warning
-
-Standard:
-  -v, --verbose...
-          Increase logging verbosity
-
-  -q, --quiet...
-          Decrease logging verbosity
-
-  -h, --help
-          Print help
 
 ```

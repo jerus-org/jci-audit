@@ -6,14 +6,12 @@ Usage: jci-audit check [OPTIONS]
 
 Options:
       --manifest-path <MANIFEST_PATH>  Path to the Cargo.toml (or its directory) to check [default: .]
+  -v, --verbose...                     Increase logging verbosity
+  -q, --quiet...                       Decrease logging verbosity
+  -h, --help                           Print help (see more with '--help')
 
 Output:
       --deny-warnings  Fail if the tools report any warning
-
-Standard:
-  -v, --verbose...  Increase logging verbosity
-  -q, --quiet...    Decrease logging verbosity
-  -h, --help        Print help
 
 $ jci-audit check --help
 PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.
@@ -28,11 +26,6 @@ Options:
           
           [default: .]
 
-Output:
-      --deny-warnings
-          Fail if the tools report any warning
-
-Standard:
   -v, --verbose...
           Increase logging verbosity
 
@@ -40,6 +33,10 @@ Standard:
           Decrease logging verbosity
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
+
+Output:
+      --deny-warnings
+          Fail if the tools report any warning
 
 ```

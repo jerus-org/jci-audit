@@ -4,6 +4,14 @@ parameters:
     type: string
     description: The release version whose record to publish (e.g. "1.2.0"). Falls back to an environment variable when omitted, matching release-prep.
     default: ''
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
   tag:
     type: string
     description: The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
@@ -21,21 +29,7 @@ parameters:
     type: string
     description: Where to find the record to sign and upload. Defaults to `.security/release-<VERSION>.json` relative to the nearest deny.toml above the current directory — the same discovery `verify` uses. Override when release-prep and this command run in different jobs and the record arrives via an attached workspace instead, e.g. `${WORKSPACE_ROOT}/.security/release-<VERSION>.json`.
     default: ''
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
-    default: false
 steps:
-- when:
-    condition: << parameters.publish >>
-    steps:
-    - run:
-        name: Set PUBLISH flag
-        command: echo 'export PUBLISH=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.verbose >>
     steps:
@@ -48,6 +42,12 @@ steps:
     - run:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.publish >>
+    steps:
+    - run:
+        name: Set PUBLISH flag
+        command: echo 'export PUBLISH=true' >> "$BASH_ENV"
 - run:
     name: 'Self-contained: sign and upload the release record. For a consumer with no circleci-toolkit-style signing facility of its own. Generates a one-use minisign keypair, signs the local record `release-prep` already wrote, uploads the record/.sig/.pub to the named release, and (with --publish) un-drafts it. The private key never leaves this one process. See jerus-org/jci-audit#75.'
     command: <<include(scripts/publish_record.sh)>>

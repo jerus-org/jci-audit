@@ -20,20 +20,9 @@ use crate::{check, diagnostics, init, prune, publish_record, release, remote, sy
         canonical deny.toml; `prune` detects stale advisory ignores; `init` \
         scaffolds a standard deny.toml."
 )]
-#[command(mut_arg("verbose", |a| a.help_heading("Standard")))]
-#[command(mut_arg("quiet", |a| a.help_heading("Standard")))]
-#[command(disable_help_flag = true, disable_version_flag = true)]
 pub(crate) struct Cli {
     #[command(flatten)]
     pub(crate) logging: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
-
-    /// Print help.
-    #[arg(short, long, action = clap::ArgAction::Help, global = true, help_heading = "Standard")]
-    help: Option<bool>,
-
-    /// Print version.
-    #[arg(short = 'V', long, action = clap::ArgAction::Version, help_heading = "Standard")]
-    version: Option<bool>,
 
     #[command(subcommand)]
     command: Commands,
@@ -117,7 +106,7 @@ enum Commands {
     /// from a checkout of the released tag.
     Verify {
         /// The released version to verify (e.g. "1.2.0").
-        #[arg(long, value_name = "VERSION", help_heading = "Verify")]
+        #[arg(value_name = "VERSION")]
         release_version: String,
 
         /// Advisory-db root; the checkout is moved to the recorded commit.
@@ -138,9 +127,8 @@ enum Commands {
         #[arg(long, help_heading = "Remote release")]
         repo: Option<String>,
 
-        /// Release tag prefix (e.g. "jci-audit-v"); combined with
-        /// --release-version to form the tag to fetch when no local record
-        /// is found.
+        /// Release tag prefix (e.g. "jci-audit-v"); combined with the
+        /// version to form the tag to fetch when no local record is found.
         #[arg(long, help_heading = "Remote release")]
         tag_prefix: Option<String>,
 
@@ -998,8 +986,7 @@ mod tests {
         // Only the remote-fetch fallback needs these; a local-checkout
         // invocation never touches them, so they must not be required on
         // every `verify` call (jerus-org/jci-audit#121).
-        let cli = Cli::try_parse_from(["jci-audit", "verify", "--release-version", "1.2.0"])
-            .expect("parses");
+        let cli = Cli::try_parse_from(["jci-audit", "verify", "1.2.0"]).expect("parses");
         match cli.command {
             Commands::Verify {
                 owner,
@@ -1020,7 +1007,6 @@ mod tests {
         let cli = Cli::try_parse_from([
             "jci-audit",
             "verify",
-            "--release-version",
             "1.2.0",
             "--owner",
             "some-org",

@@ -69,9 +69,9 @@ fn path_str(path: &Path) -> Result<&str> {
 /// version `record_path` was actually written for — checked against its file
 /// name before anything is signed, so a stale or mismatched `--record-path`
 /// override fails loudly here instead of uploading the record under the
-/// wrong asset name (silently making `verify --release-version <version>`
-/// find nothing, later, with no clue why — the exact unverifiable-record
-/// failure mode jerus-org/jci-audit#75 exists to prevent).
+/// wrong asset name (silently making `verify <version>` find nothing,
+/// later, with no clue why — the exact unverifiable-record failure mode
+/// jerus-org/jci-audit#75 exists to prevent).
 pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
     runner: &R,
     publisher: &P,
@@ -97,8 +97,7 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
         bail!(
             "'--record-path' points at '{record_name}', but '--release-version' is '{version}' \
              (expected file name '{expected_name}') — refusing to upload it under a name that \
-             doesn't match the version, since `verify --release-version {version}` would then \
-             find nothing"
+             doesn't match the version, since `verify {version}` would then find nothing"
         );
     }
 
