@@ -2,42 +2,70 @@
 $ jci-audit verify -h
 Re-verify a past release against its recorded advisory snapshot
 
-Usage: jci-audit verify [OPTIONS] --release-version <VERSION>
+Usage: jci-audit verify [OPTIONS] <VERSION>
+
+Arguments:
+  <VERSION>  The released version to verify (e.g. "1.2.0")
 
 Options:
-      --release-version <VERSION>  The released version to verify (e.g. "1.2.0")
-  -v, --verbose...                 Increase logging verbosity
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+Security:
       --advisory-db <ADVISORY_DB>  Advisory-db root; the checkout is moved to the recorded commit
-  -q, --quiet...                   Decrease logging verbosity
-      --deny-warnings              Fail if the tools report any warning
-  -h, --help                       Print help (see more with '--help')
+
+Remote release:
+      --owner <OWNER>            GitHub repository owner that published the release (e.g. "jerus-org")
+      --repo <REPO>              GitHub repository name that published the release (e.g. "jci-audit")
+      --tag-prefix <TAG_PREFIX>  Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
+
+Output:
+      --deny-warnings  Fail if the tools report any warning
 
 $ jci-audit verify --help
 Re-verify a past release against its recorded advisory snapshot.
 
 Uses the policy (deny.toml) that was in force at the time. Run it from a checkout of the released tag.
 
-Usage: jci-audit verify [OPTIONS] --release-version <VERSION>
+Usage: jci-audit verify [OPTIONS] <VERSION>
 
-Options:
-      --release-version <VERSION>
+Arguments:
+  <VERSION>
           The released version to verify (e.g. "1.2.0")
 
+Options:
   -v, --verbose...
           Increase logging verbosity
 
+  -q, --quiet...
+          Decrease logging verbosity
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Security:
       --advisory-db <ADVISORY_DB>
           Advisory-db root; the checkout is moved to the recorded commit.
           
           Defaults to ~/.cargo/advisory-db.
 
-  -q, --quiet...
-          Decrease logging verbosity
+Remote release:
+      --owner <OWNER>
+          GitHub repository owner that published the release (e.g. "jerus-org").
+          
+          Needed to fetch the release when no local record is found.
 
+      --repo <REPO>
+          GitHub repository name that published the release (e.g. "jci-audit").
+          
+          Needed to fetch the release when no local record is found.
+
+      --tag-prefix <TAG_PREFIX>
+          Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
+
+Output:
       --deny-warnings
           Fail if the tools report any warning
-
-  -h, --help
-          Print help (see a summary with '-h')
 
 ```

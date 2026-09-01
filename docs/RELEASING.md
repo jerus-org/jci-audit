@@ -108,17 +108,21 @@ rsign verify -P "<pubkey>" -x jci-audit-<target>.tar.gz.sig jci-audit-<target>.t
 
 ### 4. The security record
 
-`jci-audit verify --release-version <version>`, run from a bare directory (no checkout), fetches
-the record and its signature from the release, finds the pubkey that signed them, and checks it —
-see [design.md §5.4](design.md#54-verifying-without-a-checkout) for what this does and doesn't
-prove. Confirmed working end-to-end against a real release
-([jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) phase 2): `jci-audit-v0.1.1`
-was the first release cut after path A landed, and `jci-audit verify --release-version 0.1.1`, run
+`jci-audit verify <version> --owner <owner> --repo <repo> --tag-prefix <prefix>`,
+run from a bare directory (no checkout), fetches the record and its signature from the release,
+finds the pubkey that signed them, and checks it — see
+[design.md §5.4](design.md#54-verifying-without-a-checkout) for what this does and doesn't prove.
+The `--owner`/`--repo`/`--tag-prefix` flags are required on this fetch-only path, to name the
+release to check ([jerus-org/jci-audit#121](https://github.com/jerus-org/jci-audit/issues/121)).
+Confirmed working end-to-end against a real release
+([jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) phase 2):
+`jci-audit-v0.1.1` was the first release cut after path A landed, and this exact command, run
 unauthenticated from a bare directory, fetched and authenticated the record with no local checkout
 or `GITHUB_TOKEN` at all.
 
 ```bash
-jci-audit verify --release-version <version>
+jci-audit verify <version> \
+  --owner jerus-org --repo jci-audit --tag-prefix jci-audit-v
 ```
 
 ## Trust model summary

@@ -3,8 +3,8 @@
 Each release records the security validation it passed, as
 `release-<VERSION>.json`. A record names the advisory-db commit the release was
 locked to, the versions of the tools that ran, and digests of the dependency set
-and of the policy (`deny.toml`) in force at the time. `jci-audit verify --release-version
-<VERSION>` re-runs the gate offline against that snapshot, so a past release can
+and of the policy (`deny.toml`) in force at the time. `jci-audit verify <VERSION>`
+re-runs the gate offline against that snapshot, so a past release can
 be checked later without trusting the pipeline that produced it.
 
 Records are written only when the gate passes, and they are deterministic: no
@@ -22,7 +22,7 @@ forward; the files already here are kept as-is.
 
 **Version 0.0.3 is published and no record exists for it. This is permanent.**
 
-`jci-audit verify --release-version 0.0.3` will fail with `no release record at
+`jci-audit verify 0.0.3` will fail with `no release record at
 '.security/release-0.0.3.json'`. That failure is correct and should not be worked
 around: there is nothing to verify.
 

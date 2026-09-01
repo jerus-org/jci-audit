@@ -10,8 +10,10 @@ Options:
   -q, --quiet...                   Decrease logging verbosity
       --version-env <VERSION_ENV>  Env var NAME holding the release version (default SEMVER)
       --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny's checkout lives beneath it
-      --deny-warnings              Fail if the tools report any warning
   -h, --help                       Print help (see more with '--help')
+
+Output:
+      --deny-warnings  Fail if the tools report any warning
 
 $ jci-audit release-prep --help
 Release gate: reproducible, pinned-advisory-db validation.
@@ -42,10 +44,11 @@ Options:
           
           Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
 
-      --deny-warnings
-          Fail if the tools report any warning
-
   -h, --help
           Print help (see a summary with '-h')
+
+Output:
+      --deny-warnings
+          Fail if the tools report any warning
 
 ```

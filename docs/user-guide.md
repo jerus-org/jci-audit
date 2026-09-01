@@ -127,11 +127,16 @@ repository, purely because upstream state moved.
 ## `verify`
 
 ```
-jci-audit verify --release-version <VERSION> [OPTIONS]
+jci-audit verify <VERSION> [OPTIONS]
+
+Arguments:
+  <VERSION>  The released version to verify (required)
 
 Options:
-      --release-version <VERSION>  The released version to verify (required)
       --advisory-db <ADVISORY_DB>  Advisory-db root [default: ~/.cargo/advisory-db]
+      --owner <OWNER>               GitHub repository owner (remote-fetch fallback only)
+      --repo <REPO>                 GitHub repository name (remote-fetch fallback only)
+      --tag-prefix <TAG_PREFIX>     Release tag prefix (remote-fetch fallback only)
       --deny-warnings               Fail if the tools report any warning
 ```
 
@@ -148,7 +153,17 @@ tag's tree, so verifying against the wrong checkout will report a false mismatch
 
 ```bash
 git checkout jci-audit-v1.2.0
-jci-audit verify --release-version 1.2.0
+jci-audit verify 1.2.0
+```
+
+**With no local record** (no checkout, or a checkout whose `.security/` doesn't carry this
+version), `verify` falls back to fetching the record and its signature from the published GitHub
+release instead — see [design.md §5.4](design.md#54-verifying-without-a-checkout). That path
+needs `--owner`/`--repo`/`--tag-prefix` to know which release to check:
+
+```bash
+jci-audit verify 1.2.0 \
+  --owner some-org --repo some-repo --tag-prefix some-repo-v
 ```
 
 ## `init`

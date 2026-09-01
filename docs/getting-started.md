@@ -88,7 +88,7 @@ committed and signed as part of your release pipeline.
 To confirm a past release still checks out against what's on disk today:
 
 ```bash
-jci-audit verify --release-version 1.2.0
+jci-audit verify 1.2.0
 ```
 
 Run this from a checkout of the released tag — see [the user guide](user-guide.md#verify) for
