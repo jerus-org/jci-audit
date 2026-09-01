@@ -51,6 +51,13 @@ mcp_earliest_version = "0.0.1"
 [subcommand.init]
 interactive = true
 
+[subcommand.verify]
+# An auditor's tool, not a CI gate: it answers "did this past release really
+# pass?" for a human (or independent third party) checking after the fact,
+# not something a pipeline runs on itself. Not wired into any CI config here
+# or documented for consumers — see docs/design.md §5.3-5.4.
+interactive = true
+
 [record]
 enabled = true
 gpg_key_env = "BOT_GPG_KEY"
