@@ -5,10 +5,12 @@ Derive `.cargo/audit.toml` from the canonical `deny.toml`
 Usage: jci-audit sync [OPTIONS]
 
 Options:
-      --check       Fail (non-zero) on drift instead of rewriting the file. For CI
+      --check  Fail (non-zero) on drift instead of rewriting the file. For CI
+
+Standard:
   -v, --verbose...  Increase logging verbosity
   -q, --quiet...    Decrease logging verbosity
-  -h, --help        Print help (see more with '--help')
+  -h, --help        Print help
 
 $ jci-audit sync --help
 Derive `.cargo/audit.toml` from the canonical `deny.toml`.
@@ -21,6 +23,7 @@ Options:
       --check
           Fail (non-zero) on drift instead of rewriting the file. For CI
 
+Standard:
   -v, --verbose...
           Increase logging verbosity
 
@@ -28,6 +31,6 @@ Options:
           Decrease logging verbosity
 
   -h, --help
-          Print help (see a summary with '-h')
+          Print help
 
 ```

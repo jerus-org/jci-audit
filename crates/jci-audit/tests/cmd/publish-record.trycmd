@@ -6,15 +6,17 @@ Usage: jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <RE
 
 Options:
       --release-version <VERSION>  The release version whose record to publish (e.g. "1.2.0")
-  -v, --verbose...                 Increase logging verbosity
-  -q, --quiet...                   Decrease logging verbosity
       --version-env <VERSION_ENV>  Env var NAME holding the release version (default SEMVER)
       --tag <TAG>                  The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
       --owner <OWNER>              GitHub repository owner that owns the release
       --repo <REPO>                GitHub repository name that owns the release
       --publish                    Un-draft the release once the assets are attached
       --record-path <PATH>         Where to find the record to sign and upload
-  -h, --help                       Print help (see more with '--help')
+
+Standard:
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help
 
 $ jci-audit publish-record --help
 Self-contained: sign and upload the release record.
@@ -28,12 +30,6 @@ Options:
           The release version whose record to publish (e.g. "1.2.0").
           
           Falls back to an environment variable when omitted, matching release-prep.
-
-  -v, --verbose...
-          Increase logging verbosity
-
-  -q, --quiet...
-          Decrease logging verbosity
 
       --version-env <VERSION_ENV>
           Env var NAME holding the release version (default SEMVER)
@@ -55,7 +51,14 @@ Options:
           
           Defaults to `.security/release-<VERSION>.json` relative to the nearest deny.toml above the current directory — the same discovery `verify` uses. Override when release-prep and this command run in different jobs and the record arrives via an attached workspace instead, e.g. `${WORKSPACE_ROOT}/.security/release-<VERSION>.json`.
 
+Standard:
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
   -h, --help
-          Print help (see a summary with '-h')
+          Print help
 
 ```

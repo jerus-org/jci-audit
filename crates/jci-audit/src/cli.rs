@@ -20,9 +20,20 @@ use crate::{check, diagnostics, init, prune, publish_record, release, remote, sy
         canonical deny.toml; `prune` detects stale advisory ignores; `init` \
         scaffolds a standard deny.toml."
 )]
+#[command(mut_arg("verbose", |a| a.help_heading("Standard")))]
+#[command(mut_arg("quiet", |a| a.help_heading("Standard")))]
+#[command(disable_help_flag = true, disable_version_flag = true)]
 pub(crate) struct Cli {
     #[command(flatten)]
     pub(crate) logging: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
+
+    /// Print help.
+    #[arg(short, long, action = clap::ArgAction::Help, global = true, help_heading = "Standard")]
+    help: Option<bool>,
+
+    /// Print version.
+    #[arg(short = 'V', long, action = clap::ArgAction::Version, help_heading = "Standard")]
+    version: Option<bool>,
 
     #[command(subcommand)]
     command: Commands,
@@ -30,6 +41,7 @@ pub(crate) struct Cli {
 
 /// Flags shared by the subcommands that run cargo-deny / cargo-audit.
 #[derive(Debug, clap::Args)]
+#[command(next_help_heading = "Output")]
 struct ToolOutput {
     /// Fail if the tools report any warning.
     #[arg(long)]
@@ -105,31 +117,31 @@ enum Commands {
     /// from a checkout of the released tag.
     Verify {
         /// The released version to verify (e.g. "1.2.0").
-        #[arg(long, value_name = "VERSION")]
+        #[arg(long, value_name = "VERSION", help_heading = "Verify")]
         release_version: String,
 
         /// Advisory-db root; the checkout is moved to the recorded commit.
         ///
         /// Defaults to ~/.cargo/advisory-db.
-        #[arg(long)]
+        #[arg(long, help_heading = "Security")]
         advisory_db: Option<std::path::PathBuf>,
 
         /// GitHub repository owner that published the release (e.g. "jerus-org").
         ///
         /// Needed to fetch the release when no local record is found.
-        #[arg(long)]
+        #[arg(long, help_heading = "Remote release")]
         owner: Option<String>,
 
         /// GitHub repository name that published the release (e.g. "jci-audit").
         ///
         /// Needed to fetch the release when no local record is found.
-        #[arg(long)]
+        #[arg(long, help_heading = "Remote release")]
         repo: Option<String>,
 
         /// Release tag prefix (e.g. "jci-audit-v"); combined with
         /// --release-version to form the tag to fetch when no local record
         /// is found.
-        #[arg(long)]
+        #[arg(long, help_heading = "Remote release")]
         tag_prefix: Option<String>,
 
         #[command(flatten)]

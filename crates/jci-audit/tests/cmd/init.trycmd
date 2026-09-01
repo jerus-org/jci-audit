@@ -5,10 +5,12 @@ Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`
 Usage: jci-audit init [OPTIONS]
 
 Options:
-      --force       Overwrite existing files without confirmation
+      --force  Overwrite existing files without confirmation
+
+Standard:
   -v, --verbose...  Increase logging verbosity
   -q, --quiet...    Decrease logging verbosity
-  -h, --help        Print help (see more with '--help')
+  -h, --help        Print help
 
 $ jci-audit init --help
 Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`.
@@ -21,6 +23,7 @@ Options:
       --force
           Overwrite existing files without confirmation
 
+Standard:
   -v, --verbose...
           Increase logging verbosity
 
@@ -28,6 +31,6 @@ Options:
           Decrease logging verbosity
 
   -h, --help
-          Print help (see a summary with '-h')
+          Print help
 
 ```

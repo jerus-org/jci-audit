@@ -4,14 +4,6 @@ parameters:
     type: string
     description: The release version being validated (e.g. "1.2.0"). Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
     default: ''
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
-    default: false
   advisory_db:
     type: string
     description: Advisory-db root; cargo-deny's checkout lives beneath it. Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
@@ -20,7 +12,21 @@ parameters:
     type: boolean
     description: Fail if the tools report any warning
     default: false
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
 steps:
+- when:
+    condition: << parameters.deny_warnings >>
+    steps:
+    - run:
+        name: Set DENY_WARNINGS flag
+        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.verbose >>
     steps:
@@ -33,12 +39,6 @@ steps:
     - run:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
-- when:
-    condition: << parameters.deny_warnings >>
-    steps:
-    - run:
-        name: Set DENY_WARNINGS flag
-        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
     name: 'Release gate: reproducible, pinned-advisory-db validation. Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there.'
     command: <<include(scripts/release_prep.sh)>>
