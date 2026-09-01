@@ -5,9 +5,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-09-01
+
+Summary: Added[1], Changed[1], Documentation[2], Fixed[3]
+
+### Added
+
+ - feat: check runs cargo-about resolution too
+
+### Fixed
+
+ - fix: verify's release version is positional
+ - fix: group verify's CLI options by heading
+ - fix: verify takes owner/repo/tag-prefix
+
+### Changed
+
+ - refactor: share cargo-about resolution logic
+
 ## [0.1.1] - 2026-08-29
 
-Summary: Added[1], Changed[2], Documentation[2], Fixed[6]
+Summary: Added[1], Changed[2], Chore[1], Documentation[2], Fixed[6]
 
 ### Added
 
@@ -146,7 +164,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.7...v0.1.0
 [0.0.7]: https://github.com/jerus-org/jci-audit/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/jerus-org/jci-audit/compare/v0.0.5...v0.0.6
