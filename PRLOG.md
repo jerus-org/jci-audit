@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- chore-group subcommand flags under headings(pr [#131])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.2(pr [#128])
@@ -299,6 +303,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#128]: https://github.com/jerus-org/jci-audit/pull/128
 [#129]: https://github.com/jerus-org/jci-audit/pull/129
 [#130]: https://github.com/jerus-org/jci-audit/pull/130
+[#131]: https://github.com/jerus-org/jci-audit/pull/131
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.2...HEAD
 [0.1.2]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...v0.1.1
