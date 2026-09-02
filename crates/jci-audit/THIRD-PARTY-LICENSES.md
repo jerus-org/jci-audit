@@ -3804,7 +3804,7 @@ Used by:
 - security-framework-sys 2.17.0
 - security-framework 3.7.0
 - simd_cesu8 1.2.0
-- smallvec 1.15.2
+- smallvec 1.16.0
 - socket2 0.6.5
 - stable_deref_trait 1.2.1
 - system-configuration-sys 0.6.0
@@ -4459,7 +4459,7 @@ limitations under the License.
 
 Used by:
 
-- jci-audit 0.1.2
+- jci-audit 0.1.3
 
 ```text
                               Apache License
@@ -5096,7 +5096,7 @@ Used by:
 
 - android_system_properties 0.1.6
 - anyhow 1.0.104
-- aws-lc-sys 0.44.0
+- aws-lc-sys 0.45.0
 - dunce 1.0.5
 - itoa 1.0.18
 - jni-macros 0.22.4
@@ -5650,7 +5650,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Used by:
 
-- aws-lc-sys 0.44.0
+- aws-lc-sys 0.45.0
 
 ```text
 Copyright (c) <year> <owner>. 
@@ -6406,8 +6406,8 @@ third-party/chromium/LICENSE.
 
 Used by:
 
-- aws-lc-rs 1.18.0
-- aws-lc-sys 0.44.0
+- aws-lc-rs 1.18.1
+- aws-lc-sys 0.45.0
 
 ```text
 ISC License:
@@ -7297,7 +7297,7 @@ SOFTWARE.
 
 Used by:
 
-- aws-lc-sys 0.44.0
+- aws-lc-sys 0.45.0
 
 ```text
 The MIT License (MIT)
