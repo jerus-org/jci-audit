@@ -193,6 +193,7 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     version: &str,
     tag: &str,
     work_dir: &Path,
+    local_checkout_present: bool,
 ) -> Result<RemoteVerifyOutcome> {
     let record_name = format!("release-{version}.json");
     let sig_name = format!("{record_name}.sig");
@@ -234,15 +235,24 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     let db_commit = field(&record, &["advisory_db", "commit"])?.to_string();
     let recorded_pass = bool_field(&record, &["checks", "deny", "passed"])?;
 
+    let no_reverify_reason = if local_checkout_present {
+        "no local record for this version — .security/release-<VERSION>.json isn't committed \
+         to git (jerus-org/jci-audit#75), so the dependency-set and policy digests were not \
+         re-verified against it"
+            .to_string()
+    } else {
+        "no local Cargo.lock/deny.toml — the dependency-set and policy digests were not \
+         re-verified; fetch the crate source (e.g. `cargo download` from crates.io) and run \
+         `jci-audit verify` from within it for the full comparison"
+            .to_string()
+    };
+
     Ok(RemoteVerifyOutcome {
         version: version.to_string(),
         db_commit,
         recorded_pass,
         unchecked: vec![
-            "no local Cargo.lock/deny.toml — the dependency-set and policy digests were not \
-             re-verified; fetch the crate source (e.g. `cargo download` from crates.io) and run \
-             `jci-audit verify` from within it for the full comparison"
-                .to_string(),
+            no_reverify_reason,
             "the gate was not re-run — the recorded verdict is authenticated, not reproduced"
                 .to_string(),
         ],
@@ -648,12 +658,76 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap();
 
         assert_eq!(out.db_commit, "abc1234def");
         assert!(out.recorded_pass);
         assert_eq!(out.unchecked.len(), 2, "got {:?}", out.unchecked);
+    }
+
+    /// #120: without a local checkout at all, the message correctly blames
+    /// the missing Cargo.lock/deny.toml.
+    #[test]
+    fn unchecked_message_blames_missing_checkout_when_there_is_none() {
+        let rec = record_v4("abc1234def", true);
+        let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+
+        let out = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+            false,
+        )
+        .unwrap();
+
+        assert!(
+            out.unchecked[0].contains("no local Cargo.lock/deny.toml"),
+            "got {:?}",
+            out.unchecked
+        );
+    }
+
+    /// #120: from a real checkout that simply lacks this version's record
+    /// (the normal case post-jerus-org/jci-audit#75 phase 1 — records are
+    /// never committed), the message must not claim Cargo.lock/deny.toml are
+    /// absent, since they aren't.
+    #[test]
+    fn unchecked_message_blames_the_missing_record_when_a_checkout_is_present() {
+        let rec = record_v4("abc1234def", true);
+        let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+
+        let out = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+            true,
+        )
+        .unwrap();
+
+        assert!(
+            !out.unchecked[0].contains("Cargo.lock/deny.toml"),
+            "got {:?}",
+            out.unchecked
+        );
+        assert!(
+            out.unchecked[0].contains("record"),
+            "got {:?}",
+            out.unchecked
+        );
     }
 
     #[test]
@@ -671,6 +745,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap();
 
@@ -710,6 +785,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap_err();
         assert!(
@@ -733,6 +809,7 @@ mod tests {
             "9.9.9",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap_err();
         assert!(err.to_string().contains("release-9.9.9.json"), "got: {err}");
@@ -760,6 +837,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap_err();
         assert!(
@@ -791,6 +869,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap();
 
@@ -816,6 +895,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap();
 
@@ -846,6 +926,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap_err();
 
@@ -877,6 +958,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap_err();
         assert!(err.to_string().contains("not valid UTF-8"), "got: {err}");
@@ -908,6 +990,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap();
         assert!(out.recorded_pass);
@@ -947,6 +1030,7 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
+            false,
         )
         .unwrap_err();
         assert!(err.to_string().contains("checks.deny.passed"), "got: {err}");

@@ -403,6 +403,21 @@ fn discover_local_record(start: &std::path::Path, version: &str) -> Option<std::
     record_path.exists().then_some(record_path)
 }
 
+/// Whether a real local checkout (deny.toml + Cargo.lock) exists above
+/// `start`, independent of whether *this version's* record does — the
+/// normal state for every release since jerus-org/jci-audit#75 phase 1 made
+/// not committing the record permanent (jerus-org/jci-audit#120). Used only
+/// to pick an accurate "not checked" reason on the remote-fetch path; it
+/// does not change which path runs.
+fn local_checkout_present(start: &std::path::Path) -> bool {
+    let Ok((deny_path, _)) = sync::locate_paths(start) else {
+        return false;
+    };
+    deny_path
+        .parent()
+        .is_some_and(|root| root.join("Cargo.lock").is_file())
+}
+
 fn run_verify(
     version: &str,
     advisory_db: Option<&std::path::Path>,
@@ -445,7 +460,15 @@ fn run_verify(
             bail!("verification failed: the gate did not reproduce the recorded verdict")
         }
     } else {
-        run_verify_remote(version, advisory_db, owner, repo, tag_prefix, output)
+        run_verify_remote(
+            version,
+            advisory_db,
+            owner,
+            repo,
+            tag_prefix,
+            output,
+            local_checkout_present(&cwd),
+        )
     }
 }
 
@@ -494,6 +517,7 @@ fn run_verify_remote(
     repo: Option<&str>,
     tag_prefix: Option<&str>,
     output: &ToolOutput,
+    local_checkout_present: bool,
 ) -> Result<()> {
     let (owner, repo, tag_prefix) = resolve_remote_target(owner, repo, tag_prefix)?;
     preflight::ensure_available(&[Tool::Rsign])?;
@@ -522,6 +546,7 @@ fn run_verify_remote(
         version,
         &tag,
         &work,
+        local_checkout_present,
     );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
@@ -682,6 +707,27 @@ mod tests {
         let repo = tempfile::tempdir().unwrap();
         write(&repo.path().join("deny.toml"), "");
         assert_eq!(discover_local_record(repo.path(), "9.9.9"), None);
+    }
+
+    #[test]
+    fn local_checkout_present_is_true_with_deny_toml_and_cargo_lock() {
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        write(&repo.path().join("Cargo.lock"), "");
+        assert!(local_checkout_present(repo.path()));
+    }
+
+    #[test]
+    fn local_checkout_present_is_false_without_cargo_lock() {
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        assert!(!local_checkout_present(repo.path()));
+    }
+
+    #[test]
+    fn local_checkout_present_is_false_with_no_deny_toml_anywhere_up() {
+        let bare = tempfile::tempdir().unwrap();
+        assert!(!local_checkout_present(bare.path()));
     }
 
     #[test]
