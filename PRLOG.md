@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: update dependency jci-audit to v0.1.3(pr [#132])
 - accurate reason on the remote verify path(pr [#133])
+- make manifest pubkey source opt-in(pr [#134])
 
 ## [0.1.3] - 2026-09-02
 
@@ -313,6 +314,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#131]: https://github.com/jerus-org/jci-audit/pull/131
 [#132]: https://github.com/jerus-org/jci-audit/pull/132
 [#133]: https://github.com/jerus-org/jci-audit/pull/133
+[#134]: https://github.com/jerus-org/jci-audit/pull/134
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.3...HEAD
 [0.1.3]: https://github.com/jerus-org/jci-audit/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...v0.1.2
