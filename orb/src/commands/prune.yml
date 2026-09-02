@@ -1,5 +1,9 @@
 description: Stale-ignore detector for advisory ignores that no longer fire. Runs audit/deny against the naked advisory-db (no local ignores applied) to find configured ignores that no longer fire.
 parameters:
+  check:
+    type: boolean
+    description: Fail (non-zero) when a stale ignore is found. For CI
+    default: false
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -8,11 +12,13 @@ parameters:
     type: boolean
     description: Decrease logging verbosity
     default: false
-  check:
-    type: boolean
-    description: Fail (non-zero) when a stale ignore is found. For CI
-    default: false
 steps:
+- when:
+    condition: << parameters.check >>
+    steps:
+    - run:
+        name: Set CHECK flag
+        command: echo 'export CHECK=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.verbose >>
     steps:
@@ -25,12 +31,6 @@ steps:
     - run:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
-- when:
-    condition: << parameters.check >>
-    steps:
-    - run:
-        name: Set CHECK flag
-        command: echo 'export CHECK=true' >> "$BASH_ENV"
 - run:
     name: Stale-ignore detector for advisory ignores that no longer fire.
     command: <<include(scripts/prune.sh)>>

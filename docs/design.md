@@ -81,7 +81,7 @@ check runs even when the drift check above it failed, matching `release-prep`'s 
 
 ```mermaid
 flowchart TD
-    START["jci-audit release-prep --release-version X"] --> DRIFT2["about.toml drift check"]
+    START["jci-audit release-prep X"] --> DRIFT2["about.toml drift check"]
     DRIFT2 --> POLICY["cargo-about policy resolution\n(cache-independent --locked check)"]
     POLICY --> PIN["cargo-deny clones/refreshes\nadvisory-db, resolve HEAD commit"]
     PIN --> OFFLINE["cargo deny --offline check\n(pinned advisory-db)"]

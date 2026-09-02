@@ -68,7 +68,7 @@ flowchart LR
 | Subcommand | Context | Purpose |
 |------------|---------|---------|
 | `check` | PR / dev gate | Both tools plus the about.toml drift check and the cargo-about resolution check, all blocking, live data. |
-| `release --release-version X` | Release gate | Reproducible offline validation against a pinned advisory-db commit; writes the record locally. |
+| `release-prep X` | Release gate | Reproducible offline validation against a pinned advisory-db commit; writes the record locally. |
 | `sync [--check]` | PR + dev | Regenerate (or check drift of) `.cargo/audit.toml` and every `about.toml` from `deny.toml`. |
 | `prune [--check]` | PR + scheduled | Detect advisory ignores that no longer fire. |
 | `verify` | Audit / retrospective | Re-check a past release's record against a real checkout, or — with no checkout — fetch and signature-check the published release's record instead. |

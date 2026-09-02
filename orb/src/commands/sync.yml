@@ -1,5 +1,9 @@
 description: Derive `.cargo/audit.toml` from the canonical `deny.toml`. Reads `[advisories].ignore`, keeping deny.toml the single source of truth.
 parameters:
+  check:
+    type: boolean
+    description: Fail (non-zero) on drift instead of rewriting the file. For CI
+    default: false
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -8,11 +12,13 @@ parameters:
     type: boolean
     description: Decrease logging verbosity
     default: false
-  check:
-    type: boolean
-    description: Fail (non-zero) on drift instead of rewriting the file. For CI
-    default: false
 steps:
+- when:
+    condition: << parameters.check >>
+    steps:
+    - run:
+        name: Set CHECK flag
+        command: echo 'export CHECK=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.verbose >>
     steps:
@@ -25,12 +31,6 @@ steps:
     - run:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
-- when:
-    condition: << parameters.check >>
-    steps:
-    - run:
-        name: Set CHECK flag
-        command: echo 'export CHECK=true' >> "$BASH_ENV"
 - run:
     name: Derive `.cargo/audit.toml` from the canonical `deny.toml`.
     command: <<include(scripts/sync.sh)>>

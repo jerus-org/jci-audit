@@ -64,12 +64,12 @@ enum Commands {
         ///
         /// Falls back to an environment variable when omitted, since release
         /// pipelines compute the version at runtime.
-        #[arg(long, value_name = "VERSION", help_heading = "Version")]
+        #[arg(value_name = "VERSION")]
         release_version: Option<String>,
 
         /// Env var NAME holding the release version (default SEMVER).
         ///
-        /// Used when --release-version is not given.
+        /// Used when the version is not given.
         #[arg(long, help_heading = "Version")]
         version_env: Option<String>,
 
@@ -88,7 +88,7 @@ enum Commands {
     /// truth.
     Sync {
         /// Fail (non-zero) on drift instead of rewriting the file. For CI.
-        #[arg(long, help_heading = "CI")]
+        #[arg(long)]
         check: bool,
     },
     /// Stale-ignore detector for advisory ignores that no longer fire.
@@ -97,7 +97,7 @@ enum Commands {
     /// applied) to find configured ignores that no longer fire.
     Prune {
         /// Fail (non-zero) when a stale ignore is found. For CI.
-        #[arg(long, help_heading = "CI")]
+        #[arg(long)]
         check: bool,
     },
     /// Re-verify a past release against its recorded advisory snapshot.
@@ -141,7 +141,7 @@ enum Commands {
     /// written files afterwards for anything project-specific.
     Init {
         /// Overwrite existing files without confirmation.
-        #[arg(long, help_heading = "Overwrite")]
+        #[arg(long)]
         force: bool,
     },
     /// Self-contained: sign and upload the release record.
@@ -157,7 +157,7 @@ enum Commands {
         ///
         /// Falls back to an environment variable when omitted, matching
         /// release-prep.
-        #[arg(long, value_name = "VERSION", help_heading = "Version")]
+        #[arg(value_name = "VERSION")]
         release_version: Option<String>,
 
         /// Env var NAME holding the release version (default SEMVER).
@@ -777,8 +777,7 @@ mod tests {
         // Release pipelines compute the version at runtime, so it is resolved
         // from the environment rather than being required on the command line.
         assert!(Cli::try_parse_from(["jci-audit", "release-prep"]).is_ok());
-        let cli = Cli::try_parse_from(["jci-audit", "release-prep", "--release-version", "1.2.0"])
-            .expect("parses");
+        let cli = Cli::try_parse_from(["jci-audit", "release-prep", "1.2.0"]).expect("parses");
         match cli.command {
             Commands::Release {
                 release_version, ..
@@ -786,9 +785,8 @@ mod tests {
             other => panic!("expected Release, got {other:?}"),
         }
 
-        // --version is the tool's own version, and must stay that way: naming the
-        // release version the same thing made one flag mean two things depending
-        // on where it sat.
+        // --version is the tool's own version flag; not available on
+        // subcommands, so it must not be confused with the positional.
         let err =
             Cli::try_parse_from(["jci-audit", "release-prep", "--version", "1.2.0"]).unwrap_err();
         assert!(

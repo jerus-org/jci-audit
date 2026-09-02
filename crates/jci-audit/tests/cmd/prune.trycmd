@@ -5,12 +5,10 @@ Stale-ignore detector for advisory ignores that no longer fire
 Usage: jci-audit prune [OPTIONS]
 
 Options:
+      --check       Fail (non-zero) when a stale ignore is found. For CI
   -v, --verbose...  Increase logging verbosity
   -q, --quiet...    Decrease logging verbosity
   -h, --help        Print help (see more with '--help')
-
-CI:
-      --check  Fail (non-zero) when a stale ignore is found. For CI
 
 $ jci-audit prune --help
 Stale-ignore detector for advisory ignores that no longer fire.
@@ -20,6 +18,9 @@ Runs audit/deny against the naked advisory-db (no local ignores applied) to find
 Usage: jci-audit prune [OPTIONS]
 
 Options:
+      --check
+          Fail (non-zero) when a stale ignore is found. For CI
+
   -v, --verbose...
           Increase logging verbosity
 
@@ -28,9 +29,5 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
-
-CI:
-      --check
-          Fail (non-zero) when a stale ignore is found. For CI
 
 ```

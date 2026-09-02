@@ -1,6 +1,10 @@
 description: Run sync command in a dedicated job.
 executor: default
 parameters:
+  check:
+    type: boolean
+    description: Fail (non-zero) on drift instead of rewriting the file. For CI
+    default: false
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -8,10 +12,6 @@ parameters:
   quiet:
     type: boolean
     description: Decrease logging verbosity
-    default: false
-  check:
-    type: boolean
-    description: Fail (non-zero) on drift instead of rewriting the file. For CI
     default: false
   attach_workspace:
     type: boolean
@@ -34,6 +34,6 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - sync:
+    check: << parameters.check >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
-    check: << parameters.check >>

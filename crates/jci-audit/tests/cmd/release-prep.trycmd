@@ -2,7 +2,10 @@
 $ jci-audit release-prep -h
 Release gate: reproducible, pinned-advisory-db validation
 
-Usage: jci-audit release-prep [OPTIONS]
+Usage: jci-audit release-prep [OPTIONS] [VERSION]
+
+Arguments:
+  [VERSION]  The release version being validated (e.g. "1.2.0")
 
 Options:
   -v, --verbose...  Increase logging verbosity
@@ -10,7 +13,6 @@ Options:
   -h, --help        Print help (see more with '--help')
 
 Version:
-      --release-version <VERSION>  The release version being validated (e.g. "1.2.0")
       --version-env <VERSION_ENV>  Env var NAME holding the release version (default SEMVER)
 
 Security:
@@ -24,7 +26,13 @@ Release gate: reproducible, pinned-advisory-db validation.
 
 Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there.
 
-Usage: jci-audit release-prep [OPTIONS]
+Usage: jci-audit release-prep [OPTIONS] [VERSION]
+
+Arguments:
+  [VERSION]
+          The release version being validated (e.g. "1.2.0").
+          
+          Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
 
 Options:
   -v, --verbose...
@@ -37,15 +45,10 @@ Options:
           Print help (see a summary with '-h')
 
 Version:
-      --release-version <VERSION>
-          The release version being validated (e.g. "1.2.0").
-          
-          Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
-
       --version-env <VERSION_ENV>
           Env var NAME holding the release version (default SEMVER).
           
-          Used when --release-version is not given.
+          Used when the version is not given.
 
 Security:
       --advisory-db <ADVISORY_DB>
