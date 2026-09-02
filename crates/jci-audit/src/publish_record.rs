@@ -95,9 +95,10 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
     let expected_name = format!("release-{version}.json");
     if record_name != expected_name {
         bail!(
-            "'--record-path' points at '{record_name}', but '--release-version' is '{version}' \
-             (expected file name '{expected_name}') — refusing to upload it under a name that \
-             doesn't match the version, since `verify {version}` would then find nothing"
+            "'--record-path' points at '{record_name}', but the release version given is \
+             '{version}' (expected file name '{expected_name}') — refusing to upload it under a \
+             name that doesn't match the version, since `verify {version}` would then find \
+             nothing"
         );
     }
 
@@ -408,8 +409,8 @@ mod tests {
 
     #[test]
     fn errors_when_the_record_path_does_not_match_the_release_version() {
-        // A mismatched --record-path/--release-version pair (stale workspace
-        // artifact, copy-paste version drift) would otherwise upload the
+        // A mismatched --record-path/version pair (stale workspace artifact,
+        // copy-paste version drift) would otherwise upload the
         // record under the wrong asset name, silently — `verify` for the
         // intended version would then find nothing and fail with no clue why.
         // Catch it loudly here instead, before any signing happens.

@@ -1,9 +1,5 @@
 description: 'PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy. All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml drift check, and the cargo-about resolution check. Aggregates exit codes and surfaces stderr.'
 parameters:
-  manifest_path:
-    type: string
-    description: Path to the Cargo.toml (or its directory) to check
-    default: .
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -12,6 +8,10 @@ parameters:
     type: boolean
     description: Decrease logging verbosity
     default: false
+  manifest_path:
+    type: string
+    description: Path to the Cargo.toml (or its directory) to check
+    default: .
   deny_warnings:
     type: boolean
     description: Fail if the tools report any warning

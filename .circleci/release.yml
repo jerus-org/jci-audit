@@ -62,7 +62,7 @@ jobs:
             # (.gitignore'd) — no longer committed; see jerus-org/jci-audit#75
             # for its eventual distribution as a signed release asset.
             jci-audit release-prep \
-              --release-version "${VERSION}" \
+              "${VERSION}" \
               --verbose
             # Copy to a version-independent path: store_artifacts can't expand
             # $VERSION in its `path`, and .security/ also holds the tracked

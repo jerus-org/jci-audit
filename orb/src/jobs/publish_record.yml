@@ -1,10 +1,9 @@
 description: Run publish-record command in a dedicated job.
 executor: default
 parameters:
-  release_version:
+  version:
     type: string
-    description: The release version whose record to publish (e.g. "1.2.0"). Falls back to an environment variable when omitted, matching release-prep.
-    default: ''
+    description: The release version whose record to publish (e.g. "1.2.0")
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -51,7 +50,7 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - publish_record:
-    release_version: << parameters.release_version >>
+    version: << parameters.version >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
     tag: << parameters.tag >>

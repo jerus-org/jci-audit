@@ -5,10 +5,12 @@ PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy
 Usage: jci-audit check [OPTIONS]
 
 Options:
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+Input:
       --manifest-path <MANIFEST_PATH>  Path to the Cargo.toml (or its directory) to check [default: .]
-  -v, --verbose...                     Increase logging verbosity
-  -q, --quiet...                       Decrease logging verbosity
-  -h, --help                           Print help (see more with '--help')
 
 Output:
       --deny-warnings  Fail if the tools report any warning
@@ -21,11 +23,6 @@ All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml drift check
 Usage: jci-audit check [OPTIONS]
 
 Options:
-      --manifest-path <MANIFEST_PATH>
-          Path to the Cargo.toml (or its directory) to check
-          
-          [default: .]
-
   -v, --verbose...
           Increase logging verbosity
 
@@ -34,6 +31,12 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
+Input:
+      --manifest-path <MANIFEST_PATH>
+          Path to the Cargo.toml (or its directory) to check
+          
+          [default: .]
 
 Output:
       --deny-warnings

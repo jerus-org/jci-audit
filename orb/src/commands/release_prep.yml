@@ -1,9 +1,8 @@
 description: 'Release gate: reproducible, pinned-advisory-db validation. Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there.'
 parameters:
-  release_version:
+  version:
     type: string
-    description: The release version being validated (e.g. "1.2.0"). Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
-    default: ''
+    description: The release version being validated (e.g. "1.2.0")
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -43,5 +42,5 @@ steps:
     name: 'Release gate: reproducible, pinned-advisory-db validation.'
     command: <<include(scripts/release_prep.sh)>>
     environment:
-      RELEASE_VERSION: << parameters.release_version >>
+      VERSION: << parameters.version >>
       ADVISORY_DB: << parameters.advisory_db >>

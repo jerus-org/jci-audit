@@ -1,9 +1,8 @@
 description: 'Self-contained: sign and upload the release record. For a consumer with no circleci-toolkit-style signing facility of its own. Generates a one-use minisign keypair, signs the local record `release-prep` already wrote, uploads the record/.sig/.pub to the named release, and (with --publish) un-drafts it. The private key never leaves this one process. See jerus-org/jci-audit#75.'
 parameters:
-  release_version:
+  version:
     type: string
-    description: The release version whose record to publish (e.g. "1.2.0"). Falls back to an environment variable when omitted, matching release-prep.
-    default: ''
+    description: The release version whose record to publish (e.g. "1.2.0")
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -52,7 +51,7 @@ steps:
     name: 'Self-contained: sign and upload the release record.'
     command: <<include(scripts/publish_record.sh)>>
     environment:
-      RELEASE_VERSION: << parameters.release_version >>
+      VERSION: << parameters.version >>
       TAG: << parameters.tag >>
       OWNER: << parameters.owner >>
       REPO: << parameters.repo >>

@@ -20,10 +20,9 @@ description: >
   publish-record job, not as a parameter — it must never appear on a command
   line or in a CI log.
 
-  Supply the version either as the `release_version` parameter, or by
-  exporting it (the `version_env` parameter names the variable, default
-  SEMVER) when your pipeline computes it at runtime. `tag` must be the exact
-  tag your own release job created the draft release under.
+  Supply the version via the `version` parameter — a literal, or a pipeline
+  value/variable when your pipeline computes it at runtime. `tag` must be the
+  exact tag your own release job created the draft release under.
 usage:
   version: 2.1
   orbs:
@@ -33,9 +32,9 @@ usage:
       jobs:
         - jci-audit/release_prep:
             name: record-release
-            # Explicit version. Omit this and export SEMVER instead when the
-            # version is calculated during the pipeline.
-            release_version: "1.2.0"
+            # A literal here, or a pipeline value/variable when the version
+            # is calculated during the pipeline.
+            version: "1.2.0"
             post-steps:
               - persist_to_workspace:
                   root: .
@@ -51,7 +50,7 @@ usage:
             requires: [your-draft-release-job]
             context: [github-release-write]
             attach_workspace: true
-            release_version: "1.2.0"
+            version: "1.2.0"
             tag: "myapp-v1.2.0"
             owner: "your-org"
             repo: "your-repo"

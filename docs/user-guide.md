@@ -50,11 +50,12 @@ jci-audit check --deny-warnings              # treat warnings as failures too
 ## `release-prep`
 
 ```
-jci-audit release-prep [OPTIONS]
+jci-audit release-prep <VERSION> [OPTIONS]
+
+Arguments:
+  <VERSION>  The release version being validated (e.g. "1.2.0")
 
 Options:
-      --release-version <VERSION>  The release version being validated (e.g. "1.2.0")
-      --version-env <VERSION_ENV>  Env var NAME holding the version when --release-version is not given [default: SEMVER]
       --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny's checkout lives beneath it [default: ~/.cargo/advisory-db]
       --deny-warnings               Fail if the tools report any warning
 ```
@@ -68,12 +69,11 @@ that record contains and why, and
 [advanced-configuration.md](advanced-configuration.md#the-release-record-is-local-only-for-now)
 for the record's current (local-only, not yet distributed) storage model.
 
-The version comes from `--release-version`, or (for CI pipelines that compute the version at
-runtime, e.g. via `nextsv`) from the environment variable named by `--version-env` (default
-`SEMVER`) when `--release-version` is omitted.
+For a CI pipeline that computes the version at runtime (e.g. via `nextsv`), pass it straight
+through, e.g. `jci-audit release-prep "$SEMVER"`.
 
 ```bash
-jci-audit release-prep --release-version 1.2.0   # validate and write the record locally
+jci-audit release-prep 1.2.0   # validate and write the record locally
 ```
 
 ## `sync`

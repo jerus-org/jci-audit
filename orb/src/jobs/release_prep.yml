@@ -1,10 +1,9 @@
 description: Run release-prep command in a dedicated job.
 executor: default
 parameters:
-  release_version:
+  version:
     type: string
-    description: The release version being validated (e.g. "1.2.0"). Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
-    default: ''
+    description: The release version being validated (e.g. "1.2.0")
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -42,7 +41,7 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - release_prep:
-    release_version: << parameters.release_version >>
+    version: << parameters.version >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
     advisory_db: << parameters.advisory_db >>

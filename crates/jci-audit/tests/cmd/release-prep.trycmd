@@ -2,15 +2,18 @@
 $ jci-audit release-prep -h
 Release gate: reproducible, pinned-advisory-db validation
 
-Usage: jci-audit release-prep [OPTIONS]
+Usage: jci-audit release-prep [OPTIONS] <VERSION>
+
+Arguments:
+  <VERSION>  The release version being validated (e.g. "1.2.0")
 
 Options:
-      --release-version <VERSION>  The release version being validated (e.g. "1.2.0")
-  -v, --verbose...                 Increase logging verbosity
-  -q, --quiet...                   Decrease logging verbosity
-      --version-env <VERSION_ENV>  Env var NAME holding the release version (default SEMVER)
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+Security:
       --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny's checkout lives beneath it
-  -h, --help                       Print help (see more with '--help')
 
 Output:
       --deny-warnings  Fail if the tools report any warning
@@ -20,32 +23,27 @@ Release gate: reproducible, pinned-advisory-db validation.
 
 Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there.
 
-Usage: jci-audit release-prep [OPTIONS]
+Usage: jci-audit release-prep [OPTIONS] <VERSION>
+
+Arguments:
+  <VERSION>
+          The release version being validated (e.g. "1.2.0")
 
 Options:
-      --release-version <VERSION>
-          The release version being validated (e.g. "1.2.0").
-          
-          Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
-
   -v, --verbose...
           Increase logging verbosity
 
   -q, --quiet...
           Decrease logging verbosity
 
-      --version-env <VERSION_ENV>
-          Env var NAME holding the release version (default SEMVER).
-          
-          Used when --release-version is not given.
+  -h, --help
+          Print help (see a summary with '-h')
 
+Security:
       --advisory-db <ADVISORY_DB>
           Advisory-db root; cargo-deny's checkout lives beneath it.
           
           Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
-
-  -h, --help
-          Print help (see a summary with '-h')
 
 Output:
       --deny-warnings

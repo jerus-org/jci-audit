@@ -218,27 +218,6 @@ fn first_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_string()
 }
 
-/// Default env var consulted for the release version when `--release-version`
-/// is not given. Release pipelines compute the version at runtime (nextsv), so
-/// it cannot always be supplied as a config-time orb parameter.
-pub(crate) const DEFAULT_VERSION_ENV: &str = "SEMVER";
-
-/// Resolve the release version: the explicit value wins, otherwise the named
-/// environment variable. Erroring here beats recording a release under an empty
-/// or wrong version.
-pub(crate) fn resolve_version(explicit: Option<&str>, env_name: &str) -> Result<String> {
-    if let Some(v) = explicit.map(str::trim).filter(|v| !v.is_empty()) {
-        return Ok(v.to_string());
-    }
-    match std::env::var(env_name) {
-        Ok(v) if !v.trim().is_empty() => Ok(v.trim().to_string()),
-        _ => bail!(
-            "no release version: pass --release-version, or export the variable named by \
-             --version-env (currently {env_name})"
-        ),
-    }
-}
-
 /// Run the release gate.
 ///
 /// `db_root` is cargo-deny's `db-path` (it clones/refreshes its checkout
@@ -591,32 +570,6 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
                 "record must omit '{forbidden}':\n{rendered}"
             );
         }
-    }
-
-    #[test]
-    fn version_resolution_prefers_the_explicit_value() {
-        unsafe { std::env::set_var("JCI_TEST_VERSION_ENV", "9.9.9") };
-        assert_eq!(
-            resolve_version(Some("1.2.0"), "JCI_TEST_VERSION_ENV").unwrap(),
-            "1.2.0"
-        );
-        // Falls back to the environment when not supplied…
-        assert_eq!(
-            resolve_version(None, "JCI_TEST_VERSION_ENV").unwrap(),
-            "9.9.9"
-        );
-        // …and an empty flag is treated as absent, not as an empty version.
-        assert_eq!(
-            resolve_version(Some("  "), "JCI_TEST_VERSION_ENV").unwrap(),
-            "9.9.9"
-        );
-        unsafe { std::env::remove_var("JCI_TEST_VERSION_ENV") };
-    }
-
-    #[test]
-    fn version_resolution_errors_rather_than_guessing() {
-        let err = resolve_version(None, "JCI_TEST_ABSENT_VERSION_ENV").unwrap_err();
-        assert!(err.to_string().contains("no release version"), "got: {err}");
     }
 
     #[test]
