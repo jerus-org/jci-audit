@@ -61,17 +61,8 @@ enum Commands {
     #[command(name = "release-prep")]
     Release {
         /// The release version being validated (e.g. "1.2.0").
-        ///
-        /// Falls back to an environment variable when omitted, since release
-        /// pipelines compute the version at runtime.
         #[arg(value_name = "VERSION")]
-        release_version: Option<String>,
-
-        /// Env var NAME holding the release version (default SEMVER).
-        ///
-        /// Used when the version is not given.
-        #[arg(long, help_heading = "Version")]
-        version_env: Option<String>,
+        release_version: String,
 
         /// Advisory-db root; cargo-deny's checkout lives beneath it.
         ///
@@ -154,15 +145,8 @@ enum Commands {
     #[command(name = "publish-record")]
     PublishRecord {
         /// The release version whose record to publish (e.g. "1.2.0").
-        ///
-        /// Falls back to an environment variable when omitted, matching
-        /// release-prep.
         #[arg(value_name = "VERSION")]
-        release_version: Option<String>,
-
-        /// Env var NAME holding the release version (default SEMVER).
-        #[arg(long, help_heading = "Version")]
-        version_env: Option<String>,
+        release_version: String,
 
         /// The exact release tag to attach assets to (e.g. "myapp-v1.2.0").
         #[arg(long, help_heading = "Remote release")]
@@ -209,18 +193,9 @@ impl Cli {
             } => run_check(manifest_path, output, detail),
             Commands::Release {
                 release_version,
-                version_env,
                 advisory_db,
                 output,
-            } => {
-                let version = release::resolve_version(
-                    release_version.as_deref(),
-                    version_env
-                        .as_deref()
-                        .unwrap_or(release::DEFAULT_VERSION_ENV),
-                )?;
-                run_release(&version, advisory_db.as_deref(), output, detail)
-            }
+            } => run_release(release_version, advisory_db.as_deref(), output, detail),
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
             Commands::Verify {
@@ -242,21 +217,19 @@ impl Cli {
             Commands::Init { force } => run_init(*force),
             Commands::PublishRecord {
                 release_version,
-                version_env,
                 tag,
                 owner,
                 repo,
                 publish,
                 record_path,
-            } => {
-                let version = release::resolve_version(
-                    release_version.as_deref(),
-                    version_env
-                        .as_deref()
-                        .unwrap_or(release::DEFAULT_VERSION_ENV),
-                )?;
-                run_publish_record(&version, tag, owner, repo, *publish, record_path.as_deref())
-            }
+            } => run_publish_record(
+                release_version,
+                tag,
+                owner,
+                repo,
+                *publish,
+                record_path.as_deref(),
+            ),
         }
     }
 }
@@ -773,15 +746,16 @@ mod tests {
     }
 
     #[test]
-    fn release_version_is_optional_at_parse_time() {
-        // Release pipelines compute the version at runtime, so it is resolved
-        // from the environment rather than being required on the command line.
-        assert!(Cli::try_parse_from(["jci-audit", "release-prep"]).is_ok());
+    fn release_version_is_required_at_parse_time() {
+        // The caller (a human, or the generated orb script) is responsible
+        // for supplying it — as a literal or via shell variable expansion —
+        // so there is no separate env-var-lookup fallback to fall back to.
+        assert!(Cli::try_parse_from(["jci-audit", "release-prep"]).is_err());
         let cli = Cli::try_parse_from(["jci-audit", "release-prep", "1.2.0"]).expect("parses");
         match cli.command {
             Commands::Release {
                 release_version, ..
-            } => assert_eq!(release_version.as_deref(), Some("1.2.0")),
+            } => assert_eq!(release_version, "1.2.0"),
             other => panic!("expected Release, got {other:?}"),
         }
 
@@ -846,6 +820,7 @@ mod tests {
         let cli = Cli::try_parse_from([
             "jci-audit",
             "publish-record",
+            "1.2.0",
             "--tag",
             "myapp-v1.2.0",
             "--owner",
@@ -868,7 +843,7 @@ mod tests {
                 assert_eq!(owner, "jerus-org");
                 assert_eq!(repo, "myapp");
                 assert!(!publish, "--publish defaults to false");
-                assert!(release_version.is_none());
+                assert_eq!(release_version, "1.2.0");
                 assert!(record_path.is_none(), "--record-path defaults to discovery");
             }
             other => panic!("expected PublishRecord, got {other:?}"),
@@ -876,10 +851,28 @@ mod tests {
     }
 
     #[test]
+    fn publish_record_release_version_is_required_at_parse_time() {
+        assert!(
+            Cli::try_parse_from([
+                "jci-audit",
+                "publish-record",
+                "--tag",
+                "t",
+                "--owner",
+                "o",
+                "--repo",
+                "r",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
     fn parse_publish_record_accepts_a_record_path_override() {
         let cli = Cli::try_parse_from([
             "jci-audit",
             "publish-record",
+            "1.2.0",
             "--tag",
             "t",
             "--owner",
@@ -906,6 +899,7 @@ mod tests {
         let cli = Cli::try_parse_from([
             "jci-audit",
             "publish-record",
+            "1.2.0",
             "--tag",
             "t",
             "--owner",

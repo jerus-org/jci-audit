@@ -6,5 +6,5 @@ set -- "$@" --owner "${OWNER}"
 set -- "$@" --repo "${REPO}"
 [[ "${PUBLISH:-false}" = "true" ]] && set -- "$@" --publish
 [[ -n "${RECORD_PATH:-}" ]] && set -- "$@" --record-path "${RECORD_PATH}"
-[[ -n "${VERSION:-}" ]] && set -- "$@" "${VERSION}"
+set -- "$@" "${VERSION}"
 "$@"

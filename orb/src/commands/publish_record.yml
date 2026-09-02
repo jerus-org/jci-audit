@@ -2,8 +2,7 @@ description: 'Self-contained: sign and upload the release record. For a consumer
 parameters:
   version:
     type: string
-    description: The release version whose record to publish (e.g. "1.2.0"). Falls back to an environment variable when omitted, matching release-prep.
-    default: ''
+    description: The release version whose record to publish (e.g. "1.2.0")
   verbose:
     type: boolean
     description: Increase logging verbosity

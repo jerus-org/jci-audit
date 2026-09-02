@@ -2,8 +2,7 @@ description: 'Release gate: reproducible, pinned-advisory-db validation. Locks `
 parameters:
   version:
     type: string
-    description: The release version being validated (e.g. "1.2.0"). Falls back to an environment variable when omitted, since release pipelines compute the version at runtime.
-    default: ''
+    description: The release version being validated (e.g. "1.2.0")
   verbose:
     type: boolean
     description: Increase logging verbosity

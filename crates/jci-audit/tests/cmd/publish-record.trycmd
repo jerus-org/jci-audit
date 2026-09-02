@@ -2,18 +2,15 @@
 $ jci-audit publish-record -h
 Self-contained: sign and upload the release record
 
-Usage: jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <REPO> [VERSION]
+Usage: jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <REPO> <VERSION>
 
 Arguments:
-  [VERSION]  The release version whose record to publish (e.g. "1.2.0")
+  <VERSION>  The release version whose record to publish (e.g. "1.2.0")
 
 Options:
   -v, --verbose...  Increase logging verbosity
   -q, --quiet...    Decrease logging verbosity
   -h, --help        Print help (see more with '--help')
-
-Version:
-      --version-env <VERSION_ENV>  Env var NAME holding the release version (default SEMVER)
 
 Remote release:
       --tag <TAG>      The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
@@ -29,13 +26,11 @@ Self-contained: sign and upload the release record.
 
 For a consumer with no circleci-toolkit-style signing facility of its own. Generates a one-use minisign keypair, signs the local record `release-prep` already wrote, uploads the record/.sig/.pub to the named release, and (with --publish) un-drafts it. The private key never leaves this one process. See jerus-org/jci-audit#75.
 
-Usage: jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <REPO> [VERSION]
+Usage: jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <REPO> <VERSION>
 
 Arguments:
-  [VERSION]
-          The release version whose record to publish (e.g. "1.2.0").
-          
-          Falls back to an environment variable when omitted, matching release-prep.
+  <VERSION>
+          The release version whose record to publish (e.g. "1.2.0")
 
 Options:
   -v, --verbose...
@@ -46,10 +41,6 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
-
-Version:
-      --version-env <VERSION_ENV>
-          Env var NAME holding the release version (default SEMVER)
 
 Remote release:
       --tag <TAG>
