@@ -123,6 +123,16 @@ enum Commands {
         #[arg(long, help_heading = "Remote release")]
         tag_prefix: Option<String>,
 
+        /// The crate's manifest path within the release repo (not on local
+        /// disk — e.g. "crates/jci-audit/Cargo.toml"), for the stronger
+        /// Cargo.toml pubkey source.
+        ///
+        /// Optional: without it, only the release's own .pub asset is
+        /// checked. There is no general convention for where a crate's
+        /// manifest lives, so this source only runs when given explicitly.
+        #[arg(long, help_heading = "Remote release")]
+        repo_manifest_path: Option<String>,
+
         #[command(flatten)]
         output: ToolOutput,
     },
@@ -204,6 +214,7 @@ impl Cli {
                 owner,
                 repo,
                 tag_prefix,
+                repo_manifest_path,
                 output,
             } => run_verify(
                 release_version,
@@ -211,6 +222,7 @@ impl Cli {
                 owner.as_deref(),
                 repo.as_deref(),
                 tag_prefix.as_deref(),
+                repo_manifest_path.as_deref(),
                 output,
                 detail,
             ),
@@ -405,12 +417,16 @@ fn discover_local_record(root: &std::path::Path, version: &str) -> Option<std::p
     record_path.exists().then_some(record_path)
 }
 
+// Same rationale as run_verify_remote below: 8 independently meaningful
+// params, one call site, not worth an artificial bundling struct.
+#[allow(clippy::too_many_arguments)]
 fn run_verify(
     version: &str,
     advisory_db: Option<&std::path::Path>,
     owner: Option<&str>,
     repo: Option<&str>,
     tag_prefix: Option<&str>,
+    repo_manifest_path: Option<&str>,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -463,6 +479,7 @@ fn run_verify(
             owner,
             repo,
             tag_prefix,
+            repo_manifest_path,
             output,
             local_checkout,
         )
@@ -500,19 +517,30 @@ fn resolve_remote_target<'a>(
 ///
 /// Pulled out of [`run_verify_remote`] so the asset-first ordering is a
 /// plain, unit-testable fact rather than only an inline array literal.
+/// `manifest_source` is `None` when the caller gave no `--repo-manifest-path` —
+/// there is no general convention for a crate's manifest location, so that
+/// source is opt-in, not a default (jerus-org/jci-audit#124).
 fn ordered_pubkey_sources<'a>(
     asset_source: &'a remote::AssetPubkeySource<'a, remote::PcuAssetSource>,
-    manifest_source: &'a remote::ManifestPubkeySource,
-) -> [&'a dyn remote::PubkeySource; 2] {
-    [asset_source, manifest_source]
+    manifest_source: Option<&'a remote::ManifestPubkeySource>,
+) -> Vec<&'a dyn remote::PubkeySource> {
+    let mut sources: Vec<&dyn remote::PubkeySource> = vec![asset_source];
+    if let Some(m) = manifest_source {
+        sources.push(m);
+    }
+    sources
 }
 
+// 8 independently meaningful params on a private, single-call-site function
+// — not worth an artificial bundling struct just to satisfy the lint.
+#[allow(clippy::too_many_arguments)]
 fn run_verify_remote(
     version: &str,
     advisory_db: Option<&std::path::Path>,
     owner: Option<&str>,
     repo: Option<&str>,
     tag_prefix: Option<&str>,
+    repo_manifest_path: Option<&str>,
     output: &ToolOutput,
     local_checkout: remote::LocalCheckoutState,
 ) -> Result<()> {
@@ -529,10 +557,13 @@ fn run_verify_remote(
     // phase 2) depends on nothing about how the release was published, so
     // it's tried before the manifest source, which depends on the
     // crates.io/cargo-binstall signing convention (see remote.rs's module
-    // docs for the full reasoning).
-    let manifest_source = remote::ManifestPubkeySource::new(owner, repo, token);
+    // docs for the full reasoning). Empty-but-set is treated as absent, same
+    // rationale as GITHUB_TOKEN above.
+    let manifest_source = repo_manifest_path
+        .filter(|p| !p.is_empty())
+        .map(|path| remote::ManifestPubkeySource::new(owner, repo, path, token));
     let asset_source = remote::AssetPubkeySource::new(&source);
-    let pubkey_sources = ordered_pubkey_sources(&asset_source, &manifest_source);
+    let pubkey_sources = ordered_pubkey_sources(&asset_source, manifest_source.as_ref());
     let work = release::work_dir();
     tracing::info!(version, tag, "verify (remote fetch, no local record)");
 
@@ -988,16 +1019,31 @@ mod tests {
         let manifest_source = remote::ManifestPubkeySource::new(
             "jerus-org",
             "jci-audit",
+            "crates/jci-audit/Cargo.toml",
             Some("unused-token".to_string()),
         );
         let asset =
             remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()));
         let asset_source = remote::AssetPubkeySource::new(&asset);
 
-        let sources = ordered_pubkey_sources(&asset_source, &manifest_source);
+        let sources = ordered_pubkey_sources(&asset_source, Some(&manifest_source));
 
         assert!(sources[0].name().starts_with("release asset"));
         assert_eq!(sources[1].name(), "Cargo.toml at the release tag");
+    }
+
+    /// #124: the manifest source is opt-in — omitted entirely when the
+    /// caller gives no `--repo-manifest-path`.
+    #[test]
+    fn ordered_pubkey_sources_is_asset_only_without_a_manifest_path() {
+        let asset =
+            remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()));
+        let asset_source = remote::AssetPubkeySource::new(&asset);
+
+        let sources = ordered_pubkey_sources(&asset_source, None);
+
+        assert_eq!(sources.len(), 1);
+        assert!(sources[0].name().starts_with("release asset"));
     }
 
     #[test]

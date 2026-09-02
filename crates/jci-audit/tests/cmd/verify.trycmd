@@ -16,9 +16,14 @@ Security:
       --advisory-db <ADVISORY_DB>  Advisory-db root; the checkout is moved to the recorded commit
 
 Remote release:
-      --owner <OWNER>            GitHub repository owner that published the release (e.g. "jerus-org")
-      --repo <REPO>              GitHub repository name that published the release (e.g. "jci-audit")
-      --tag-prefix <TAG_PREFIX>  Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
+      --owner <OWNER>
+          GitHub repository owner that published the release (e.g. "jerus-org")
+      --repo <REPO>
+          GitHub repository name that published the release (e.g. "jci-audit")
+      --tag-prefix <TAG_PREFIX>
+          Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
+      --repo-manifest-path <REPO_MANIFEST_PATH>
+          The crate's manifest path within the release repo (not on local disk — e.g. "crates/jci-audit/Cargo.toml"), for the stronger Cargo.toml pubkey source
 
 Output:
       --deny-warnings  Fail if the tools report any warning
@@ -63,6 +68,11 @@ Remote release:
 
       --tag-prefix <TAG_PREFIX>
           Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
+
+      --repo-manifest-path <REPO_MANIFEST_PATH>
+          The crate's manifest path within the release repo (not on local disk — e.g. "crates/jci-audit/Cargo.toml"), for the stronger Cargo.toml pubkey source.
+          
+          Optional: without it, only the release's own .pub asset is checked. There is no general convention for where a crate's manifest lives, so this source only runs when given explicitly.
 
 Output:
       --deny-warnings

@@ -20,9 +20,12 @@
 //! own release pipeline included. `verify_remote_with` takes an ordered list
 //! of sources and tries each in turn ([`fetch_pubkey_from_sources`]) with no
 //! built-in preference of its own; the *caller* decides the order.
-//! `cli.rs::run_verify_remote` tries [`AssetPubkeySource`] first, since it
-//! depends on nothing about how the release was published, then
-//! [`ManifestPubkeySource`]. Deliberately built as a small trait rather than
+//! `cli.rs::run_verify_remote` always tries [`AssetPubkeySource`] first,
+//! since it depends on nothing about how the release was published, then
+//! [`ManifestPubkeySource`] — but only when the caller opts in with
+//! `--manifest-path` (jerus-org/jci-audit#124): there is no general
+//! convention for where a crate's manifest lives, so this source is never
+//! tried by default. Deliberately built as a small trait rather than
 //! hardcoded fetches: a future source (a different registry, a different
 //! language's convention) is just another implementation, not a change to
 //! this flow.
@@ -190,10 +193,11 @@ fn extract_pubkey_from_manifest(cargo_toml: &str) -> Result<String> {
 /// checkout required. `tag` is the full release tag (e.g. `jci-audit-v1.2.0`).
 /// `pubkey_sources` are tried in the order given — the caller decides that
 /// order, deliberately: this function has no built-in opinion on which
-/// source to prefer. Callers should put the strongest available source
-/// first (e.g. [`ManifestPubkeySource`] before [`AssetPubkeySource`] — see
-/// the module docs for why the manifest source is the stronger one) rather
-/// than defaulting to whichever is more convenient to construct.
+/// source to prefer. `cli.rs::run_verify_remote` puts [`AssetPubkeySource`]
+/// first, since it depends on nothing about how the release was published,
+/// then [`ManifestPubkeySource`] when the caller opted into it — see the
+/// module docs; neither is independently stronger for jci-audit's own
+/// releases (`docs/assurance-case.md` T9 has the full accounting).
 pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     runner: &R,
     source: &S,
@@ -281,8 +285,8 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
 /// (`release-<VERSION>.json.pub`) via the same [`ReleaseAssetSource`]
 /// already used for the record and signature — the intended long-term path,
 /// and the only source generally available to a non-Rust/non-crates.io
-/// consumer. Weaker than [`ManifestPubkeySource`] when both exist for the
-/// same release — see the module docs.
+/// consumer. Always tried, unlike the opt-in [`ManifestPubkeySource`] — see
+/// the module docs for how the two compare.
 pub(crate) struct AssetPubkeySource<'a, S: ReleaseAssetSource>(&'a S);
 
 impl<'a, S: ReleaseAssetSource> AssetPubkeySource<'a, S> {
@@ -309,14 +313,12 @@ impl<S: ReleaseAssetSource> PubkeySource for AssetPubkeySource<'_, S> {
     }
 }
 
-/// This crate's manifest path, relative to the repo root — used to build
-/// the raw-content URL [`ManifestPubkeySource`] fetches. Hardcoded rather
-/// than derived from the target repo's own layout (jerus-org/jci-audit#124).
-const MANIFEST_PATH: &str = "crates/jci-audit/Cargo.toml";
-
-/// The raw-content URL for this repo's `Cargo.toml` as it stood at `tag`.
-fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
-    format!("https://raw.githubusercontent.com/{owner}/{repo}/refs/tags/{tag}/{MANIFEST_PATH}")
+/// The raw-content URL for a repo's `Cargo.toml` as it stood at `tag`.
+/// `manifest_path` is the crate's manifest path relative to the repo root
+/// (e.g. `crates/jci-audit/Cargo.toml`) — the caller's, since it's specific
+/// to their own workspace layout (jerus-org/jci-audit#124).
+fn raw_manifest_url(owner: &str, repo: &str, tag: &str, manifest_path: &str) -> String {
+    format!("https://raw.githubusercontent.com/{owner}/{repo}/refs/tags/{tag}/{manifest_path}")
 }
 
 /// How long the manifest fetch waits before giving up. Without this, an
@@ -327,18 +329,20 @@ const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 /// [`PubkeySource`] that fetches the release tag's raw `Cargo.toml` and
 /// reads the pubkey `inject_pubkey_and_amend` writes there under
 /// `[package.metadata.binstall.signing]` — the convention `cargo binstall`
-/// itself defines. [`MANIFEST_PATH`] is currently hardcoded to this repo's
-/// own layout (jerus-org/jci-audit#124). Also trusts a **mutable** git tag
-/// ref, with no immutability guarantee — see the module docs.
-/// This reads exactly the content crates.io itself received for that
-/// release: `cargo publish` packages the commit at the pushed tag verbatim,
-/// so the tag's `Cargo.toml` and the one crates.io has are byte-identical.
-/// Fetched via the git tag rather than crates.io's own API because
-/// crates.io has no endpoint that serves raw file contents — only package
-/// metadata and the packed `.crate` tarball.
+/// itself defines. `manifest_path` is caller-supplied (jerus-org/jci-audit#124)
+/// — there is no general convention for where a crate's manifest lives in
+/// its repo, so this source only runs when the caller knows and provides it.
+/// Also trusts a **mutable** git tag ref, with no immutability guarantee —
+/// see the module docs. This reads exactly the content crates.io itself
+/// received for that release: `cargo publish` packages the commit at the
+/// pushed tag verbatim, so the tag's `Cargo.toml` and the one crates.io has
+/// are byte-identical. Fetched via the git tag rather than crates.io's own
+/// API because crates.io has no endpoint that serves raw file contents —
+/// only package metadata and the packed `.crate` tarball.
 pub(crate) struct ManifestPubkeySource {
     owner: String,
     repo: String,
+    manifest_path: String,
     // `None` sends no Authorization header at all (jerus-org/jci-audit#103)
     // — GitHub treats an *empty* bearer token as invalid credentials, not
     // as anonymous, so an empty string here would be the wrong "no token".
@@ -349,11 +353,13 @@ impl ManifestPubkeySource {
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
+        manifest_path: impl Into<String>,
         github_token: Option<String>,
     ) -> Self {
         Self {
             owner: owner.into(),
             repo: repo.into(),
+            manifest_path: manifest_path.into(),
             github_token,
         }
     }
@@ -371,7 +377,7 @@ impl ManifestPubkeySource {
 
 impl PubkeySource for ManifestPubkeySource {
     fn fetch_pubkey(&self, tag: &str, _version: &str) -> Result<String> {
-        let url = raw_manifest_url(&self.owner, &self.repo, tag);
+        let url = raw_manifest_url(&self.owner, &self.repo, tag, &self.manifest_path);
         let token = self.github_token.clone();
         let manifest: String = Self::block_on(async move {
             let client = reqwest::Client::builder()
@@ -465,7 +471,12 @@ mod tests {
     fn manifest_pubkey_source_builds_without_a_token() {
         // Constructibility only (jerus-org/jci-audit#103) — the actual
         // unauthenticated fetch needs a live network call.
-        let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", None);
+        let _source = ManifestPubkeySource::new(
+            "jerus-org",
+            "jci-audit",
+            "crates/jci-audit/Cargo.toml",
+            None,
+        );
     }
 
     #[test]
@@ -474,8 +485,13 @@ mod tests {
     }
 
     #[test]
-    fn raw_manifest_url_targets_this_repos_crate_layout() {
-        let url = raw_manifest_url("jerus-org", "jci-audit", "jci-audit-v1.2.0");
+    fn raw_manifest_url_uses_the_caller_supplied_manifest_path() {
+        let url = raw_manifest_url(
+            "jerus-org",
+            "jci-audit",
+            "jci-audit-v1.2.0",
+            "crates/jci-audit/Cargo.toml",
+        );
         assert_eq!(
             url,
             "https://raw.githubusercontent.com/jerus-org/jci-audit/refs/tags/\
