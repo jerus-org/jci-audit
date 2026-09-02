@@ -40,7 +40,7 @@ steps:
         name: Set DENY_WARNINGS flag
         command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
-    name: 'Release gate: reproducible, pinned-advisory-db validation. Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there.'
+    name: 'Release gate: reproducible, pinned-advisory-db validation.'
     command: <<include(scripts/release_prep.sh)>>
     environment:
       RELEASE_VERSION: << parameters.release_version >>

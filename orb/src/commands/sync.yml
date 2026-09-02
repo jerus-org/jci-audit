@@ -32,5 +32,5 @@ steps:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
 - run:
-    name: Derive `.cargo/audit.toml` from the canonical `deny.toml`. Reads `[advisories].ignore`, keeping deny.toml the single source of truth.
+    name: Derive `.cargo/audit.toml` from the canonical `deny.toml`.
     command: <<include(scripts/sync.sh)>>
