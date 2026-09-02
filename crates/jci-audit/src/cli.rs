@@ -390,32 +390,26 @@ fn run_prune(check: bool) -> Result<()> {
     Ok(())
 }
 
-/// Where `verify` should look for a local record, if anywhere — the same
-/// upward search `verify::verify_with` performs internally
-/// (`sync::locate_paths`), so this check and that search never disagree
-/// about which directory is "the project root" from `start`. Checking
-/// `start` itself directly (ignoring parents) would wrongly report no local
-/// record from any subdirectory of the actual project root.
-fn discover_local_record(start: &std::path::Path, version: &str) -> Option<std::path::PathBuf> {
+/// Resolve the project root (deny.toml's own directory) by walking up from
+/// `start` — the same upward search `verify::verify_with` performs
+/// internally (`sync::locate_paths`), so this and that search never
+/// disagree about which directory is "the project root". Checking `start`
+/// itself directly (ignoring parents) would wrongly report no local
+/// checkout from any subdirectory of the actual project root. Resolved
+/// once by `run_verify` and shared, rather than re-walked separately by
+/// [`discover_local_record`] and the remote-fetch path's checkout check —
+/// they'd otherwise redo the same filesystem walk on every `verify` call
+/// (jerus-org/jci-audit#120).
+fn project_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let (deny_path, _) = sync::locate_paths(start).ok()?;
-    let root = deny_path.parent()?;
-    let record_path = release::record_path(root, version);
-    record_path.exists().then_some(record_path)
+    deny_path.parent().map(std::path::Path::to_path_buf)
 }
 
-/// Whether a real local checkout (deny.toml + Cargo.lock) exists above
-/// `start`, independent of whether *this version's* record does — the
-/// normal state for every release since jerus-org/jci-audit#75 phase 1 made
-/// not committing the record permanent (jerus-org/jci-audit#120). Used only
-/// to pick an accurate "not checked" reason on the remote-fetch path; it
-/// does not change which path runs.
-fn local_checkout_present(start: &std::path::Path) -> bool {
-    let Ok((deny_path, _)) = sync::locate_paths(start) else {
-        return false;
-    };
-    deny_path
-        .parent()
-        .is_some_and(|root| root.join("Cargo.lock").is_file())
+/// Where `verify` should look for a local record, if anywhere, given an
+/// already-resolved project `root` (see [`project_root`]).
+fn discover_local_record(root: &std::path::Path, version: &str) -> Option<std::path::PathBuf> {
+    let record_path = release::record_path(root, version);
+    record_path.exists().then_some(record_path)
 }
 
 fn run_verify(
@@ -428,7 +422,11 @@ fn run_verify(
     detail: diagnostics::Detail,
 ) -> Result<()> {
     let cwd = std::env::current_dir()?;
-    if discover_local_record(&cwd, version).is_some() {
+    let root = project_root(&cwd);
+    let local_record = root
+        .as_deref()
+        .and_then(|r| discover_local_record(r, version));
+    if local_record.is_some() {
         preflight::ensure_available(&[Tool::CargoDeny])?;
         let db_root = advisory_db
             .map(std::path::Path::to_path_buf)
@@ -460,6 +458,12 @@ fn run_verify(
             bail!("verification failed: the gate did not reproduce the recorded verdict")
         }
     } else {
+        let local_checkout = remote::LocalCheckoutState {
+            deny_toml: root.is_some(),
+            cargo_lock: root
+                .as_deref()
+                .is_some_and(|r| r.join("Cargo.lock").is_file()),
+        };
         run_verify_remote(
             version,
             advisory_db,
@@ -467,7 +471,7 @@ fn run_verify(
             repo,
             tag_prefix,
             output,
-            local_checkout_present(&cwd),
+            local_checkout,
         )
     }
 }
@@ -517,7 +521,7 @@ fn run_verify_remote(
     repo: Option<&str>,
     tag_prefix: Option<&str>,
     output: &ToolOutput,
-    local_checkout_present: bool,
+    local_checkout: remote::LocalCheckoutState,
 ) -> Result<()> {
     let (owner, repo, tag_prefix) = resolve_remote_target(owner, repo, tag_prefix)?;
     preflight::ensure_available(&[Tool::Rsign])?;
@@ -546,7 +550,7 @@ fn run_verify_remote(
         version,
         &tag,
         &work,
-        local_checkout_present,
+        local_checkout,
     );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
@@ -678,18 +682,32 @@ mod tests {
     }
 
     #[test]
-    fn discover_local_record_finds_it_from_a_subdirectory() {
+    fn project_root_finds_it_from_a_subdirectory() {
         // verify::verify_with resolves its root by walking UP from `start` to
         // find deny.toml (sync::locate_paths) — this check must use the same
         // search, or a run from e.g. `crates/jci-audit/` would wrongly decide
-        // no local record exists and fall back to the network.
+        // no local checkout exists and fall back to the network.
         let repo = tempfile::tempdir().unwrap();
         write(&repo.path().join("deny.toml"), "");
-        write(&repo.path().join(".security/release-1.2.0.json"), "{}");
         let subdir = repo.path().join("crates/jci-audit");
         std::fs::create_dir_all(&subdir).unwrap();
 
-        let found = discover_local_record(&subdir, "1.2.0");
+        assert_eq!(project_root(&subdir), Some(repo.path().to_path_buf()));
+    }
+
+    #[test]
+    fn project_root_is_none_with_no_deny_toml_anywhere_up() {
+        let bare = tempfile::tempdir().unwrap();
+        assert_eq!(project_root(bare.path()), None);
+    }
+
+    #[test]
+    fn discover_local_record_finds_it_given_the_root() {
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        write(&repo.path().join(".security/release-1.2.0.json"), "{}");
+
+        let found = discover_local_record(repo.path(), "1.2.0");
         assert_eq!(
             found,
             Some(repo.path().join(".security/release-1.2.0.json"))
@@ -697,37 +715,10 @@ mod tests {
     }
 
     #[test]
-    fn discover_local_record_is_none_with_no_deny_toml_anywhere_up() {
-        let bare = tempfile::tempdir().unwrap();
-        assert_eq!(discover_local_record(bare.path(), "1.2.0"), None);
-    }
-
-    #[test]
     fn discover_local_record_is_none_when_record_is_missing() {
         let repo = tempfile::tempdir().unwrap();
         write(&repo.path().join("deny.toml"), "");
         assert_eq!(discover_local_record(repo.path(), "9.9.9"), None);
-    }
-
-    #[test]
-    fn local_checkout_present_is_true_with_deny_toml_and_cargo_lock() {
-        let repo = tempfile::tempdir().unwrap();
-        write(&repo.path().join("deny.toml"), "");
-        write(&repo.path().join("Cargo.lock"), "");
-        assert!(local_checkout_present(repo.path()));
-    }
-
-    #[test]
-    fn local_checkout_present_is_false_without_cargo_lock() {
-        let repo = tempfile::tempdir().unwrap();
-        write(&repo.path().join("deny.toml"), "");
-        assert!(!local_checkout_present(repo.path()));
-    }
-
-    #[test]
-    fn local_checkout_present_is_false_with_no_deny_toml_anywhere_up() {
-        let bare = tempfile::tempdir().unwrap();
-        assert!(!local_checkout_present(bare.path()));
     }
 
     #[test]

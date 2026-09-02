@@ -108,6 +108,16 @@ fn fetch_pubkey_from_sources(
     );
 }
 
+/// What of a full local re-verification's two prerequisites the caller
+/// found present, independent of whether *this version's* record is —
+/// used only to pick an accurate "not checked" reason on the remote-fetch
+/// path (jerus-org/jci-audit#120); it does not change which path runs.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LocalCheckoutState {
+    pub(crate) deny_toml: bool,
+    pub(crate) cargo_lock: bool,
+}
+
 /// What a remote (no-checkout) verification concluded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RemoteVerifyOutcome {
@@ -193,7 +203,7 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     version: &str,
     tag: &str,
     work_dir: &Path,
-    local_checkout_present: bool,
+    local_checkout: LocalCheckoutState,
 ) -> Result<RemoteVerifyOutcome> {
     let record_name = format!("release-{version}.json");
     let sig_name = format!("{record_name}.sig");
@@ -235,16 +245,26 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     let db_commit = field(&record, &["advisory_db", "commit"])?.to_string();
     let recorded_pass = bool_field(&record, &["checks", "deny", "passed"])?;
 
-    let no_reverify_reason = if local_checkout_present {
-        "no local record for this version — .security/release-<VERSION>.json isn't committed \
-         to git (jerus-org/jci-audit#75), so the dependency-set and policy digests were not \
-         re-verified against it"
-            .to_string()
-    } else {
-        "no local Cargo.lock/deny.toml — the dependency-set and policy digests were not \
-         re-verified; fetch the crate source (e.g. `cargo download` from crates.io) and run \
-         `jci-audit verify` from within it for the full comparison"
-            .to_string()
+    let no_reverify_reason = match (local_checkout.deny_toml, local_checkout.cargo_lock) {
+        (true, true) => {
+            "no local record for this version — .security/release-<VERSION>.json isn't \
+             committed to git (jerus-org/jci-audit#75); the dependency-set and policy digests \
+             were not re-verified against it, and there is no local way to reproduce a past \
+             release's record — this authenticates the release's own signed record instead"
+                .to_string()
+        }
+        (true, false) => {
+            "deny.toml is present but Cargo.lock is not — the dependency-set and policy \
+             digests were not re-verified; run `cargo generate-lockfile` (or fetch the crate \
+             source and run `jci-audit verify` from within it) for the full comparison"
+                .to_string()
+        }
+        (false, _) => {
+            "no local Cargo.lock/deny.toml — the dependency-set and policy digests were not \
+             re-verified; fetch the crate source (e.g. `cargo download` from crates.io) and run \
+             `jci-audit verify` from within it for the full comparison"
+                .to_string()
+        }
     };
 
     Ok(RemoteVerifyOutcome {
@@ -658,7 +678,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap();
 
@@ -684,7 +707,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap();
 
@@ -714,7 +740,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            true,
+            LocalCheckoutState {
+                deny_toml: true,
+                cargo_lock: true,
+            },
         )
         .unwrap();
 
@@ -725,6 +754,43 @@ mod tests {
         );
         assert!(
             out.unchecked[0].contains("record"),
+            "got {:?}",
+            out.unchecked
+        );
+    }
+
+    /// deny.toml present but Cargo.lock missing (e.g. never generated) must
+    /// not be reported as "no local Cargo.lock/deny.toml" — deny.toml IS
+    /// there; only Cargo.lock is missing.
+    #[test]
+    fn unchecked_message_names_only_the_file_actually_missing() {
+        let rec = record_v4("abc1234def", true);
+        let source = MockSource::new("1.2.0", &rec);
+        let asset_source = AssetPubkeySource::new(&source);
+        let runner = MockRunner::new(true);
+        let work = tempfile::tempdir().unwrap();
+
+        let out = verify_remote_with(
+            &runner,
+            &source,
+            &[&asset_source],
+            "1.2.0",
+            "jci-audit-v1.2.0",
+            work.path(),
+            LocalCheckoutState {
+                deny_toml: true,
+                cargo_lock: false,
+            },
+        )
+        .unwrap();
+
+        assert!(
+            out.unchecked[0].contains("Cargo.lock is not"),
+            "got {:?}",
+            out.unchecked
+        );
+        assert!(
+            !out.unchecked[0].contains("no local Cargo.lock/deny.toml"),
             "got {:?}",
             out.unchecked
         );
@@ -745,7 +811,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap();
 
@@ -785,7 +854,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap_err();
         assert!(
@@ -809,7 +881,10 @@ mod tests {
             "9.9.9",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap_err();
         assert!(err.to_string().contains("release-9.9.9.json"), "got: {err}");
@@ -837,7 +912,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap_err();
         assert!(
@@ -869,7 +947,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap();
 
@@ -895,7 +976,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap();
 
@@ -926,7 +1010,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap_err();
 
@@ -958,7 +1045,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap_err();
         assert!(err.to_string().contains("not valid UTF-8"), "got: {err}");
@@ -990,7 +1080,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap();
         assert!(out.recorded_pass);
@@ -1030,7 +1123,10 @@ mod tests {
             "1.2.0",
             "jci-audit-v1.2.0",
             work.path(),
-            false,
+            LocalCheckoutState {
+                deny_toml: false,
+                cargo_lock: false,
+            },
         )
         .unwrap_err();
         assert!(err.to_string().contains("checks.deny.passed"), "got: {err}");
