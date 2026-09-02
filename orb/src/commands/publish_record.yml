@@ -49,7 +49,7 @@ steps:
         name: Set PUBLISH flag
         command: echo 'export PUBLISH=true' >> "$BASH_ENV"
 - run:
-    name: 'Self-contained: sign and upload the release record. For a consumer with no circleci-toolkit-style signing facility of its own. Generates a one-use minisign keypair, signs the local record `release-prep` already wrote, uploads the record/.sig/.pub to the named release, and (with --publish) un-drafts it. The private key never leaves this one process. See jerus-org/jci-audit#75.'
+    name: 'Self-contained: sign and upload the release record.'
     command: <<include(scripts/publish_record.sh)>>
     environment:
       RELEASE_VERSION: << parameters.release_version >>

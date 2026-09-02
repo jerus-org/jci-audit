@@ -16,7 +16,7 @@ orbs:
   jci-audit: jerus-org/jci-audit@0.1.2
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.9
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.10
   # <<< gen-circleci-orb
 workflows:
   validation:
