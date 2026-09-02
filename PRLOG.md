@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.2(pr [#128])
+- deps: lock file maintenance(pr [#129])
 
 ## [0.1.2] - 2026-09-01
 
@@ -295,6 +296,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#123]: https://github.com/jerus-org/jci-audit/pull/123
 [#125]: https://github.com/jerus-org/jci-audit/pull/125
 [#128]: https://github.com/jerus-org/jci-audit/pull/128
+[#129]: https://github.com/jerus-org/jci-audit/pull/129
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.2...HEAD
 [0.1.2]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...v0.1.1
