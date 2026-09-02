@@ -390,16 +390,9 @@ fn run_prune(check: bool) -> Result<()> {
     Ok(())
 }
 
-/// Resolve the project root (deny.toml's own directory) by walking up from
-/// `start` — the same upward search `verify::verify_with` performs
-/// internally (`sync::locate_paths`), so this and that search never
-/// disagree about which directory is "the project root". Checking `start`
-/// itself directly (ignoring parents) would wrongly report no local
-/// checkout from any subdirectory of the actual project root. Resolved
-/// once by `run_verify` and shared, rather than re-walked separately by
-/// [`discover_local_record`] and the remote-fetch path's checkout check —
-/// they'd otherwise redo the same filesystem walk on every `verify` call
-/// (jerus-org/jci-audit#120).
+/// Resolve the project root (deny.toml's directory) by walking up from
+/// `start`. Resolved once by `run_verify` and shared, rather than re-walked
+/// separately by [`discover_local_record`] and the checkout check.
 fn project_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let (deny_path, _) = sync::locate_paths(start).ok()?;
     deny_path.parent().map(std::path::Path::to_path_buf)
@@ -683,10 +676,7 @@ mod tests {
 
     #[test]
     fn project_root_finds_it_from_a_subdirectory() {
-        // verify::verify_with resolves its root by walking UP from `start` to
-        // find deny.toml (sync::locate_paths) — this check must use the same
-        // search, or a run from e.g. `crates/jci-audit/` would wrongly decide
-        // no local checkout exists and fall back to the network.
+        // A run from e.g. `crates/jci-audit/` must still find the root above it.
         let repo = tempfile::tempdir().unwrap();
         write(&repo.path().join("deny.toml"), "");
         let subdir = repo.path().join("crates/jci-audit");

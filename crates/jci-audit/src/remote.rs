@@ -108,10 +108,8 @@ fn fetch_pubkey_from_sources(
     );
 }
 
-/// What of a full local re-verification's two prerequisites the caller
-/// found present, independent of whether *this version's* record is —
-/// used only to pick an accurate "not checked" reason on the remote-fetch
-/// path (jerus-org/jci-audit#120); it does not change which path runs.
+/// What of a full local re-verification's two prerequisites are present.
+/// Only affects which "not checked" reason is reported, not which path runs.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LocalCheckoutState {
     pub(crate) deny_toml: bool,
@@ -690,8 +688,6 @@ mod tests {
         assert_eq!(out.unchecked.len(), 2, "got {:?}", out.unchecked);
     }
 
-    /// #120: without a local checkout at all, the message correctly blames
-    /// the missing Cargo.lock/deny.toml.
     #[test]
     fn unchecked_message_blames_missing_checkout_when_there_is_none() {
         let rec = record_v4("abc1234def", true);
@@ -721,10 +717,8 @@ mod tests {
         );
     }
 
-    /// #120: from a real checkout that simply lacks this version's record
-    /// (the normal case post-jerus-org/jci-audit#75 phase 1 — records are
-    /// never committed), the message must not claim Cargo.lock/deny.toml are
-    /// absent, since they aren't.
+    /// Records are never committed (jerus-org/jci-audit#75), so this is the
+    /// normal case, not an edge case.
     #[test]
     fn unchecked_message_blames_the_missing_record_when_a_checkout_is_present() {
         let rec = record_v4("abc1234def", true);
@@ -759,9 +753,6 @@ mod tests {
         );
     }
 
-    /// deny.toml present but Cargo.lock missing (e.g. never generated) must
-    /// not be reported as "no local Cargo.lock/deny.toml" — deny.toml IS
-    /// there; only Cargo.lock is missing.
     #[test]
     fn unchecked_message_names_only_the_file_actually_missing() {
         let rec = record_v4("abc1234def", true);
