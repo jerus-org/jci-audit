@@ -1,10 +1,6 @@
 description: Run check command in a dedicated job.
 executor: default
 parameters:
-  manifest_path:
-    type: string
-    description: Path to the Cargo.toml (or its directory) to check
-    default: .
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -13,6 +9,10 @@ parameters:
     type: boolean
     description: Decrease logging verbosity
     default: false
+  manifest_path:
+    type: string
+    description: Path to the Cargo.toml (or its directory) to check
+    default: .
   deny_warnings:
     type: boolean
     description: Fail if the tools report any warning
@@ -38,7 +38,7 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - check:
-    manifest_path: << parameters.manifest_path >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
+    manifest_path: << parameters.manifest_path >>
     deny_warnings: << parameters.deny_warnings >>

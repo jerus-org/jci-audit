@@ -46,7 +46,7 @@ enum Commands {
     /// codes and surfaces stderr.
     Check {
         /// Path to the Cargo.toml (or its directory) to check.
-        #[arg(long, default_value = ".")]
+        #[arg(long, default_value = ".", help_heading = "Input")]
         manifest_path: std::path::PathBuf,
 
         #[command(flatten)]
@@ -64,19 +64,19 @@ enum Commands {
         ///
         /// Falls back to an environment variable when omitted, since release
         /// pipelines compute the version at runtime.
-        #[arg(long, value_name = "VERSION")]
+        #[arg(long, value_name = "VERSION", help_heading = "Version")]
         release_version: Option<String>,
 
         /// Env var NAME holding the release version (default SEMVER).
         ///
         /// Used when --release-version is not given.
-        #[arg(long)]
+        #[arg(long, help_heading = "Version")]
         version_env: Option<String>,
 
         /// Advisory-db root; cargo-deny's checkout lives beneath it.
         ///
         /// Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
-        #[arg(long)]
+        #[arg(long, help_heading = "Security")]
         advisory_db: Option<std::path::PathBuf>,
 
         #[command(flatten)]
@@ -88,7 +88,7 @@ enum Commands {
     /// truth.
     Sync {
         /// Fail (non-zero) on drift instead of rewriting the file. For CI.
-        #[arg(long)]
+        #[arg(long, help_heading = "CI")]
         check: bool,
     },
     /// Stale-ignore detector for advisory ignores that no longer fire.
@@ -97,7 +97,7 @@ enum Commands {
     /// applied) to find configured ignores that no longer fire.
     Prune {
         /// Fail (non-zero) when a stale ignore is found. For CI.
-        #[arg(long)]
+        #[arg(long, help_heading = "CI")]
         check: bool,
     },
     /// Re-verify a past release against its recorded advisory snapshot.
@@ -141,7 +141,7 @@ enum Commands {
     /// written files afterwards for anything project-specific.
     Init {
         /// Overwrite existing files without confirmation.
-        #[arg(long)]
+        #[arg(long, help_heading = "Overwrite")]
         force: bool,
     },
     /// Self-contained: sign and upload the release record.
@@ -157,27 +157,27 @@ enum Commands {
         ///
         /// Falls back to an environment variable when omitted, matching
         /// release-prep.
-        #[arg(long, value_name = "VERSION")]
+        #[arg(long, value_name = "VERSION", help_heading = "Version")]
         release_version: Option<String>,
 
         /// Env var NAME holding the release version (default SEMVER).
-        #[arg(long)]
+        #[arg(long, help_heading = "Version")]
         version_env: Option<String>,
 
         /// The exact release tag to attach assets to (e.g. "myapp-v1.2.0").
-        #[arg(long)]
+        #[arg(long, help_heading = "Remote release")]
         tag: String,
 
         /// GitHub repository owner that owns the release.
-        #[arg(long)]
+        #[arg(long, help_heading = "Remote release")]
         owner: String,
 
         /// GitHub repository name that owns the release.
-        #[arg(long)]
+        #[arg(long, help_heading = "Remote release")]
         repo: String,
 
         /// Un-draft the release once the assets are attached.
-        #[arg(long)]
+        #[arg(long, help_heading = "Record")]
         publish: bool,
 
         /// Where to find the record to sign and upload.
@@ -188,7 +188,7 @@ enum Commands {
         /// command run in different jobs and the record arrives via an
         /// attached workspace instead, e.g.
         /// `${WORKSPACE_ROOT}/.security/release-<VERSION>.json`.
-        #[arg(long, value_name = "PATH")]
+        #[arg(long, value_name = "PATH", help_heading = "Record")]
         record_path: Option<std::path::PathBuf>,
     },
 }

@@ -5,16 +5,22 @@ Self-contained: sign and upload the release record
 Usage: jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <REPO>
 
 Options:
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+Version:
       --release-version <VERSION>  The release version whose record to publish (e.g. "1.2.0")
-  -v, --verbose...                 Increase logging verbosity
-  -q, --quiet...                   Decrease logging verbosity
       --version-env <VERSION_ENV>  Env var NAME holding the release version (default SEMVER)
-      --tag <TAG>                  The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
-      --owner <OWNER>              GitHub repository owner that owns the release
-      --repo <REPO>                GitHub repository name that owns the release
-      --publish                    Un-draft the release once the assets are attached
-      --record-path <PATH>         Where to find the record to sign and upload
-  -h, --help                       Print help (see more with '--help')
+
+Remote release:
+      --tag <TAG>      The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
+      --owner <OWNER>  GitHub repository owner that owns the release
+      --repo <REPO>    GitHub repository name that owns the release
+
+Record:
+      --publish             Un-draft the release once the assets are attached
+      --record-path <PATH>  Where to find the record to sign and upload
 
 $ jci-audit publish-record --help
 Self-contained: sign and upload the release record.
@@ -24,20 +30,25 @@ For a consumer with no circleci-toolkit-style signing facility of its own. Gener
 Usage: jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <REPO>
 
 Options:
-      --release-version <VERSION>
-          The release version whose record to publish (e.g. "1.2.0").
-          
-          Falls back to an environment variable when omitted, matching release-prep.
-
   -v, --verbose...
           Increase logging verbosity
 
   -q, --quiet...
           Decrease logging verbosity
 
+  -h, --help
+          Print help (see a summary with '-h')
+
+Version:
+      --release-version <VERSION>
+          The release version whose record to publish (e.g. "1.2.0").
+          
+          Falls back to an environment variable when omitted, matching release-prep.
+
       --version-env <VERSION_ENV>
           Env var NAME holding the release version (default SEMVER)
 
+Remote release:
       --tag <TAG>
           The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
 
@@ -47,6 +58,7 @@ Options:
       --repo <REPO>
           GitHub repository name that owns the release
 
+Record:
       --publish
           Un-draft the release once the assets are attached
 
@@ -54,8 +66,5 @@ Options:
           Where to find the record to sign and upload.
           
           Defaults to `.security/release-<VERSION>.json` relative to the nearest deny.toml above the current directory — the same discovery `verify` uses. Override when release-prep and this command run in different jobs and the record arrives via an attached workspace instead, e.g. `${WORKSPACE_ROOT}/.security/release-<VERSION>.json`.
-
-  -h, --help
-          Print help (see a summary with '-h')
 
 ```

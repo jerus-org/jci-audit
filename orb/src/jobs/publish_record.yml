@@ -1,10 +1,6 @@
 description: Run publish-record command in a dedicated job.
 executor: default
 parameters:
-  release_version:
-    type: string
-    description: The release version whose record to publish (e.g. "1.2.0"). Falls back to an environment variable when omitted, matching release-prep.
-    default: ''
   verbose:
     type: boolean
     description: Increase logging verbosity
@@ -13,6 +9,10 @@ parameters:
     type: boolean
     description: Decrease logging verbosity
     default: false
+  release_version:
+    type: string
+    description: The release version whose record to publish (e.g. "1.2.0"). Falls back to an environment variable when omitted, matching release-prep.
+    default: ''
   tag:
     type: string
     description: The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
@@ -51,9 +51,9 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - publish_record:
-    release_version: << parameters.release_version >>
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
+    release_version: << parameters.release_version >>
     tag: << parameters.tag >>
     owner: << parameters.owner >>
     repo: << parameters.repo >>
