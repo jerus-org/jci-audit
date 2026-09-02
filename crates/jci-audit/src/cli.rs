@@ -124,13 +124,13 @@ enum Commands {
         tag_prefix: Option<String>,
 
         /// The crate's package name (its `[package].name` in Cargo.toml,
-        /// e.g. "jci-audit") — cargo's own `--package` convention. Resolved
-        /// against the release repo's workspace, for the stronger
+        /// e.g. "jci-audit") — cargo's own `-p`/`--package` convention.
+        /// Resolved against the release repo's workspace, for the stronger
         /// Cargo.toml pubkey source.
         ///
         /// Optional: without it, only the release's own .pub asset is
         /// checked. This source only runs when a package is given.
-        #[arg(long, help_heading = "Remote release")]
+        #[arg(short, long, help_heading = "Remote release")]
         package: Option<String>,
 
         #[command(flatten)]
@@ -1092,6 +1092,17 @@ mod tests {
                 assert_eq!(repo.as_deref(), Some("some-repo"));
                 assert_eq!(tag_prefix.as_deref(), Some("some-repo-v"));
             }
+            other => panic!("expected Verify, got {other:?}"),
+        }
+    }
+
+    /// cargo's own `-p`/`--package` convention (jerus-org/jci-audit#124).
+    #[test]
+    fn verify_package_accepts_the_short_flag() {
+        let cli = Cli::try_parse_from(["jci-audit", "verify", "1.2.0", "-p", "jci-audit"])
+            .expect("parses");
+        match cli.command {
+            Commands::Verify { package, .. } => assert_eq!(package.as_deref(), Some("jci-audit")),
             other => panic!("expected Verify, got {other:?}"),
         }
     }
