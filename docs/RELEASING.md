@@ -123,14 +123,17 @@ or `GITHUB_TOKEN` at all.
 ```bash
 jci-audit verify <version> \
   --owner jerus-org --repo jci-audit --tag-prefix jci-audit-v \
-  --repo-manifest-path crates/jci-audit/Cargo.toml
+  --package jci-audit
 ```
 
-`--repo-manifest-path` is optional and off by default — there is no general convention for where a
-crate's manifest lives, so the stronger Cargo.toml pubkey source ([design.md
-§5.4](design.md#54-verifying-without-a-checkout)) only runs when given explicitly
-([jerus-org/jci-audit#124](https://github.com/jerus-org/jci-audit/issues/124)). Without it,
-`verify` checks only the release's own `.pub` asset — sufficient for any consumer, since
+`--package` is optional and off by default — cargo's own `-p`/`--package` convention: name the
+crate, and `verify` resolves its manifest path itself from the release repo's workspace `Cargo.toml`
+(root package match, else each `[workspace].members` entry in turn — a workspace member listed as a
+glob can't be resolved this way, since `raw.githubusercontent.com` has no directory listing). Given,
+it enables the stronger Cargo.toml pubkey source ([design.md
+§5.4](design.md#54-verifying-without-a-checkout),
+[jerus-org/jci-audit#124](https://github.com/jerus-org/jci-audit/issues/124)). Without it, `verify`
+checks only the release's own `.pub` asset — sufficient for any consumer, since
 `jci-audit publish-record` always uploads one.
 
 ## Trust model summary

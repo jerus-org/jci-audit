@@ -123,15 +123,15 @@ enum Commands {
         #[arg(long, help_heading = "Remote release")]
         tag_prefix: Option<String>,
 
-        /// The crate's manifest path within the release repo (not on local
-        /// disk — e.g. "crates/jci-audit/Cargo.toml"), for the stronger
+        /// The crate's package name (its `[package].name` in Cargo.toml,
+        /// e.g. "jci-audit") — cargo's own `--package` convention. Resolved
+        /// against the release repo's workspace, for the stronger
         /// Cargo.toml pubkey source.
         ///
         /// Optional: without it, only the release's own .pub asset is
-        /// checked. There is no general convention for where a crate's
-        /// manifest lives, so this source only runs when given explicitly.
+        /// checked. This source only runs when a package is given.
         #[arg(long, help_heading = "Remote release")]
-        repo_manifest_path: Option<String>,
+        package: Option<String>,
 
         #[command(flatten)]
         output: ToolOutput,
@@ -214,7 +214,7 @@ impl Cli {
                 owner,
                 repo,
                 tag_prefix,
-                repo_manifest_path,
+                package,
                 output,
             } => run_verify(
                 release_version,
@@ -222,7 +222,7 @@ impl Cli {
                 owner.as_deref(),
                 repo.as_deref(),
                 tag_prefix.as_deref(),
-                repo_manifest_path.as_deref(),
+                package.as_deref(),
                 output,
                 detail,
             ),
@@ -426,7 +426,7 @@ fn run_verify(
     owner: Option<&str>,
     repo: Option<&str>,
     tag_prefix: Option<&str>,
-    repo_manifest_path: Option<&str>,
+    package: Option<&str>,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -479,7 +479,7 @@ fn run_verify(
             owner,
             repo,
             tag_prefix,
-            repo_manifest_path,
+            package,
             output,
             local_checkout,
         )
@@ -517,7 +517,7 @@ fn resolve_remote_target<'a>(
 ///
 /// Pulled out of [`run_verify_remote`] so the asset-first ordering is a
 /// plain, unit-testable fact rather than only an inline array literal.
-/// `manifest_source` is `None` when the caller gave no `--repo-manifest-path` —
+/// `manifest_source` is `None` when the caller gave no `--package` —
 /// there is no general convention for a crate's manifest location, so that
 /// source is opt-in, not a default (jerus-org/jci-audit#124).
 fn ordered_pubkey_sources<'a>(
@@ -540,7 +540,7 @@ fn run_verify_remote(
     owner: Option<&str>,
     repo: Option<&str>,
     tag_prefix: Option<&str>,
-    repo_manifest_path: Option<&str>,
+    package: Option<&str>,
     output: &ToolOutput,
     local_checkout: remote::LocalCheckoutState,
 ) -> Result<()> {
@@ -559,9 +559,9 @@ fn run_verify_remote(
     // crates.io/cargo-binstall signing convention (see remote.rs's module
     // docs for the full reasoning). Empty-but-set is treated as absent, same
     // rationale as GITHUB_TOKEN above.
-    let manifest_source = repo_manifest_path
+    let manifest_source = package
         .filter(|p| !p.is_empty())
-        .map(|path| remote::ManifestPubkeySource::new(owner, repo, path, token));
+        .map(|name| remote::ManifestPubkeySource::new(owner, repo, name, token));
     let asset_source = remote::AssetPubkeySource::new(&source);
     let pubkey_sources = ordered_pubkey_sources(&asset_source, manifest_source.as_ref());
     let work = release::work_dir();
@@ -1019,7 +1019,7 @@ mod tests {
         let manifest_source = remote::ManifestPubkeySource::new(
             "jerus-org",
             "jci-audit",
-            "crates/jci-audit/Cargo.toml",
+            "jci-audit",
             Some("unused-token".to_string()),
         );
         let asset =
@@ -1033,7 +1033,7 @@ mod tests {
     }
 
     /// #124: the manifest source is opt-in — omitted entirely when the
-    /// caller gives no `--repo-manifest-path`.
+    /// caller gives no `--package`.
     #[test]
     fn ordered_pubkey_sources_is_asset_only_without_a_manifest_path() {
         let asset =
