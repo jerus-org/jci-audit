@@ -20,9 +20,12 @@
 //! own release pipeline included. `verify_remote_with` takes an ordered list
 //! of sources and tries each in turn ([`fetch_pubkey_from_sources`]) with no
 //! built-in preference of its own; the *caller* decides the order.
-//! `cli.rs::run_verify_remote` tries [`AssetPubkeySource`] first, since it
-//! depends on nothing about how the release was published, then
-//! [`ManifestPubkeySource`]. Deliberately built as a small trait rather than
+//! `cli.rs::run_verify_remote` always tries [`AssetPubkeySource`] first,
+//! since it depends on nothing about how the release was published, then
+//! [`ManifestPubkeySource`] — but only when the caller opts in with
+//! `--manifest-path` (jerus-org/jci-audit#124): there is no general
+//! convention for where a crate's manifest lives, so this source is never
+//! tried by default. Deliberately built as a small trait rather than
 //! hardcoded fetches: a future source (a different registry, a different
 //! language's convention) is just another implementation, not a change to
 //! this flow.
@@ -186,14 +189,90 @@ fn extract_pubkey_from_manifest(cargo_toml: &str) -> Result<String> {
         )
 }
 
+/// Extract `[package].name` from a manifest's text, or `None` for a
+/// workspace root with no package of its own.
+fn extract_package_name(cargo_toml: &str) -> Option<String> {
+    let doc: toml_edit::DocumentMut = cargo_toml.parse().ok()?;
+    doc.get("package")?
+        .get("name")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// Extract `[workspace].members` from a manifest's text, or empty when
+/// there is no workspace table or no members array.
+fn extract_workspace_members(cargo_toml: &str) -> Vec<String> {
+    let Ok(doc) = cargo_toml.parse::<toml_edit::DocumentMut>() else {
+        return Vec::new();
+    };
+    doc.get("workspace")
+        .and_then(|w| w.get("members"))
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// True for a `[workspace.members]` entry that names a glob rather than a
+/// literal directory. Resolving a glob needs a directory listing, which
+/// `raw.githubusercontent.com` cannot provide — every repo in this org lists
+/// members explicitly rather than by glob, so this is the unsupported case,
+/// not the common one.
+fn is_glob_member(member: &str) -> bool {
+    member.contains(['*', '?', '['])
+}
+
+/// Find the manifest, among the workspace root and its members, whose
+/// `[package].name` is `package` — cargo's own `-p`/`--package` semantics
+/// (jerus-org/jci-audit#124), rather than asking the caller for a raw path.
+/// `fetch_member` fetches one member's `Cargo.toml` by its workspace-relative
+/// directory; kept as a closure so this resolution logic is unit-testable
+/// without a network call.
+fn resolve_package_manifest(
+    root_manifest: &str,
+    package: &str,
+    fetch_member: impl Fn(&str) -> Result<String>,
+) -> Result<String> {
+    if extract_package_name(root_manifest).as_deref() == Some(package) {
+        return Ok(root_manifest.to_string());
+    }
+    let members = extract_workspace_members(root_manifest);
+    let mut skipped_globs = Vec::new();
+    for member in &members {
+        if is_glob_member(member) {
+            skipped_globs.push(member.clone());
+            continue;
+        }
+        let content = fetch_member(member)?;
+        if extract_package_name(&content).as_deref() == Some(package) {
+            return Ok(content);
+        }
+    }
+    let mut msg = format!(
+        "package '{package}' not found in the workspace (checked root + members: {})",
+        members.join(", ")
+    );
+    if !skipped_globs.is_empty() {
+        msg += &format!(
+            " — skipped glob member(s), not resolvable without a directory listing: {}",
+            skipped_globs.join(", ")
+        );
+    }
+    bail!(msg)
+}
+
 /// Re-verify a published release's record from its release assets alone, no
 /// checkout required. `tag` is the full release tag (e.g. `jci-audit-v1.2.0`).
 /// `pubkey_sources` are tried in the order given — the caller decides that
 /// order, deliberately: this function has no built-in opinion on which
-/// source to prefer. Callers should put the strongest available source
-/// first (e.g. [`ManifestPubkeySource`] before [`AssetPubkeySource`] — see
-/// the module docs for why the manifest source is the stronger one) rather
-/// than defaulting to whichever is more convenient to construct.
+/// source to prefer. `cli.rs::run_verify_remote` puts [`AssetPubkeySource`]
+/// first, since it depends on nothing about how the release was published,
+/// then [`ManifestPubkeySource`] when the caller opted into it — see the
+/// module docs; neither is independently stronger for jci-audit's own
+/// releases (`docs/assurance-case.md` T9 has the full accounting).
 pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     runner: &R,
     source: &S,
@@ -281,8 +360,8 @@ pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
 /// (`release-<VERSION>.json.pub`) via the same [`ReleaseAssetSource`]
 /// already used for the record and signature — the intended long-term path,
 /// and the only source generally available to a non-Rust/non-crates.io
-/// consumer. Weaker than [`ManifestPubkeySource`] when both exist for the
-/// same release — see the module docs.
+/// consumer. Always tried, unlike the opt-in [`ManifestPubkeySource`] — see
+/// the module docs for how the two compare.
 pub(crate) struct AssetPubkeySource<'a, S: ReleaseAssetSource>(&'a S);
 
 impl<'a, S: ReleaseAssetSource> AssetPubkeySource<'a, S> {
@@ -309,14 +388,11 @@ impl<S: ReleaseAssetSource> PubkeySource for AssetPubkeySource<'_, S> {
     }
 }
 
-/// This crate's manifest path, relative to the repo root — used to build
-/// the raw-content URL [`ManifestPubkeySource`] fetches. Hardcoded rather
-/// than derived from the target repo's own layout (jerus-org/jci-audit#124).
-const MANIFEST_PATH: &str = "crates/jci-audit/Cargo.toml";
-
-/// The raw-content URL for this repo's `Cargo.toml` as it stood at `tag`.
-fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
-    format!("https://raw.githubusercontent.com/{owner}/{repo}/refs/tags/{tag}/{MANIFEST_PATH}")
+/// The raw-content URL for a file at the given repo-relative `path` as it
+/// stood at `tag` — used for both the workspace root `Cargo.toml` and, when
+/// resolving a workspace member, its `Cargo.toml` too.
+fn raw_manifest_url(owner: &str, repo: &str, tag: &str, path: &str) -> String {
+    format!("https://raw.githubusercontent.com/{owner}/{repo}/refs/tags/{tag}/{path}")
 }
 
 /// How long the manifest fetch waits before giving up. Without this, an
@@ -324,21 +400,24 @@ fn raw_manifest_url(owner: &str, repo: &str, tag: &str) -> String {
 /// indefinitely inside the single-threaded runtime below.
 const MANIFEST_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// [`PubkeySource`] that fetches the release tag's raw `Cargo.toml` and
-/// reads the pubkey `inject_pubkey_and_amend` writes there under
+/// [`PubkeySource`] that fetches the release tag's raw `Cargo.toml` (and, in
+/// a workspace, whichever member's manifest matches `package`) and reads the
+/// pubkey `inject_pubkey_and_amend` writes there under
 /// `[package.metadata.binstall.signing]` — the convention `cargo binstall`
-/// itself defines. [`MANIFEST_PATH`] is currently hardcoded to this repo's
-/// own layout (jerus-org/jci-audit#124). Also trusts a **mutable** git tag
-/// ref, with no immutability guarantee — see the module docs.
-/// This reads exactly the content crates.io itself received for that
-/// release: `cargo publish` packages the commit at the pushed tag verbatim,
-/// so the tag's `Cargo.toml` and the one crates.io has are byte-identical.
-/// Fetched via the git tag rather than crates.io's own API because
-/// crates.io has no endpoint that serves raw file contents — only package
-/// metadata and the packed `.crate` tarball.
+/// itself defines. `package` is caller-supplied, cargo's own `-p`/`--package`
+/// convention (jerus-org/jci-audit#124) — this source only runs when the
+/// caller opts in. Also trusts a **mutable** git tag ref, with no
+/// immutability guarantee — see the module docs. This reads exactly the
+/// content crates.io itself received for that release: `cargo publish`
+/// packages the commit at the pushed tag verbatim, so the tag's `Cargo.toml`
+/// and the one crates.io has are byte-identical. Fetched via the git tag
+/// rather than crates.io's own API because crates.io has no endpoint that
+/// serves raw file contents — only package metadata and the packed
+/// `.crate` tarball.
 pub(crate) struct ManifestPubkeySource {
     owner: String,
     repo: String,
+    package: String,
     // `None` sends no Authorization header at all (jerus-org/jci-audit#103)
     // — GitHub treats an *empty* bearer token as invalid credentials, not
     // as anonymous, so an empty string here would be the wrong "no token".
@@ -349,11 +428,13 @@ impl ManifestPubkeySource {
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
+        package: impl Into<String>,
         github_token: Option<String>,
     ) -> Self {
         Self {
             owner: owner.into(),
             repo: repo.into(),
+            package: package.into(),
             github_token,
         }
     }
@@ -367,13 +448,12 @@ impl ManifestPubkeySource {
             .context("failed to start an async runtime for the manifest fetch")
             .map(|rt| rt.block_on(fut))
     }
-}
 
-impl PubkeySource for ManifestPubkeySource {
-    fn fetch_pubkey(&self, tag: &str, _version: &str) -> Result<String> {
-        let url = raw_manifest_url(&self.owner, &self.repo, tag);
+    /// Fetch one raw file's text content at `tag`, relative to the repo root.
+    fn fetch_raw(&self, tag: &str, path: &str) -> Result<String> {
+        let url = raw_manifest_url(&self.owner, &self.repo, tag, path);
         let token = self.github_token.clone();
-        let manifest: String = Self::block_on(async move {
+        Self::block_on(async move {
             let client = reqwest::Client::builder()
                 .timeout(MANIFEST_FETCH_TIMEOUT)
                 .build()
@@ -400,8 +480,17 @@ impl PubkeySource for ManifestPubkeySource {
             // explicit `String::from_utf8` check on the same failure class).
             String::from_utf8(body.to_vec())
                 .with_context(|| format!("body of '{url}' is not valid UTF-8"))
-        })??;
-        extract_pubkey_from_manifest(&manifest)
+        })?
+    }
+}
+
+impl PubkeySource for ManifestPubkeySource {
+    fn fetch_pubkey(&self, tag: &str, _version: &str) -> Result<String> {
+        let root = self.fetch_raw(tag, "Cargo.toml")?;
+        let matched = resolve_package_manifest(&root, &self.package, |member| {
+            self.fetch_raw(tag, &format!("{member}/Cargo.toml"))
+        })?;
+        extract_pubkey_from_manifest(&matched)
     }
 
     fn name(&self) -> &str {
@@ -465,7 +554,7 @@ mod tests {
     fn manifest_pubkey_source_builds_without_a_token() {
         // Constructibility only (jerus-org/jci-audit#103) — the actual
         // unauthenticated fetch needs a live network call.
-        let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", None);
+        let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", "jci-audit", None);
     }
 
     #[test]
@@ -474,8 +563,13 @@ mod tests {
     }
 
     #[test]
-    fn raw_manifest_url_targets_this_repos_crate_layout() {
-        let url = raw_manifest_url("jerus-org", "jci-audit", "jci-audit-v1.2.0");
+    fn raw_manifest_url_uses_the_given_path() {
+        let url = raw_manifest_url(
+            "jerus-org",
+            "jci-audit",
+            "jci-audit-v1.2.0",
+            "crates/jci-audit/Cargo.toml",
+        );
         assert_eq!(
             url,
             "https://raw.githubusercontent.com/jerus-org/jci-audit/refs/tags/\
@@ -500,6 +594,88 @@ mod tests {
     fn extract_pubkey_from_manifest_errors_when_the_table_is_absent() {
         let err = extract_pubkey_from_manifest("[package]\nname = \"jci-audit\"\n").unwrap_err();
         assert!(err.to_string().contains("pubkey"), "got: {err}");
+    }
+
+    // ── #124 round 2: resolve a workspace package by name, cargo-style ─────
+
+    #[test]
+    fn extract_package_name_reads_the_package_table() {
+        assert_eq!(
+            extract_package_name("[package]\nname = \"jci-audit\"\n"),
+            Some("jci-audit".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_package_name_is_none_without_a_package_table() {
+        assert_eq!(
+            extract_package_name("[workspace]\nmembers = [\"crates/foo\"]\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn extract_workspace_members_reads_the_members_array() {
+        assert_eq!(
+            extract_workspace_members("[workspace]\nmembers = [\"crates/foo\", \"crates/bar\"]\n"),
+            vec!["crates/foo".to_string(), "crates/bar".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_workspace_members_is_empty_without_a_workspace_table() {
+        assert!(extract_workspace_members("[package]\nname = \"solo\"\n").is_empty());
+    }
+
+    #[test]
+    fn is_glob_member_detects_wildcards() {
+        assert!(is_glob_member("crates/*"));
+        assert!(is_glob_member("crates/pkg-?"));
+        assert!(!is_glob_member("crates/jci-audit"));
+    }
+
+    #[test]
+    fn resolve_package_manifest_matches_the_root_package() {
+        let root = "[package]\nname = \"solo\"\n";
+        let matched =
+            resolve_package_manifest(root, "solo", |_member| unreachable!("no members to fetch"))
+                .unwrap();
+        assert_eq!(matched, root);
+    }
+
+    #[test]
+    fn resolve_package_manifest_checks_each_member_in_order() {
+        let root = "[workspace]\nmembers = [\"crates/foo\", \"crates/bar\"]\n";
+        let bar_manifest = "[package]\nname = \"bar\"\n";
+        let matched = resolve_package_manifest(root, "bar", |member| match member {
+            "crates/foo" => Ok("[package]\nname = \"foo\"\n".to_string()),
+            "crates/bar" => Ok(bar_manifest.to_string()),
+            other => panic!("unexpected member: {other}"),
+        })
+        .unwrap();
+        assert_eq!(matched, bar_manifest);
+    }
+
+    #[test]
+    fn resolve_package_manifest_skips_glob_members_and_errors_naming_them() {
+        let root = "[workspace]\nmembers = [\"crates/*\"]\n";
+        let err = resolve_package_manifest(root, "anything", |_member| {
+            unreachable!("glob members must never be fetched")
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("crates/*"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_package_manifest_errors_naming_the_package_and_checked_members() {
+        let root = "[workspace]\nmembers = [\"crates/foo\"]\n";
+        let err = resolve_package_manifest(root, "missing", |_member| {
+            Ok("[package]\nname = \"foo\"\n".to_string())
+        })
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("missing"), "got: {msg}");
+        assert!(msg.contains("crates/foo"), "got: {msg}");
     }
 
     #[test]

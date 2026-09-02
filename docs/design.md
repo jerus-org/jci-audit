@@ -246,11 +246,16 @@ narrower check than §5.3, not the same one run against fetched bytes. The fallb
    wrong).
 2. Find the pubkey that signed it from an ordered list of `PubkeySource`s — `cli.rs::
    run_verify_remote` tries `AssetPubkeySource` (the record's own `.pub` release asset, parsed for
-   the bare key) before `ManifestPubkeySource` (the release tag's raw `Cargo.toml`, read for
-   `[package.metadata.binstall.signing].pubkey`, the convention `cargo binstall` itself defines).
-   Asset first because it depends on nothing about how the release was published; the manifest
-   source depends on that crates.io/cargo-binstall convention, which jci-audit's own release
-   pipeline uses. Neither is an independently stronger guarantee than the other where both apply:
+   the bare key), then, when `--package` is given, `ManifestPubkeySource` (`remote::
+   resolve_package_manifest`: fetches the release tag's raw workspace `Cargo.toml`, matches it
+   against `--package` by `[package].name`, and if it doesn't match, tries each
+   `[workspace].members` entry's own `Cargo.toml` in turn — a glob member is skipped, since
+   `raw.githubusercontent.com` has no directory listing to resolve it against; the matched
+   manifest is read for `[package.metadata.binstall.signing].pubkey`, the convention `cargo
+   binstall` itself defines). Asset first because it depends on nothing about how the release was
+   published; the manifest source depends on that crates.io/cargo-binstall convention and the
+   caller knowing the package name (jerus-org/jci-audit#124), so it's opt-in rather than a
+   default. Neither is an independently stronger guarantee than the other where both apply:
    in jci-audit's own pipeline both sources currently trace back to the same CI job and credentials
    (T9 of `docs/assurance-case.md` has the full, honest accounting).
 3. Check the record's minisign signature against that pubkey, by shelling to `rsign verify`

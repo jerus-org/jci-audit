@@ -19,6 +19,7 @@ Remote release:
       --owner <OWNER>            GitHub repository owner that published the release (e.g. "jerus-org")
       --repo <REPO>              GitHub repository name that published the release (e.g. "jci-audit")
       --tag-prefix <TAG_PREFIX>  Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
+  -p, --package <PACKAGE>        The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved against the release repo's workspace, for the stronger Cargo.toml pubkey source
 
 Output:
       --deny-warnings  Fail if the tools report any warning
@@ -63,6 +64,11 @@ Remote release:
 
       --tag-prefix <TAG_PREFIX>
           Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
+
+  -p, --package <PACKAGE>
+          The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved against the release repo's workspace, for the stronger Cargo.toml pubkey source.
+          
+          Optional: without it, only the release's own .pub asset is checked. This source only runs when a package is given.
 
 Output:
       --deny-warnings
