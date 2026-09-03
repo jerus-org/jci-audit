@@ -101,6 +101,10 @@ currently operate at the whole-workspace level, and `pcu` releases its crates in
 dependency order (see the garden-level `CLAUDE.md`'s release sequence). This is a deliberate minor
 release, not folded into the routine patch releases Phase 0-2 bugfixes have been shipping as.
 
+- **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
+  Prerequisite, must land first. `cargo-about`/`cargo-audit`/`cargo-deny`/`rsign2` install
+  completely unpinned today — mirror `ci-container`'s `# renovate: datasource=crate ...` + explicit
+  `--version` pattern so a rebuild is traceable/auditable instead of silently floating to newest.
 - **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
   Add a `pcu release package <PACKAGE>`-equivalent selector to `release-prep`/`verify`, scoping
   the dependency digest and advisory gate to one crate's reachable graph instead of the whole
