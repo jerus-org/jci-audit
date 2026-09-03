@@ -5,9 +5,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-09-03
+
+Summary: Chore[1], Documentation[1], Fixed[6]
+
+### Fixed
+
+ - fix: verify preflight + dedupe metadata call
+ - fix: derive about.toml paths from cargo metadata
+ - fix: resolve manifest by package, not raw path
+ - fix: make manifest pubkey source opt-in
+ - fix: address code-review findings on #120
+ - fix: accurate reason on the remote verify path
+
 ## [0.1.3] - 2026-09-02
 
-Summary: Chore[3]
+Summary: Chore[4]
 
 ## [0.1.2] - 2026-09-01
 
@@ -168,7 +181,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/jerus-org/jci-audit/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jerus-org/jci-audit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jerus-org/jci-audit/compare/v0.0.7...v0.1.0
