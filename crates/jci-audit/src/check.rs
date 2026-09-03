@@ -87,9 +87,11 @@ impl CheckReport {
 }
 
 // Tools are invoked as their STANDALONE binaries (`cargo-deny`, `cargo-audit`)
-// rather than via `cargo <sub>`, so they run in a cargo-less executor image
-// (the orb runtime ships the tool binaries but no Rust toolchain). Both forms
-// resolve to the same binaries on a dev machine.
+// rather than via `cargo <sub>`, matching how preflight.rs probes them. Both
+// forms resolve to the same binaries — the orb's executor image ships a full
+// Rust toolchain alongside these tool binaries (it's built `FROM
+// rust:*-slim`), so this is a presence-detection choice, not a constraint
+// imposed by a toolchain-less environment.
 
 /// cargo-deny standalone: full policy enforcement.
 const DENY_ARGS: &[&str] = &["check", "advisories", "bans", "licenses", "sources"];
@@ -342,8 +344,9 @@ mod tests {
 
         let calls = runner.calls.borrow();
         assert_eq!(calls.len(), 3);
-        // Standalone binaries (no `cargo` dispatch) so the tools run in a
-        // cargo-less executor image.
+        // Standalone binaries (no `cargo` dispatch) — matches how
+        // preflight.rs probes them; the executor image has a full Rust
+        // toolchain regardless (see check.rs's module comment above).
         assert_eq!(
             calls[0],
             vec![

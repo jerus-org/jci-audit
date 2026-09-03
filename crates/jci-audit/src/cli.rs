@@ -252,8 +252,10 @@ fn run_check(
     detail: diagnostics::Detail,
 ) -> Result<()> {
     // Tool::Cargo: the about.toml drift step shells out to `cargo metadata`
-    // per crate. Tool::CargoAbout: the resolution step — the others are
-    // standalone binaries and work cargo-less.
+    // per crate. Tool::CargoAbout: the resolution step. All four are always
+    // present in the orb's executor image (a full Rust toolchain alongside
+    // the tool binaries); preflighting each still fails loudly and
+    // actionably on a workstation missing one, rather than mid-run.
     preflight::ensure_available(&[
         Tool::CargoDeny,
         Tool::CargoAudit,
