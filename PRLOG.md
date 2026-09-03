@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- chore-replace redundant method-call closures(pr [#137])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.3(pr [#132])
@@ -317,6 +321,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#133]: https://github.com/jerus-org/jci-audit/pull/133
 [#134]: https://github.com/jerus-org/jci-audit/pull/134
 [#135]: https://github.com/jerus-org/jci-audit/pull/135
+[#137]: https://github.com/jerus-org/jci-audit/pull/137
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.3...HEAD
 [0.1.3]: https://github.com/jerus-org/jci-audit/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/jerus-org/jci-audit/compare/v0.1.1...v0.1.2
