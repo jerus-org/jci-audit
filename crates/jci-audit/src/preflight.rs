@@ -108,7 +108,7 @@ pub(crate) fn missing_tools(tools: &[Tool], probe: impl Fn(&Tool) -> bool) -> Ve
 /// Ensure every tool in `tools` is available on PATH, or return an error that
 /// names each missing tool and how to install it.
 pub(crate) fn ensure_available(tools: &[Tool]) -> Result<()> {
-    let missing = missing_tools(tools, |t| t.is_present());
+    let missing = missing_tools(tools, Tool::is_present);
     if missing.is_empty() {
         return Ok(());
     }
