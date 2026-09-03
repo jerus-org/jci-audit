@@ -556,7 +556,7 @@ fn run_verify_remote(
     // getting an opaque 401 from GitHub.
     let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
     let tag = format!("{tag_prefix}{version}");
-    let source = remote::PcuAssetSource::new(owner, repo, token.clone());
+    let source = remote::PcuAssetSource::new(owner, repo, token.clone())?;
     // Asset first: the release's own `.pub` asset (jerus-org/jci-audit#75
     // phase 2) depends on nothing about how the release was published, so
     // it's tried before the manifest source, which depends on the
@@ -565,7 +565,8 @@ fn run_verify_remote(
     // rationale as GITHUB_TOKEN above.
     let manifest_source = package
         .filter(|p| !p.is_empty())
-        .map(|name| remote::ManifestPubkeySource::new(owner, repo, name, token));
+        .map(|name| remote::ManifestPubkeySource::new(owner, repo, name, token))
+        .transpose()?;
     let asset_source = remote::AssetPubkeySource::new(&source);
     let pubkey_sources = ordered_pubkey_sources(&asset_source, manifest_source.as_ref());
     let work = release::work_dir();
@@ -674,7 +675,7 @@ fn run_publish_record(
         .context("GITHUB_TOKEN must be set to upload release assets")?;
     let cwd = std::env::current_dir()?;
     let record_path = resolve_publish_record_path(&cwd, version, record_path_override)?;
-    let publisher = publish_record::PcuAssetWriter::new(owner, repo, token);
+    let publisher = publish_record::PcuAssetWriter::new(owner, repo, token)?;
     let work = publish_record::work_dir();
     tracing::info!(version, tag, owner, repo, publish, "publish-record");
 
@@ -1025,9 +1026,11 @@ mod tests {
             "jci-audit",
             "jci-audit",
             Some("unused-token".to_string()),
-        );
+        )
+        .unwrap();
         let asset =
-            remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()));
+            remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()))
+                .unwrap();
         let asset_source = remote::AssetPubkeySource::new(&asset);
 
         let sources = ordered_pubkey_sources(&asset_source, Some(&manifest_source));
@@ -1041,7 +1044,8 @@ mod tests {
     #[test]
     fn ordered_pubkey_sources_is_asset_only_without_a_manifest_path() {
         let asset =
-            remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()));
+            remote::PcuAssetSource::new("jerus-org", "jci-audit", Some("unused-token".to_string()))
+                .unwrap();
         let asset_source = remote::AssetPubkeySource::new(&asset);
 
         let sources = ordered_pubkey_sources(&asset_source, None);

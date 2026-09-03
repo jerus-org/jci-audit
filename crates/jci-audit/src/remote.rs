@@ -422,6 +422,11 @@ pub(crate) struct ManifestPubkeySource {
     // — GitHub treats an *empty* bearer token as invalid credentials, not
     // as anonymous, so an empty string here would be the wrong "no token".
     github_token: Option<String>,
+    // One runtime per instance, built once here and reused by every
+    // `block_on` call below — jerus-org/jci-audit#111. `fetch_pubkey` can
+    // call `fetch_raw` more than once (the root manifest, then a workspace
+    // member's), and used to pay a full runtime setup/teardown each time.
+    runtime: tokio::runtime::Runtime,
 }
 
 impl ManifestPubkeySource {
@@ -430,30 +435,28 @@ impl ManifestPubkeySource {
         repo: impl Into<String>,
         package: impl Into<String>,
         github_token: Option<String>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             owner: owner.into(),
             repo: repo.into(),
             package: package.into(),
             github_token,
-        }
+            runtime: tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context("failed to start an async runtime for the manifest fetch")?,
+        })
     }
 
-    /// One call, one runtime — this is an occasional CLI invocation, not a
-    /// server; there is no benefit to keeping a runtime alive across calls.
-    fn block_on<F: std::future::Future>(fut: F) -> Result<F::Output> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .context("failed to start an async runtime for the manifest fetch")
-            .map(|rt| rt.block_on(fut))
+    fn block_on<F: std::future::Future>(&self, fut: F) -> F::Output {
+        self.runtime.block_on(fut)
     }
 
     /// Fetch one raw file's text content at `tag`, relative to the repo root.
     fn fetch_raw(&self, tag: &str, path: &str) -> Result<String> {
         let url = raw_manifest_url(&self.owner, &self.repo, tag, path);
         let token = self.github_token.clone();
-        Self::block_on(async move {
+        self.block_on(async move {
             let client = reqwest::Client::builder()
                 .timeout(MANIFEST_FETCH_TIMEOUT)
                 .build()
@@ -480,7 +483,7 @@ impl ManifestPubkeySource {
             // explicit `String::from_utf8` check on the same failure class).
             String::from_utf8(body.to_vec())
                 .with_context(|| format!("body of '{url}' is not valid UTF-8"))
-        })?
+        })
     }
 }
 
@@ -501,6 +504,11 @@ impl PubkeySource for ManifestPubkeySource {
 /// Real [`ReleaseAssetSource`], backed by `pcu-release-assets`.
 pub(crate) struct PcuAssetSource {
     client: pcu_release_assets::ReleaseAssetClient,
+    // One runtime per instance, built once here and reused by every
+    // `block_on` call below — jerus-org/jci-audit#111. `verify`'s remote
+    // path fetches multiple assets (record, `.sig`, `.pub`) from the same
+    // instance, and used to pay a full runtime setup/teardown each time.
+    runtime: tokio::runtime::Runtime,
 }
 
 impl PcuAssetSource {
@@ -513,28 +521,28 @@ impl PcuAssetSource {
         owner: impl Into<String>,
         repo: impl Into<String>,
         github_token: Option<String>,
-    ) -> Self {
+    ) -> Result<Self> {
         let client = match github_token {
             Some(token) => pcu_release_assets::ReleaseAssetClient::new(owner, repo, token),
             None => pcu_release_assets::ReleaseAssetClient::new_unauthenticated(owner, repo),
         };
-        Self { client }
+        Ok(Self {
+            client,
+            runtime: tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context("failed to start an async runtime for the release-asset fetch")?,
+        })
     }
 
-    /// One call, one runtime — this is an occasional CLI invocation, not a
-    /// server; there is no benefit to keeping a runtime alive across calls.
-    fn block_on<F: std::future::Future>(fut: F) -> Result<F::Output> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .context("failed to start an async runtime for the release-asset fetch")
-            .map(|rt| rt.block_on(fut))
+    fn block_on<F: std::future::Future>(&self, fut: F) -> F::Output {
+        self.runtime.block_on(fut)
     }
 }
 
 impl ReleaseAssetSource for PcuAssetSource {
     fn fetch_asset(&self, tag: &str, asset_name: &str) -> Result<Vec<u8>> {
-        Self::block_on(self.client.download_release_asset(tag, asset_name))?
+        self.block_on(self.client.download_release_asset(tag, asset_name))
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
 }
@@ -554,12 +562,37 @@ mod tests {
     fn manifest_pubkey_source_builds_without_a_token() {
         // Constructibility only (jerus-org/jci-audit#103) — the actual
         // unauthenticated fetch needs a live network call.
-        let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", "jci-audit", None);
+        let _source = ManifestPubkeySource::new("jerus-org", "jci-audit", "jci-audit", None)
+            .expect("runtime construction should not fail");
     }
 
     #[test]
     fn pcu_asset_source_builds_without_a_token() {
-        let _source = PcuAssetSource::new("jerus-org", "jci-audit", None);
+        let _source = PcuAssetSource::new("jerus-org", "jci-audit", None)
+            .expect("runtime construction should not fail");
+    }
+
+    /// jerus-org/jci-audit#111: `block_on` used to build a brand-new tokio
+    /// runtime on every call — two calls on the same instance would run on
+    /// two different runtimes. Comparing `Handle::current().id()` (stable,
+    /// distinct per `Runtime::build()`) across two calls proves the fix:
+    /// same instance, same runtime, both times.
+    #[test]
+    fn manifest_pubkey_source_reuses_its_runtime_across_calls() {
+        let source = ManifestPubkeySource::new("jerus-org", "jci-audit", "jci-audit", None)
+            .expect("runtime construction should not fail");
+        let id1 = source.block_on(async { tokio::runtime::Handle::current().id() });
+        let id2 = source.block_on(async { tokio::runtime::Handle::current().id() });
+        assert_eq!(id1, id2, "block_on should reuse one runtime per instance");
+    }
+
+    #[test]
+    fn pcu_asset_source_reuses_its_runtime_across_calls() {
+        let source = PcuAssetSource::new("jerus-org", "jci-audit", None)
+            .expect("runtime construction should not fail");
+        let id1 = source.block_on(async { tokio::runtime::Handle::current().id() });
+        let id2 = source.block_on(async { tokio::runtime::Handle::current().id() });
+        assert_eq!(id1, id2, "block_on should reuse one runtime per instance");
     }
 
     #[test]
