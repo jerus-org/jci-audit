@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-08-27._
+_Last updated: 2026-09-03._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -16,7 +16,7 @@ into themes and horizons.
 
 ## Current status
 
-jci-audit is **pre-1.0, currently `0.1.1`** — published bin-only (no importable `[lib]` target,
+jci-audit is **pre-1.0, currently `0.1.5`** — published bin-only (no importable `[lib]` target,
 [#90](https://github.com/jerus-org/jci-audit/issues/90)) and, unlike every earlier version, both
 installable and verifiable. **`0.0.1`–`0.1.0` are yanked**: `0.0.1`–`0.0.7` for the
 accidentally-importable library (#90), and `0.1.0` because its release-security-record was
@@ -89,19 +89,38 @@ version tag itself, and still gate consumer migration.
   standardize each `deny.toml` on the shared template; retire ad-hoc `--ignore` CI flags. Deferred
   until the remaining preview gates above (jrussell.ie page merged, announcement drafted) are
   met — no repo should be told to adopt a tool with no docs or public credibility signal yet.
+  **Exception: `pcu`** — see the `v0.2.0` section below; it's blocked on a real capability gap,
+  not just on the general readiness gates.
+
+## Next: `v0.2.0` — per-crate release/verify
+
+Promoted off the backlog, 2026-09-03. `jci-audit` is already past `0.1.0` as a version number
+(however incidentally — see Current status above), and `pcu` — a real multi-crate workspace in
+this org — cannot adopt `jci-audit` as its release gate until this ships: `release-prep`/`verify`
+currently operate at the whole-workspace level, and `pcu` releases its crates individually, in
+dependency order (see the garden-level `CLAUDE.md`'s release sequence). This is a deliberate minor
+release, not folded into the routine patch releases Phase 0-2 bugfixes have been shipping as.
+
+- **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
+  Prerequisite, must land first. `cargo-about`/`cargo-audit`/`cargo-deny`/`rsign2` install
+  completely unpinned today — mirror `ci-container`'s `# renovate: datasource=crate ...` + explicit
+  `--version` pattern so a rebuild is traceable/auditable instead of silently floating to newest.
+- **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
+  Add a `pcu release package <PACKAGE>`-equivalent selector to `release-prep`/`verify`, scoping
+  the dependency digest and advisory gate to one crate's reachable graph instead of the whole
+  workspace `Cargo.lock`, and giving the release record a crate-name-qualified path so multiple
+  crates can release under different versions in one pipeline run without colliding.
 
 ## Backlog (tracked as issues, not yet scheduled)
 
-- **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
-  Support the release pattern used in `pcu`: let the user choose crate release order in a
-  multi-crate workspace, so a dependent crate releases against its dependency's latest version.
 - **[#63 — `license_scope` and `about.toml`'s `ignore-build-dependencies`/`ignore-transitive-dependencies`.](https://github.com/jerus-org/jci-audit/issues/63)**
   Honour those settings in the derivation instead of always including build dependencies.
 - **[#49 — accept warnings at release time and record the acceptances.](https://github.com/jerus-org/jci-audit/issues/49)**
 - **[#36 — run `licenses-check` in validation so notices cannot go stale.](https://github.com/jerus-org/jci-audit/issues/36)**
 - **[#31 — resolve the cargo-deny warnings (unmatched license allowances, duplicate syn).](https://github.com/jerus-org/jci-audit/issues/31)**
 - **[#100 — `about.toml` sync assumes a `crates/*/` layout instead of reading the workspace manifest.](https://github.com/jerus-org/jci-audit/issues/100)**
-  A workspace laid out any other way silently never gets its `about.toml` synced.
+  ✅ Done — `find_about_toml_paths`/`about_toml_digest` now derive workspace members from
+  `cargo metadata --no-deps`, not a hardcoded `crates/` walk. Shipped in `jci-audit-v0.1.4`.
 - **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
   Today it's a manual copy-the-YAML step; `gen-circleci-orb init`/`update` already automates the
   equivalent for its own consumers.
@@ -114,15 +133,16 @@ version tag itself, and still gate consumer migration.
   job carries its own `TEMPORARY WORKAROUND` — a different hand-authored job, not part of #80,
   still pending its own cleanup once the orb's release-time constraints allow it.
 - **[#111 — redundant per-call tokio runtime construction in `block_on`-based network clients.](https://github.com/jerus-org/jci-audit/issues/111)**
-  Not a correctness bug — `PcuAssetWriter`/`PcuAssetSource`/`ManifestPubkeySource` each build a
-  fresh runtime per call instead of one per invocation. Low priority.
+  ✅ Done — `PcuAssetWriter`/`PcuAssetSource`/`ManifestPubkeySource` each build one runtime in
+  `new()` now and reuse it, instead of a fresh one per call. Shipped in `jci-audit-v0.1.5`.
 - **[#121 — verify's remote path takes an explicit owner/repo/tag-prefix.](https://github.com/jerus-org/jci-audit/issues/121)**
   ✅ Done — `verify` takes `--owner`/`--repo`/`--tag-prefix` on the remote-fetch fallback, naming
   which release to check. Pubkey sources are tried asset-first: the source that depends on nothing
   about how the release was published, ahead of the crates.io/cargo-binstall manifest convention.
 - **[#120 — verify's remote fallback misreports Cargo.lock/deny.toml as absent.](https://github.com/jerus-org/jci-audit/issues/120)**
-  Still open — the misleading "not checked" message when a checkout has Cargo.lock/deny.toml but
-  is only missing the version-specific `.security/release-<VERSION>.json` (gitignored by design).
+  ✅ Done — the "not checked" message now reflects Cargo.lock/deny.toml independently, instead of
+  blaming both when only the version-specific `.security/release-<VERSION>.json` is missing.
+  Shipped in `jci-audit-v0.1.3`.
 
 ## Medium term — toward 1.0
 
