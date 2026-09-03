@@ -87,9 +87,11 @@ impl CheckReport {
 }
 
 // Tools are invoked as their STANDALONE binaries (`cargo-deny`, `cargo-audit`)
-// rather than via `cargo <sub>`, so they run in a cargo-less executor image
-// (the orb runtime ships the tool binaries but no Rust toolchain). Both forms
-// resolve to the same binaries on a dev machine.
+// rather than via `cargo <sub>`, matching how preflight.rs probes them. Both
+// forms resolve to the same binaries — the orb's executor image ships a full
+// Rust toolchain alongside these tool binaries (it's built `FROM
+// rust:*-slim`), so this is a presence-detection choice, not a constraint
+// imposed by a toolchain-less environment.
 
 /// cargo-deny standalone: full policy enforcement.
 const DENY_ARGS: &[&str] = &["check", "advisories", "bans", "licenses", "sources"];
@@ -302,10 +304,31 @@ mod tests {
         }
     }
 
-    /// A workspace root with a `deny.toml` but no `crates/` directory — the
-    /// about.toml drift check trivially passes (nothing to check) without
-    /// consuming a mock `cargo metadata` response, so these fixtures don't
-    /// need to know about that step at all.
+    /// The `cargo metadata --no-deps` response `find_about_toml_paths`
+    /// consumes to enumerate workspace members (jerus-org/jci-audit#100) —
+    /// every scenario needs one of these, even an empty workspace, since the
+    /// call always happens regardless of what's found.
+    fn workspace_metadata(manifest_paths: &[&Path]) -> ToolOutput {
+        let packages: Vec<String> = manifest_paths
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                format!(
+                    r#"{{"name":"crate{i}","version":"0.0.0","id":"id{i}","manifest_path":"{}"}}"#,
+                    p.display()
+                )
+            })
+            .collect();
+        ToolOutput {
+            success: true,
+            stdout: format!(r#"{{"packages":[{}]}}"#, packages.join(",")),
+            stderr: String::new(),
+        }
+    }
+
+    /// A workspace root with a `deny.toml` but no crates — the about.toml
+    /// drift check finds no workspace members via the mocked empty
+    /// `workspace_metadata`, so there's nothing to sync.
     fn empty_workspace() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("deny.toml"), "[licenses]\nallow = []\n").unwrap();
@@ -315,14 +338,15 @@ mod tests {
     #[test]
     fn both_pass_is_success_and_invokes_expected_commands() {
         let dir = empty_workspace();
-        let runner = MockRunner::new(vec![ok(), ok()]);
+        let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert!(report.success());
 
         let calls = runner.calls.borrow();
-        assert_eq!(calls.len(), 2);
-        // Standalone binaries (no `cargo` dispatch) so the tools run in a
-        // cargo-less executor image.
+        assert_eq!(calls.len(), 3);
+        // Standalone binaries (no `cargo` dispatch) — matches how
+        // preflight.rs probes them; the executor image has a full Rust
+        // toolchain regardless (see check.rs's module comment above).
         assert_eq!(
             calls[0],
             vec![
@@ -341,17 +365,25 @@ mod tests {
     fn deny_failure_still_runs_audit_and_fails_overall() {
         // cargo deny fails; cargo audit passes. Both must run (no short-circuit).
         let dir = empty_workspace();
-        let runner = MockRunner::new(vec![fail("license denied"), ok()]);
+        let runner = MockRunner::new(vec![fail("license denied"), ok(), workspace_metadata(&[])]);
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert!(!report.success());
-        assert_eq!(runner.calls.borrow().len(), 2, "audit must still run");
+        assert_eq!(
+            runner.calls.borrow().len(),
+            3,
+            "audit and the about.toml check must still run"
+        );
         assert_eq!(report.failures(), vec!["cargo deny"]);
     }
 
     #[test]
     fn audit_failure_fails_overall() {
         let dir = empty_workspace();
-        let runner = MockRunner::new(vec![ok(), fail("RUSTSEC-2024-0001")]);
+        let runner = MockRunner::new(vec![
+            ok(),
+            fail("RUSTSEC-2024-0001"),
+            workspace_metadata(&[]),
+        ]);
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo audit"]);
@@ -360,7 +392,11 @@ mod tests {
     #[test]
     fn both_failing_reports_both() {
         let dir = empty_workspace();
-        let runner = MockRunner::new(vec![fail("policy"), fail("advisory")]);
+        let runner = MockRunner::new(vec![
+            fail("policy"),
+            fail("advisory"),
+            workspace_metadata(&[]),
+        ]);
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo deny", "cargo audit"]);
@@ -380,9 +416,10 @@ mod tests {
         // Drifted: asserts something deny.toml's allow list does not.
         std::fs::write(crate_dir.join("about.toml"), "accepted = [\"MPL-2.0\"]\n").unwrap();
 
-        // deny and audit both mock-pass; the mocked cargo-metadata call the
-        // about.toml check triggers returns a trivial no-deps graph, so the
-        // drift is purely "committed content != freshly derived content".
+        // deny and audit both mock-pass; the mocked per-crate cargo-metadata
+        // call the about.toml check triggers returns a trivial no-deps
+        // graph, so the drift is purely "committed content != freshly
+        // derived content".
         let metadata = r#"{
           "packages": [ { "name": "root", "version": "0.0.0", "id": "path+file:///demo#0.0.0", "license": null } ],
           "resolve": { "root": "path+file:///demo#0.0.0", "nodes": [ { "id": "path+file:///demo#0.0.0", "deps": [] } ] }
@@ -390,6 +427,7 @@ mod tests {
         let runner = MockRunner::new(vec![
             ok(),
             ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
             ToolOutput {
                 success: true,
                 stdout: metadata.to_string(),
@@ -431,6 +469,7 @@ mod tests {
         let runner = MockRunner::new(vec![
             ok(),
             ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
             ToolOutput {
                 success: true,
                 stdout: metadata.to_string(),
@@ -444,7 +483,7 @@ mod tests {
 
         let calls = runner.calls.borrow();
         assert_eq!(
-            calls[3],
+            calls[4],
             vec![
                 "cargo-about",
                 "generate",
@@ -476,6 +515,7 @@ mod tests {
         let runner = MockRunner::new(vec![
             ok(),
             ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
             ToolOutput {
                 success: true,
                 stdout: metadata.to_string(),
@@ -501,8 +541,9 @@ mod tests {
         std::fs::write(crate_dir.join("about.toml"), "accepted = []\n").unwrap();
 
         // deny and audit both mock-pass; the mocked cargo-metadata call fails
-        // outright (e.g. a broken Cargo.toml), which scope_for_crate turns
-        // into a hard error via bail!, not a ToolOutput{success:false}.
+        // outright (e.g. a broken workspace Cargo.toml), which
+        // find_about_toml_paths turns into a hard error via bail!, not a
+        // ToolOutput{success:false}.
         let runner = MockRunner::new(vec![
             ok(),
             ok(),

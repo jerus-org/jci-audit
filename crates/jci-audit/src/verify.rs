@@ -210,7 +210,7 @@ pub(crate) fn verify_with<R: CommandRunner>(
         dependencies: dependency_set_digest(&lock_text)?,
         lockfile_raw: lockfile_digest(lock_text.as_bytes()),
         deny_toml: lockfile_digest(deny_toml.as_bytes()),
-        about_toml: about_toml_digest(&root)?,
+        about_toml: about_toml_digest(runner, &root)?,
     };
     let (mismatches, unverified) = compare_inputs(&record, &digests);
 
@@ -448,6 +448,10 @@ mod tests {
                     stdout: "advisories ok\n".to_string(),
                     stderr: String::new(),
                 },
+                // No test scenario here has a real about.toml on disk, so an
+                // empty workspace is always correct — find_about_toml_paths
+                // filters by file existence anyway.
+                ("cargo", Some("metadata")) => ok(r#"{"packages":[]}"#),
                 _ => ok(""),
             })
         }

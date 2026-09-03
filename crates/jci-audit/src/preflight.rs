@@ -9,12 +9,14 @@
 //! preflight first.
 //!
 //! `cargo-audit`/`cargo-deny`/`cargo-about` are invoked as standalone
-//! binaries (not via `cargo <sub>`), so they work in a cargo-less executor
-//! image. The license-policy derivation is the one exception: it shells out
-//! to `cargo metadata`, a built-in cargo subcommand, so it needs a full `cargo`
-//! on `PATH` — [`Tool::Cargo`] exists to preflight that separately, since its
-//! absence needs different install guidance than "cargo binstall" gives the
-//! other three.
+//! binaries (not via `cargo <sub>`), matching the exact form the presence
+//! probe checks. The license-policy derivation additionally shells out to
+//! `cargo metadata`, a built-in cargo subcommand — [`Tool::Cargo`] preflights
+//! that separately, not because the environment might lack a Rust toolchain
+//! (the orb's executor image is built `FROM rust:*-slim`, so bare `cargo` is
+//! always present in CI alongside the three tool binaries), but because
+//! `cargo` isn't `cargo binstall`-able like the other three, so its absence
+//! needs different install guidance (rustup, not binstall).
 
 use std::process::Command;
 
@@ -87,7 +89,7 @@ impl Tool {
 
 /// Run `<binary> --version` (e.g. `cargo-audit --version`), returning true on a
 /// successful exit. Probes the standalone binary so presence detection matches
-/// how `check` invokes the tool — and works in a cargo-less executor.
+/// how `check` invokes the tool.
 fn probe_version(binary: &str) -> bool {
     Command::new(binary)
         .arg("--version")
