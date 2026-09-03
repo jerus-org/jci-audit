@@ -130,8 +130,11 @@ a merge.
 2. **It carries hand-authored content** (`.clarify` attribution pins, comments) that has no
    `deny.toml` equivalent and must survive a sync untouched.
 
-**Algorithm** (`license_scope::scope_for_crate`), for each `crates/*/` directory that contains an
-`about.toml`:
+**Algorithm**: `sync::find_about_toml_paths` first runs `cargo metadata --no-deps` against the
+workspace root to enumerate every member's `manifest_path`, and keeps the ones whose directory
+has an `about.toml` — reading the workspace's own declared membership rather than assuming
+`crates/*/` (this project's own convention, but not a requirement — jerus-org/jci-audit#100).
+Then, for each one found, `license_scope::scope_for_crate`:
 
 1. Run `cargo metadata --manifest-path crates/X/Cargo.toml --format-version 1 --all-features` in
    the crate's own directory. `--all-features` matches this org's convention for anything

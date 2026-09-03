@@ -28,17 +28,21 @@ for reproducibility; `cargo audit` keeps running live, as a non-blocking currenc
 
 ## Runtime prerequisites
 
-`jci-audit` **orchestrates the `cargo audit` and `cargo deny` binaries as
-subprocesses** — it does not bundle them. Both must be on `PATH`:
+`jci-audit` **orchestrates the `cargo audit`, `cargo deny`, and `cargo about`
+binaries as subprocesses**, plus bare `cargo` for the license-policy
+derivation (`cargo metadata`) — it does not bundle any of them. All must be
+on `PATH`:
 
 ```bash
-cargo binstall cargo-audit cargo-deny
+cargo binstall cargo-audit cargo-deny cargo-about
 ```
 
-In CI they are provided by the `jci-audit` orb's executor image
-(`jerusdp/jci-audit`), which is built to ship both tools. Every subcommand that
-shells out runs a **preflight** check first and reports, with actionable
-guidance, if either tool is missing — rather than failing opaquely.
+In CI they're provided by the `jci-audit` orb's executor image
+(`jerusdp/jci-audit`), which is built `FROM rust:*-slim` and ships all three
+tool binaries alongside the full Rust toolchain that image already carries —
+`cargo` itself is always present, not just the three tools. Every subcommand
+that shells out runs a **preflight** check first and reports, with
+actionable guidance, if any tool is missing — rather than failing opaquely.
 
 ## Installation
 

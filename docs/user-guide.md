@@ -85,12 +85,13 @@ Options:
       --check       Fail (non-zero) on drift instead of rewriting the file. For CI
 ```
 
-Derives `.cargo/audit.toml` (from `deny.toml`'s `[advisories].ignore`) and every
-`crates/*/about.toml`'s `accepted` license list (from `deny.toml`'s `[licenses]` policy, scoped
+Derives `.cargo/audit.toml` (from `deny.toml`'s `[advisories].ignore`) and every workspace
+member's `about.toml` `accepted` license list (from `deny.toml`'s `[licenses]` policy, scoped
 to each crate's own dependency graph) — see
-[design.md §4](design.md#4-the-sync-derivation) for the full derivation algorithm. Writing is a
-**merge**: hand-authored content in `about.toml` (comments, `.clarify` attribution pins) is left
-untouched.
+[design.md §4](design.md#4-the-sync-derivation) for the full derivation algorithm. Members are
+found via `cargo metadata`, not an assumption about directory layout — `crates/*/` is this
+project's own convention, not a requirement (jerus-org/jci-audit#100). Writing is a **merge**:
+hand-authored content in `about.toml` (comments, `.clarify` attribution pins) is left untouched.
 
 ```bash
 jci-audit sync           # regenerate both derived files
