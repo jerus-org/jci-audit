@@ -275,7 +275,7 @@ pub(crate) fn release_with<R: CommandRunner>(
             unresolved.join("\n")
         );
     }
-    let about_toml_sha256 = about_toml_digest(&root)?;
+    let about_toml_sha256 = about_toml_digest(runner, &root)?;
 
     // Derived config: only db-path is overridden, so the repo's deny.toml stays
     // the single source of truth for every actual policy decision.
@@ -596,8 +596,25 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
     /// A trivial `cargo metadata` graph: one root package, no dependencies.
     /// Yields an empty crate-scoped `accepted` set, so an about.toml
     /// committed with `accepted = []` and no exceptions is already in sync.
+    /// Answers both the workspace-enumeration call
+    /// (`find_about_toml_paths`, jerus-org/jci-audit#100 — reads
+    /// `manifest_path`) and each crate's own license-scope call
+    /// (`scope_for_crate` — reads `resolve`/`license`), since this
+    /// MockRunner returns the same response for any `cargo metadata` call.
+    /// No `manifest_path` here — tests with no real about.toml on disk don't
+    /// need one, since a missing crate directory is filtered out either way.
     fn trivial_metadata_json() -> String {
         r#"{"packages":[{"name":"demo","version":"0.0.0","id":"path+file:///demo#0.0.0","license":null}],"resolve":{"root":"path+file:///demo#0.0.0","nodes":[{"id":"path+file:///demo#0.0.0","deps":[]}]}}"#.to_string()
+    }
+
+    /// Like [`trivial_metadata_json`], but with `manifest_path` pointing at
+    /// a real crate directory — for tests whose fixture actually writes a
+    /// `crates/demo/about.toml` and needs `find_about_toml_paths` to find it.
+    fn metadata_json_with_manifest_path(crate_dir: &Path) -> String {
+        format!(
+            r#"{{"packages":[{{"name":"demo","version":"0.0.0","id":"path+file:///demo#0.0.0","license":null,"manifest_path":"{}"}}],"resolve":{{"root":"path+file:///demo#0.0.0","nodes":[{{"id":"path+file:///demo#0.0.0","deps":[]}}]}}}}"#,
+            crate_dir.join("Cargo.toml").display()
+        )
     }
 
     /// Dispatches on (program, first arg) so each tool can be scripted.
@@ -621,6 +638,10 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         }
         fn with_about_ok(mut self, ok: bool) -> Self {
             self.about_ok = ok;
+            self
+        }
+        fn with_metadata_json(mut self, json: String) -> Self {
+            self.metadata_json = json;
             self
         }
         fn ran(&self, program: &str) -> Vec<Vec<String>> {
@@ -875,7 +896,9 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         let (repo, db) = scenario();
         add_in_sync_crate(repo.path());
         let work = repo.path().join("work");
-        let runner = MockRunner::new(true, clean_audit_json());
+        let runner = MockRunner::new(true, clean_audit_json()).with_metadata_json(
+            metadata_json_with_manifest_path(&repo.path().join("crates/demo")),
+        );
         let outcome = release_with(
             &runner,
             repo.path(),
@@ -908,7 +931,8 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         // Drifted: asserts something the (empty) derived policy does not.
         std::fs::write(crate_dir.join("about.toml"), "accepted = [\"MIT\"]\n").unwrap();
         let work = repo.path().join("work");
-        let runner = MockRunner::new(true, clean_audit_json());
+        let runner = MockRunner::new(true, clean_audit_json())
+            .with_metadata_json(metadata_json_with_manifest_path(&crate_dir));
 
         let err = release_with(
             &runner,
@@ -933,7 +957,11 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         let (repo, db) = scenario();
         add_in_sync_crate(repo.path());
         let work = repo.path().join("work");
-        let runner = MockRunner::new(true, clean_audit_json()).with_about_ok(false);
+        let runner = MockRunner::new(true, clean_audit_json())
+            .with_about_ok(false)
+            .with_metadata_json(metadata_json_with_manifest_path(
+                &repo.path().join("crates/demo"),
+            ));
 
         let err = release_with(
             &runner,

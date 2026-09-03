@@ -349,27 +349,55 @@ pub(crate) fn sync_at(start: &Path, check: bool) -> Result<SyncOutcome> {
     )
 }
 
-/// Every `crates/*/about.toml` under `workspace_root`, sorted so the result
-/// is deterministic and independent of directory-listing order. A crate
-/// directory with no `about.toml` is skipped — not every crate need publish
-/// third-party notices. The single place that knows this layout —
-/// [`sync_about_toml_at`] and [`about_toml_digest`] both walk from here
-/// rather than each re-implementing the `crates/` scan.
-pub(crate) fn find_about_toml_paths(workspace_root: &Path) -> Result<Vec<PathBuf>> {
-    let crates_dir = workspace_root.join("crates");
-    let mut paths: Vec<PathBuf> = match std::fs::read_dir(&crates_dir) {
-        Ok(rd) => rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path().join("about.toml"))
-            .filter(|p| p.is_file())
-            .collect(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-        Err(e) => {
-            return Err(e).with_context(|| format!("failed to read '{}'", crates_dir.display()));
-        }
-    };
+/// Every workspace member's `about.toml`, sorted so the result is
+/// deterministic. A member with no `about.toml` is skipped — not every
+/// crate need publish third-party notices. Reads `packages[].manifest_path`
+/// from `cargo metadata --no-deps` output — the workspace's own declared
+/// membership (`[workspace].members` in `Cargo.toml`), not an assumption
+/// that every crate lives under `crates/*/` (jerus-org/jci-audit#100).
+pub(crate) fn about_toml_paths_from_metadata(metadata_json: &str) -> Result<Vec<PathBuf>> {
+    let doc: serde_json::Value =
+        serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
+    let packages = doc
+        .get("packages")
+        .and_then(serde_json::Value::as_array)
+        .context("cargo metadata JSON has no 'packages' array")?;
+    let mut paths: Vec<PathBuf> = packages
+        .iter()
+        .filter_map(|pkg| pkg.get("manifest_path").and_then(serde_json::Value::as_str))
+        .filter_map(|manifest_path| Path::new(manifest_path).parent())
+        .map(|crate_dir| crate_dir.join("about.toml"))
+        .filter(|p| p.is_file())
+        .collect();
     paths.sort();
     Ok(paths)
+}
+
+/// Every workspace member's `about.toml` under `workspace_root` — the single
+/// place [`sync_about_toml_at`] and [`about_toml_digest`] both walk from,
+/// rather than each re-implementing the `cargo metadata` call.
+pub(crate) fn find_about_toml_paths<R: crate::check::CommandRunner>(
+    runner: &R,
+    workspace_root: &Path,
+) -> Result<Vec<PathBuf>> {
+    let manifest = workspace_root.join("Cargo.toml");
+    let manifest_str = manifest.to_string_lossy();
+    let out = runner.run(
+        "cargo",
+        &[
+            "metadata",
+            "--manifest-path",
+            &manifest_str,
+            "--no-deps",
+            "--format-version",
+            "1",
+        ],
+        workspace_root,
+    )?;
+    if !out.success {
+        bail!("cargo metadata failed for '{manifest_str}': {}", out.stderr);
+    }
+    about_toml_paths_from_metadata(&out.stdout)
 }
 
 /// The result of syncing one crate's `about.toml`.
@@ -398,7 +426,7 @@ pub(crate) fn sync_about_toml_at<R: crate::check::CommandRunner>(
         policy.exceptions.iter().map(|(n, _)| n.clone()).collect();
 
     let mut results = Vec::new();
-    for about_path in find_about_toml_paths(workspace_root)? {
+    for about_path in find_about_toml_paths(runner, workspace_root)? {
         let crate_dir = about_path
             .parent()
             .context("about.toml path has no parent directory")?;
@@ -431,15 +459,18 @@ pub(crate) fn sync_about_toml_at<R: crate::check::CommandRunner>(
     Ok(results)
 }
 
-/// Digest of every `crates/*/about.toml` in the workspace. `None` when the
+/// Digest of every workspace member's `about.toml`. `None` when the
 /// workspace has no `about.toml` at all — nothing to attest. Digests the
 /// **policy file**, not the rendered `THIRD-PARTY-LICENSES.md`: the notices
 /// are not reproducible across machines (see `scripts/licenses.sh`'s own
 /// comment on this), so a value that could differ between the machine that
 /// generated the committed copy and the release container would make
 /// `verify` unable to reproduce it.
-pub(crate) fn about_toml_digest(workspace_root: &Path) -> Result<Option<String>> {
-    let paths = find_about_toml_paths(workspace_root)?;
+pub(crate) fn about_toml_digest<R: crate::check::CommandRunner>(
+    runner: &R,
+    workspace_root: &Path,
+) -> Result<Option<String>> {
+    let paths = find_about_toml_paths(runner, workspace_root)?;
     if paths.is_empty() {
         return Ok(None);
     }
@@ -848,6 +879,88 @@ accepted = ["MPL-2.0"]
         )
     }
 
+    // --- find_about_toml_paths (#100: cargo metadata, not a crates/ scan) --
+
+    fn workspace_metadata_json(manifest_paths: &[String]) -> String {
+        let packages: Vec<String> = manifest_paths
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                format!(
+                    r#"{{"name":"crate{i}","version":"0.0.0","id":"id{i}","manifest_path":"{p}"}}"#
+                )
+            })
+            .collect();
+        format!(r#"{{"packages":[{}]}}"#, packages.join(","))
+    }
+
+    #[test]
+    fn about_toml_paths_from_metadata_finds_existing_about_tomls() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("packages/a");
+        let b = dir.path().join("libs/b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(a.join("about.toml"), "").unwrap();
+        // b has no about.toml — must be skipped, not every crate publishes one.
+        let json = workspace_metadata_json(&[
+            a.join("Cargo.toml").to_string_lossy().into_owned(),
+            b.join("Cargo.toml").to_string_lossy().into_owned(),
+        ]);
+        let paths = about_toml_paths_from_metadata(&json).unwrap();
+        assert_eq!(paths, vec![a.join("about.toml")]);
+    }
+
+    /// The whole point of #100: any workspace layout works, not just
+    /// `crates/*/` — including a package living at the workspace root.
+    #[test]
+    fn about_toml_paths_from_metadata_is_not_limited_to_a_crates_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("about.toml"), "").unwrap();
+        let json = workspace_metadata_json(&[dir
+            .path()
+            .join("Cargo.toml")
+            .to_string_lossy()
+            .into_owned()]);
+        let paths = about_toml_paths_from_metadata(&json).unwrap();
+        assert_eq!(paths, vec![dir.path().join("about.toml")]);
+    }
+
+    #[test]
+    fn about_toml_paths_from_metadata_is_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        let z = dir.path().join("crates/z-crate");
+        let a = dir.path().join("crates/a-crate");
+        std::fs::create_dir_all(&z).unwrap();
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::write(z.join("about.toml"), "").unwrap();
+        std::fs::write(a.join("about.toml"), "").unwrap();
+        let json = workspace_metadata_json(&[
+            z.join("Cargo.toml").to_string_lossy().into_owned(),
+            a.join("Cargo.toml").to_string_lossy().into_owned(),
+        ]);
+        let paths = about_toml_paths_from_metadata(&json).unwrap();
+        assert_eq!(paths, vec![a.join("about.toml"), z.join("about.toml")]);
+    }
+
+    #[test]
+    fn about_toml_paths_from_metadata_errors_on_malformed_json() {
+        assert!(about_toml_paths_from_metadata("not json").is_err());
+    }
+
+    #[test]
+    fn find_about_toml_paths_runs_cargo_metadata_against_the_workspace_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let crate_dir = dir.path().join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("about.toml"), "").unwrap();
+        let json =
+            workspace_metadata_json(&[crate_dir.join("Cargo.toml").to_string_lossy().into_owned()]);
+        let runner = MockRunner::new(vec![ok(json)]);
+        let paths = find_about_toml_paths(&runner, dir.path()).unwrap();
+        assert_eq!(paths, vec![crate_dir.join("about.toml")]);
+    }
+
     #[test]
     fn sync_about_toml_writes_then_is_in_sync_and_detects_drift() {
         let dir = tempfile::tempdir().unwrap();
@@ -858,26 +971,32 @@ accepted = ["MPL-2.0"]
         std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
         std::fs::write(crate_dir.join("about.toml"), "").unwrap();
 
+        let workspace = || {
+            ok(workspace_metadata_json(&[crate_dir
+                .join("Cargo.toml")
+                .to_string_lossy()
+                .into_owned()]))
+        };
         let json = metadata_json(
             "path+file:///demo#0.0.0",
             "anyhow",
             "registry+https://x#anyhow@1.0.0",
             "MIT",
         );
-        let runner = MockRunner::new(vec![ok(json)]);
+        let runner = MockRunner::new(vec![workspace(), ok(json)]);
         let results = sync_about_toml_at(&runner, root, false).unwrap();
         assert_eq!(results.len(), 1);
         assert!(matches!(results[0].outcome, SyncOutcome::Wrote(_)));
 
         // Now --check reports in-sync without consuming a metadata call
-        // beyond the one it needs.
+        // beyond the ones it needs.
         let json = metadata_json(
             "path+file:///demo#0.0.0",
             "anyhow",
             "registry+https://x#anyhow@1.0.0",
             "MIT",
         );
-        let runner = MockRunner::new(vec![ok(json)]);
+        let runner = MockRunner::new(vec![workspace(), ok(json)]);
         let results = sync_about_toml_at(&runner, root, true).unwrap();
         assert_eq!(results[0].outcome, SyncOutcome::InSync);
 
@@ -890,7 +1009,7 @@ accepted = ["MPL-2.0"]
             "registry+https://x#anyhow@1.0.0",
             "MIT",
         );
-        let runner = MockRunner::new(vec![ok(json)]);
+        let runner = MockRunner::new(vec![workspace(), ok(json)]);
         let results = sync_about_toml_at(&runner, root, true).unwrap();
         assert_eq!(results[0].outcome, SyncOutcome::Drift);
         assert_eq!(
@@ -927,7 +1046,15 @@ accepted = ["MPL-2.0"]
             "MPL-2.0",
         );
         let b_json = metadata_json_no_deps("path+file:///b#0.0.0");
-        let runner = MockRunner::new(vec![ok(a_json), ok(b_json)]);
+        let workspace = ok(workspace_metadata_json(&[
+            root.join("crates/crate-a/Cargo.toml")
+                .to_string_lossy()
+                .into_owned(),
+            root.join("crates/crate-b/Cargo.toml")
+                .to_string_lossy()
+                .into_owned(),
+        ]));
+        let runner = MockRunner::new(vec![workspace, ok(a_json), ok(b_json)]);
 
         let results = sync_about_toml_at(&runner, root, false).unwrap();
         assert_eq!(results.len(), 2);
@@ -949,7 +1076,8 @@ accepted = ["MPL-2.0"]
     #[test]
     fn about_toml_digest_is_none_without_any_about_toml() {
         let repo = tempfile::tempdir().unwrap();
-        assert_eq!(about_toml_digest(repo.path()).unwrap(), None);
+        let runner = MockRunner::new(vec![ok(workspace_metadata_json(&[]))]);
+        assert_eq!(about_toml_digest(&runner, repo.path()).unwrap(), None);
     }
 
     #[test]
@@ -958,9 +1086,16 @@ accepted = ["MPL-2.0"]
         let crate_dir = repo.path().join("crates/demo");
         std::fs::create_dir_all(&crate_dir).unwrap();
         std::fs::write(crate_dir.join("about.toml"), "accepted = [\"MIT\"]\n").unwrap();
+        let manifest = crate_dir.join("Cargo.toml").to_string_lossy().into_owned();
 
-        let a = about_toml_digest(repo.path()).unwrap().unwrap();
-        let b = about_toml_digest(repo.path()).unwrap().unwrap();
+        let runner = MockRunner::new(vec![ok(workspace_metadata_json(std::slice::from_ref(
+            &manifest,
+        )))]);
+        let a = about_toml_digest(&runner, repo.path()).unwrap().unwrap();
+        let runner = MockRunner::new(vec![ok(workspace_metadata_json(std::slice::from_ref(
+            &manifest,
+        )))]);
+        let b = about_toml_digest(&runner, repo.path()).unwrap().unwrap();
         assert_eq!(a, b, "must be deterministic");
 
         std::fs::write(
@@ -968,7 +1103,8 @@ accepted = ["MPL-2.0"]
             "accepted = [\"MIT\", \"Apache-2.0\"]\n",
         )
         .unwrap();
-        let c = about_toml_digest(repo.path()).unwrap().unwrap();
+        let runner = MockRunner::new(vec![ok(workspace_metadata_json(&[manifest]))]);
+        let c = about_toml_digest(&runner, repo.path()).unwrap().unwrap();
         assert_ne!(a, c, "must depend on content");
     }
 }
