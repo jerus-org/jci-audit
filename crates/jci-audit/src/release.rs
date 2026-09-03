@@ -34,7 +34,7 @@ use toml_edit::{DocumentMut, Item, value};
 
 use crate::{
     check::CommandRunner,
-    sync::{SyncOutcome, about_toml_digest, locate_paths, sync_about_toml_at},
+    sync::{SyncOutcome, locate_paths, sync_about_toml_at},
 };
 
 /// Schema version of the emitted record, so consumers can evolve with it.
@@ -275,7 +275,11 @@ pub(crate) fn release_with<R: CommandRunner>(
             unresolved.join("\n")
         );
     }
-    let about_toml_sha256 = about_toml_digest(runner, &root)?;
+    let about_toml_paths: Vec<PathBuf> = about_sync
+        .iter()
+        .map(|r| r.about_toml_path.clone())
+        .collect();
+    let about_toml_sha256 = crate::sync::about_toml_digest_from_paths(&about_toml_paths, &root)?;
 
     // Derived config: only db-path is overridden, so the repo's deny.toml stays
     // the single source of truth for every actual policy decision.

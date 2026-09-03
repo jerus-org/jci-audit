@@ -436,7 +436,9 @@ fn run_verify(
         .as_deref()
         .and_then(|r| discover_local_record(r, version));
     if local_record.is_some() {
-        preflight::ensure_available(&[Tool::CargoDeny])?;
+        // Tool::Cargo: verify_with's about.toml digest recomputation shells
+        // out to `cargo metadata`, same as check/release-prep.
+        preflight::ensure_available(&[Tool::CargoDeny, Tool::Cargo])?;
         let db_root = advisory_db
             .map(std::path::Path::to_path_buf)
             .unwrap_or_else(release::default_db_root);

@@ -471,12 +471,24 @@ pub(crate) fn about_toml_digest<R: crate::check::CommandRunner>(
     workspace_root: &Path,
 ) -> Result<Option<String>> {
     let paths = find_about_toml_paths(runner, workspace_root)?;
+    about_toml_digest_from_paths(&paths, workspace_root)
+}
+
+/// Same digest as [`about_toml_digest`], computed directly from an
+/// already-known set of `about.toml` paths — for callers (like
+/// `release_with`) that have already enumerated them via
+/// [`sync_about_toml_at`] and shouldn't pay for a second `cargo metadata`
+/// call to re-derive the identical list.
+pub(crate) fn about_toml_digest_from_paths(
+    paths: &[PathBuf],
+    workspace_root: &Path,
+) -> Result<Option<String>> {
     if paths.is_empty() {
         return Ok(None);
     }
 
     let mut blob = String::new();
-    for path in &paths {
+    for path in paths {
         let rel = path.strip_prefix(workspace_root).unwrap_or(path);
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read '{}'", path.display()))?;
