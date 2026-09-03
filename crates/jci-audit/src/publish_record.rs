@@ -89,7 +89,7 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
     }
     let record_name = record_path
         .file_name()
-        .and_then(|n| n.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .with_context(|| format!("'{}' has no valid file name", record_path.display()))?
         .to_string();
     let expected_name = format!("release-{version}.json");
