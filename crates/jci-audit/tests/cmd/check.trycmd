@@ -13,7 +13,8 @@ Input:
       --manifest-path <MANIFEST_PATH>  Path to the Cargo.toml (or its directory) to check [default: .]
 
 Output:
-      --deny-warnings  Fail if the tools report any warning
+      --deny-stale-exceptions  Fail if a configured [[bans.skip]] exception no longer fires
+      --deny-warnings          Fail if the tools report any warning
 
 $ jci-audit check --help
 PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.
@@ -39,6 +40,11 @@ Input:
           [default: .]
 
 Output:
+      --deny-stale-exceptions
+          Fail if a configured [[bans.skip]] exception no longer fires.
+          
+          cargo-deny already reports this as `warning[unmatched-skip]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just stale exceptions, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Mirrors `prune --check`.
+
       --deny-warnings
           Fail if the tools report any warning
 

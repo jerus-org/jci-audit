@@ -26,6 +26,7 @@
 mod check;
 mod cli;
 mod diagnostics;
+mod exceptions;
 mod init;
 mod license_scope;
 mod preflight;

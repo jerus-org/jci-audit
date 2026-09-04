@@ -12,6 +12,10 @@ parameters:
     type: string
     description: Path to the Cargo.toml (or its directory) to check
     default: .
+  deny_stale_exceptions:
+    type: boolean
+    description: Fail if a configured [[bans.skip]] exception no longer fires. cargo-deny already reports this as `warning[unmatched-skip]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just stale exceptions, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Mirrors `prune --check`.
+    default: false
   deny_warnings:
     type: boolean
     description: Fail if the tools report any warning
@@ -29,6 +33,12 @@ steps:
     - run:
         name: Set QUIET flag
         command: echo 'export QUIET=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.deny_stale_exceptions >>
+    steps:
+    - run:
+        name: Set DENY_STALE_EXCEPTIONS flag
+        command: echo 'export DENY_STALE_EXCEPTIONS=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.deny_warnings >>
     steps:
