@@ -13,7 +13,7 @@ orbs:
   # Self-contained: jci-audit/check runs the published binary in its own
   # public image (orb/Dockerfile) — no dependency on the private toolkit's
   # executors or container.
-  jci-audit: jerus-org/jci-audit@0.1.4
+  jci-audit: jerus-org/jci-audit@0.1.6
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.10
