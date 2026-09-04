@@ -319,6 +319,7 @@ fn run_release(
             println!("    - {id}");
         }
     }
+    crate::exceptions::print_notice(&outcome.accepted_warnings);
 
     diagnostics::enforce(&outcome.warnings, output.deny_warnings)
 }
@@ -461,6 +462,15 @@ fn run_verify(
         }
         for m in &outcome.mismatches {
             println!("  MISMATCH: {m}");
+        }
+        if !outcome.stale_exceptions.is_empty() {
+            println!(
+                "  {} stale accepted exception(s) — no longer needed, safe to remove from deny.toml:",
+                outcome.stale_exceptions.len()
+            );
+            for name in &outcome.stale_exceptions {
+                println!("    - {name}");
+            }
         }
         if outcome.is_ok() {
             println!("reproduced: the release passes the gate against its recorded snapshot");

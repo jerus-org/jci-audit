@@ -66,6 +66,10 @@ pub(crate) struct VerifyOutcome {
     pub(crate) mismatches: Vec<String>,
     /// Warnings the gate reported, for `--deny-warnings`.
     pub(crate) warnings: Vec<crate::diagnostics::WarningCount>,
+    /// Configured `[[bans.skip]]` exceptions this fresh re-run flagged
+    /// `unmatched-skip` — safe to remove from `deny.toml`. See
+    /// [`crate::exceptions`].
+    pub(crate) stale_exceptions: Vec<String>,
 }
 
 impl VerifyOutcome {
@@ -311,6 +315,18 @@ pub(crate) fn verify_with<R: CommandRunner>(
     let gate = gate?;
     let warnings = crate::diagnostics::emit(&gate.stdout, &gate.stderr, detail);
 
+    // Re-derive from the checked-out deny.toml against this fresh run's stderr
+    // — a configured exception may have stopped firing since the release, and
+    // this is the same check `deny_toml`'s digest comparison above cannot
+    // answer (that proves the config text is unchanged, not that every
+    // exception in it is still needed).
+    let configured_skips = crate::exceptions::extract_bans_skips(&deny_toml)?;
+    let stale_exceptions = crate::exceptions::accepted_warnings(configured_skips, &gate.stderr)
+        .stale
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+
     let recorded_pass = record
         .get("checks")
         .and_then(|c| c.get("deny"))
@@ -325,6 +341,7 @@ pub(crate) fn verify_with<R: CommandRunner>(
         unverified,
         mismatches,
         warnings,
+        stale_exceptions,
     })
 }
 
@@ -389,6 +406,7 @@ mod tests {
 
     struct MockRunner {
         deny_ok: bool,
+        deny_stderr: String,
         shallow: bool,
         calls: RefCell<Vec<Vec<String>>>,
     }
@@ -397,6 +415,7 @@ mod tests {
         fn new(deny_ok: bool) -> Self {
             Self {
                 deny_ok,
+                deny_stderr: String::new(),
                 shallow: false,
                 calls: RefCell::new(Vec::new()),
             }
@@ -404,6 +423,11 @@ mod tests {
 
         fn shallow(mut self) -> Self {
             self.shallow = true;
+            self
+        }
+
+        fn with_deny_stderr(mut self, stderr: &str) -> Self {
+            self.deny_stderr = stderr.to_string();
             self
         }
 
@@ -446,7 +470,7 @@ mod tests {
                 ("cargo-deny", _) => ToolOutput {
                     success: self.deny_ok,
                     stdout: "advisories ok\n".to_string(),
-                    stderr: String::new(),
+                    stderr: self.deny_stderr.clone(),
                 },
                 // No test scenario here has a real about.toml on disk, so an
                 // empty workspace is always correct — find_about_toml_paths
@@ -641,6 +665,51 @@ mod tests {
         .unwrap();
         assert!(out.is_ok(), "should reproduce: {out:?}");
         assert_eq!(out.db_commit, "abc1234def");
+    }
+
+    #[test]
+    fn stale_bans_skip_entries_are_reported_from_the_fresh_gate_run() {
+        let rec = record_v2(
+            &lockfile_digest(LOCK.as_bytes()),
+            &lockfile_digest(
+                "[advisories]\ndb-path = \"~/.cargo/advisory-db\"\nignore = []\n\n\
+                 [[bans.skip]]\nname = \"widget\"\n"
+                    .as_bytes(),
+            ),
+        );
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::write(
+            repo.path().join("deny.toml"),
+            "[advisories]\ndb-path = \"~/.cargo/advisory-db\"\nignore = []\n\n\
+             [[bans.skip]]\nname = \"widget\"\n",
+        )
+        .unwrap();
+        std::fs::write(repo.path().join("Cargo.lock"), LOCK).unwrap();
+        let dir = repo.path().join(".security");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("release-1.2.0.json"),
+            serde_json::to_string_pretty(&rec).unwrap(),
+        )
+        .unwrap();
+        let db = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(db.path().join("advisory-db-3157b0e258782691")).unwrap();
+
+        // widget no longer duplicates by the time of this re-run.
+        let runner = MockRunner::new(true).with_deny_stderr(
+            "warning[unmatched-skip]: skipped crate 'widget' was not encountered\n",
+        );
+        let out = verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
+
+        assert_eq!(out.stale_exceptions, vec!["widget".to_string()]);
     }
 
     #[test]

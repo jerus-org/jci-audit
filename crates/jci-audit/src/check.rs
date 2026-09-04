@@ -68,6 +68,12 @@ pub(crate) struct CheckReport {
     pub(crate) steps: Vec<CheckStep>,
     /// Warnings the tools reported, for `--deny-warnings`.
     pub(crate) warnings: Vec<crate::diagnostics::WarningCount>,
+    /// `deny.toml`'s configured `[[bans.skip]]` exceptions, split by whether
+    /// cargo-deny flagged each one `unmatched-skip` this run. See
+    /// [`crate::exceptions`] — cargo-deny is otherwise silent about a skip
+    /// that's actively suppressing a real duplicate, so this is jci-audit's
+    /// own visibility on top of it, not a cargo-deny diagnostic.
+    pub(crate) accepted_warnings: crate::exceptions::AcceptedWarnings,
 }
 
 impl CheckReport {
@@ -128,6 +134,8 @@ pub(crate) fn check_with<R: CommandRunner>(
         label: "cargo deny".to_string(),
         success: deny.success,
     });
+    let accepted_warnings = read_accepted_warnings(cwd, &deny.stderr);
+    crate::exceptions::print_notice(&accepted_warnings);
 
     // Always run cargo-audit too — never short-circuit on cargo-deny's result,
     // so both tools' findings are surfaced in one pass.
@@ -181,7 +189,29 @@ pub(crate) fn check_with<R: CommandRunner>(
         }
     }
 
-    Ok(CheckReport { steps, warnings })
+    Ok(CheckReport {
+        steps,
+        warnings,
+        accepted_warnings,
+    })
+}
+
+/// Read `deny.toml`'s configured `[[bans.skip]]` exceptions and split them
+/// against this run's cargo-deny stderr. Deliberately non-fatal: a missing or
+/// unparsable `deny.toml` is already the "cargo deny" step's own failure (or,
+/// for a workspace with no bans.skip at all, simply has nothing to report) —
+/// this is a visibility layer on top, not a new source of hard errors.
+fn read_accepted_warnings(cwd: &Path, deny_stderr: &str) -> crate::exceptions::AcceptedWarnings {
+    let Ok((deny_path, _)) = sync::locate_paths(cwd) else {
+        return Default::default();
+    };
+    let Ok(deny_toml) = std::fs::read_to_string(&deny_path) else {
+        return Default::default();
+    };
+    let Ok(configured) = crate::exceptions::extract_bans_skips(&deny_toml) else {
+        return Default::default();
+    };
+    crate::exceptions::accepted_warnings(configured, deny_stderr)
 }
 
 /// Run cargo-about's resolution check for every crate in `about_results`,
@@ -400,6 +430,41 @@ mod tests {
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo deny", "cargo audit"]);
+    }
+
+    #[test]
+    fn reports_in_force_and_stale_accepted_warnings_from_deny_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = []\n\n\
+             [[bans.skip]]\n\
+             name = \"syn\"\n\
+             reason = \"genuinely duplicates today\"\n\n\
+             [[bans.skip]]\n\
+             name = \"widget\"\n",
+        )
+        .unwrap();
+        // cargo-deny flags 'widget' as unmatched (stale); says nothing about
+        // 'syn' at all, since a matching skip is silent — exactly the live
+        // behaviour captured in exceptions.rs.
+        let deny_stderr = "warning[unmatched-skip]: skipped crate 'widget' was not encountered\n";
+        let runner = MockRunner::new(vec![fail(deny_stderr), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+
+        assert_eq!(report.accepted_warnings.in_force.len(), 1);
+        assert_eq!(report.accepted_warnings.in_force[0].name, "syn");
+        assert_eq!(report.accepted_warnings.stale.len(), 1);
+        assert_eq!(report.accepted_warnings.stale[0].name, "widget");
+    }
+
+    #[test]
+    fn no_bans_skip_entries_means_no_accepted_warnings() {
+        let dir = empty_workspace();
+        let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert!(report.accepted_warnings.in_force.is_empty());
+        assert!(report.accepted_warnings.stale.is_empty());
     }
 
     #[test]

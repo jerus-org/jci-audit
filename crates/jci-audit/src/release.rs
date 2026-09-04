@@ -38,7 +38,7 @@ use crate::{
 };
 
 /// Schema version of the emitted record, so consumers can evolve with it.
-pub(crate) const RECORD_SCHEMA_VERSION: u64 = 4;
+pub(crate) const RECORD_SCHEMA_VERSION: u64 = 5;
 
 /// The cargo-deny checks the release gate enforces.
 pub(crate) const DENY_CHECKS: &[&str] = &["advisories", "bans", "licenses", "sources"];
@@ -56,6 +56,9 @@ pub(crate) struct ReleaseOutcome {
     pub(crate) deny_passed: bool,
     /// Advisory ids the live (non-blocking) audit reported.
     pub(crate) live_findings: Vec<String>,
+    /// `deny.toml`'s `[[bans.skip]]` exceptions, split by whether cargo-deny
+    /// flagged each one `unmatched-skip` this run. See [`crate::exceptions`].
+    pub(crate) accepted_warnings: crate::exceptions::AcceptedWarnings,
 }
 
 /// Override `[advisories].db-path` in a `deny.toml`, leaving every other setting
@@ -176,6 +179,7 @@ pub(crate) fn record_path(root: &Path, version: &str) -> PathBuf {
 /// Deterministic by construction: no timestamps, and no live-audit results (the
 /// live database moves, so including it would break byte-identical re-runs).
 /// `serde_json` maps are sorted, so key order is stable too.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_record(
     version: &str,
     db_commit: &str,
@@ -184,7 +188,19 @@ pub(crate) fn build_record(
     dependencies_sha256: &str,
     deny_toml_sha256: &str,
     about_toml_sha256: Option<&str>,
+    accepted_duplicates: &[crate::exceptions::SkipEntry],
 ) -> Value {
+    // The in-force `[[bans.skip]]` exceptions at release time — what was
+    // actually known and tolerated, not the full configured list (which may
+    // include stale entries; see `crate::exceptions`). No digest of its own:
+    // it lives inside deny.toml, so deny_toml_sha256 already covers whether
+    // the exception set changed since release.
+    let accepted_warnings = json!({
+        "duplicate": accepted_duplicates
+            .iter()
+            .map(|e| json!({ "name": e.name, "version": e.version, "reason": e.reason }))
+            .collect::<Vec<_>>(),
+    });
     json!({
         "schema_version": RECORD_SCHEMA_VERSION,
         "version": version,
@@ -202,6 +218,7 @@ pub(crate) fn build_record(
         // `None` (-> null) when the workspace has no about.toml at all.
         "policy": { "deny_toml_sha256": deny_toml_sha256, "about_toml_sha256": about_toml_sha256 },
         "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
+        "accepted_warnings": accepted_warnings,
     })
 }
 
@@ -304,6 +321,12 @@ pub(crate) fn release_with<R: CommandRunner>(
     deny_args.extend_from_slice(DENY_CHECKS);
     let deny = runner.run("cargo-deny", &deny_args, &root)?;
     let warnings = crate::diagnostics::emit(&deny.stdout, &deny.stderr, detail);
+    // Visibility on top of deny.toml's own [[bans.skip]] exceptions — cargo-deny
+    // itself is silent about one that's actively suppressing a real duplicate.
+    // Read from the same `deny_toml` string already digested above, not the
+    // derived/ephemeral config, since only db-path differs between them.
+    let configured_skips = crate::exceptions::extract_bans_skips(&deny_toml)?;
+    let accepted_warnings = crate::exceptions::accepted_warnings(configured_skips, &deny.stderr);
 
     // Read the commit AFTER the gate, so it reflects the refreshed copy.
     let checkout = discover_db_checkout(db_root)?;
@@ -358,6 +381,7 @@ pub(crate) fn release_with<R: CommandRunner>(
         &dependencies_sha256,
         &deny_toml_sha256,
         about_toml_sha256.as_deref(),
+        &accepted_warnings.in_force,
     );
     let path = record_path(&root, version);
     if let Some(parent) = path.parent() {
@@ -373,6 +397,7 @@ pub(crate) fn release_with<R: CommandRunner>(
         db_commit,
         deny_passed: deny.success,
         live_findings,
+        accepted_warnings,
     })
 }
 
@@ -533,6 +558,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "deps1",
             "p1",
             Some("a1"),
+            &[],
         );
         let b = build_record(
             "1.2.0",
@@ -542,6 +568,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "deps1",
             "p1",
             Some("a1"),
+            &[],
         );
         assert_eq!(render_record(&a).unwrap(), render_record(&b).unwrap());
         // Both policy digests prove which exception set was in force.
@@ -574,6 +601,71 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
                 "record must omit '{forbidden}':\n{rendered}"
             );
         }
+    }
+
+    #[test]
+    fn record_carries_the_accepted_duplicate_exceptions() {
+        let accepted = vec![
+            crate::exceptions::SkipEntry {
+                name: "syn".to_string(),
+                version: None,
+                reason: Some("genuinely duplicates today".to_string()),
+            },
+            crate::exceptions::SkipEntry {
+                name: "widget".to_string(),
+                version: Some("0.52".to_string()),
+                reason: None,
+            },
+        ];
+        let record = build_record(
+            "1.2.0",
+            "abc123",
+            "cargo-deny 0.20.2",
+            "cargo-audit 0.22.0",
+            "deps1",
+            "p1",
+            Some("a1"),
+            &accepted,
+        );
+        let rendered = render_record(&record).unwrap();
+        assert!(
+            rendered.contains("\"schema_version\": 5"),
+            "got:\n{rendered}"
+        );
+        assert!(rendered.contains("\"name\": \"syn\""), "got:\n{rendered}");
+        assert!(
+            rendered.contains("\"reason\": \"genuinely duplicates today\""),
+            "got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\"name\": \"widget\""),
+            "got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\"version\": \"0.52\""),
+            "a version-scoped exception must record its version, not just its \
+             name, or an auditor can't tell it was scoped narrower than every \
+             version of the crate:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn no_accepted_exceptions_is_an_empty_list_not_absent() {
+        let record = build_record(
+            "1.2.0",
+            "abc123",
+            "cargo-deny 0.20.2",
+            "cargo-audit 0.22.0",
+            "deps1",
+            "p1",
+            None,
+            &[],
+        );
+        let rendered = render_record(&record).unwrap();
+        assert!(
+            rendered.contains("\"duplicate\": []"),
+            "an empty accepted list must still be present, not omitted:\n{rendered}"
+        );
     }
 
     #[test]
@@ -624,6 +716,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
     /// Dispatches on (program, first arg) so each tool can be scripted.
     struct MockRunner {
         deny_ok: bool,
+        deny_stderr: String,
         live_json: String,
         metadata_json: String,
         about_ok: bool,
@@ -634,6 +727,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         fn new(deny_ok: bool, live_json: &str) -> Self {
             Self {
                 deny_ok,
+                deny_stderr: String::new(),
                 live_json: live_json.to_string(),
                 metadata_json: trivial_metadata_json(),
                 about_ok: true,
@@ -646,6 +740,10 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         }
         fn with_metadata_json(mut self, json: String) -> Self {
             self.metadata_json = json;
+            self
+        }
+        fn with_deny_stderr(mut self, stderr: &str) -> Self {
+            self.deny_stderr = stderr.to_string();
             self
         }
         fn ran(&self, program: &str) -> Vec<Vec<String>> {
@@ -676,7 +774,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
                 ("cargo-deny", _) => ToolOutput {
                     success: self.deny_ok,
                     stdout: "advisories ok\n".to_string(),
-                    stderr: String::new(),
+                    stderr: self.deny_stderr.clone(),
                 },
                 ("cargo", Some("metadata")) => ok(&self.metadata_json),
                 ("cargo-about", _) => ToolOutput {
@@ -790,6 +888,52 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             derived.contains(&db.path().display().to_string()),
             "derived config must set the pinned db-path:\n{derived}"
         );
+    }
+
+    #[test]
+    fn accepted_warnings_flow_from_deny_toml_into_the_outcome_and_record() {
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::write(
+            repo.path().join("deny.toml"),
+            "[advisories]\n\
+             db-path = \"~/.cargo/advisory-db\"\n\n\
+             [licenses]\n\
+             allow = [\"MIT\"]\n\n\
+             [[bans.skip]]\n\
+             name = \"syn\"\n\
+             reason = \"genuinely duplicates today\"\n\n\
+             [[bans.skip]]\n\
+             name = \"widget\"\n",
+        )
+        .unwrap();
+        std::fs::write(repo.path().join("Cargo.lock"), "# lockfile\n").unwrap();
+        let db = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(db.path().join("advisory-db-3157b0e258782691")).unwrap();
+        let work = repo.path().join("work");
+
+        // cargo-deny flags 'widget' as unmatched (stale); is silent about
+        // 'syn', matching the live behaviour a matching skip actually has.
+        let runner = MockRunner::new(true, clean_audit_json()).with_deny_stderr(
+            "warning[unmatched-skip]: skipped crate 'widget' was not encountered\n",
+        );
+        let outcome = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
+
+        assert_eq!(outcome.accepted_warnings.in_force.len(), 1);
+        assert_eq!(outcome.accepted_warnings.in_force[0].name, "syn");
+        assert_eq!(outcome.accepted_warnings.stale.len(), 1);
+        assert_eq!(outcome.accepted_warnings.stale[0].name, "widget");
+
+        let written = std::fs::read_to_string(&outcome.record_path).unwrap();
+        assert!(written.contains("\"name\": \"syn\""), "got:\n{written}");
+        assert!(!written.contains("\"name\": \"widget\""), "got:\n{written}");
     }
 
     #[test]
