@@ -17,6 +17,10 @@ parameters:
     type: boolean
     description: Fail if a configured [[bans.skip]] exception no longer fires. cargo-deny already reports this as `warning[unmatched-skip]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just stale exceptions, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Mirrors `prune --check`.
     default: false
+  deny_unused_licenses:
+    type: boolean
+    description: Fail if deny.toml allows a license nothing in the graph uses. cargo-deny already reports this as `warning[license-not-encountered]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just unused allowances, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Unlike a duplicate crate, an unused allowance is never a legitimately-unfixable condition worth accepting — it's always just stale config, so there is no exception mechanism to pair this with.
+    default: false
   deny_warnings:
     type: boolean
     description: Fail if the tools report any warning
@@ -46,4 +50,5 @@ steps:
     quiet: << parameters.quiet >>
     manifest_path: << parameters.manifest_path >>
     deny_stale_exceptions: << parameters.deny_stale_exceptions >>
+    deny_unused_licenses: << parameters.deny_unused_licenses >>
     deny_warnings: << parameters.deny_warnings >>
