@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- report accepted bans.skip exceptions (#49)(pr [#143])
+
 ### Changed
 
 - docs-schedule #62 for v0.2.0(pr [#141])
@@ -338,6 +342,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#139]: https://github.com/jerus-org/jci-audit/pull/139
 [#140]: https://github.com/jerus-org/jci-audit/pull/140
 [#141]: https://github.com/jerus-org/jci-audit/pull/141
+[#143]: https://github.com/jerus-org/jci-audit/pull/143
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...HEAD
 [0.1.5]: https://github.com/jerus-org/jci-audit/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/jerus-org/jci-audit/compare/v0.1.3...v0.1.4
