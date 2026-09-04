@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - report accepted bans.skip exceptions (#49)(pr [#143])
+- add --deny-unused-licenses flag(pr [#144])
 
 ### Changed
 
@@ -343,6 +344,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#140]: https://github.com/jerus-org/jci-audit/pull/140
 [#141]: https://github.com/jerus-org/jci-audit/pull/141
 [#143]: https://github.com/jerus-org/jci-audit/pull/143
+[#144]: https://github.com/jerus-org/jci-audit/pull/144
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...HEAD
 [0.1.5]: https://github.com/jerus-org/jci-audit/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/jerus-org/jci-audit/compare/v0.1.3...v0.1.4
