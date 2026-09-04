@@ -59,6 +59,18 @@ enum Commands {
         #[arg(long, help_heading = "Output")]
         deny_stale_exceptions: bool,
 
+        /// Fail if deny.toml allows a license nothing in the graph uses.
+        ///
+        /// cargo-deny already reports this as `warning[license-not-encountered]`
+        /// (surfaced via --deny-warnings too, along with every other warning) —
+        /// this is the same check narrowed to just unused allowances, so a repo
+        /// can require deny.toml cleanup without also failing on unrelated
+        /// warnings. Unlike a duplicate crate, an unused allowance is never a
+        /// legitimately-unfixable condition worth accepting — it's always just
+        /// stale config, so there is no exception mechanism to pair this with.
+        #[arg(long, help_heading = "Output")]
+        deny_unused_licenses: bool,
+
         #[command(flatten)]
         output: ToolOutput,
     },
@@ -210,8 +222,15 @@ impl Cli {
             Commands::Check {
                 manifest_path,
                 deny_stale_exceptions,
+                deny_unused_licenses,
                 output,
-            } => run_check(manifest_path, *deny_stale_exceptions, output, detail),
+            } => run_check(
+                manifest_path,
+                *deny_stale_exceptions,
+                *deny_unused_licenses,
+                output,
+                detail,
+            ),
             Commands::Release {
                 release_version,
                 advisory_db,
@@ -260,6 +279,7 @@ impl Cli {
 fn run_check(
     manifest_path: &std::path::Path,
     deny_stale_exceptions: bool,
+    deny_unused_licenses: bool,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -291,6 +311,17 @@ fn run_check(
                 .map(|e| e.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
+        );
+    }
+    if deny_unused_licenses
+        && report
+            .warnings
+            .iter()
+            .any(|(code, _)| code == "license-not-encountered")
+    {
+        bail!(
+            "deny.toml allows a license nothing in the graph uses — trim the \
+             [licenses] allow list to what's actually used"
         );
     }
     println!("security check passed (cargo deny + cargo audit + license policy)");
@@ -821,6 +852,7 @@ mod tests {
             Commands::Check {
                 manifest_path,
                 deny_stale_exceptions,
+                deny_unused_licenses,
                 output,
             } => {
                 assert_eq!(manifest_path, std::path::PathBuf::from("."));
@@ -828,6 +860,10 @@ mod tests {
                 assert!(
                     !deny_stale_exceptions,
                     "stale exceptions are reported, not fatal, by default"
+                );
+                assert!(
+                    !deny_unused_licenses,
+                    "unused license allowances are reported, not fatal, by default"
                 );
             }
             other => panic!("expected Check, got {other:?}"),
@@ -843,6 +879,19 @@ mod tests {
                 deny_stale_exceptions,
                 ..
             } => assert!(deny_stale_exceptions),
+            other => panic!("expected Check, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_check_accepts_deny_unused_licenses() {
+        let cli = Cli::try_parse_from(["jci-audit", "check", "--deny-unused-licenses"])
+            .expect("check parses");
+        match cli.command {
+            Commands::Check {
+                deny_unused_licenses,
+                ..
+            } => assert!(deny_unused_licenses),
             other => panic!("expected Check, got {other:?}"),
         }
     }
