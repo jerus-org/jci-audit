@@ -14,6 +14,7 @@ Input:
 
 Output:
       --deny-stale-exceptions  Fail if a configured [[bans.skip]] exception no longer fires
+      --deny-unused-licenses   Fail if deny.toml allows a license nothing in the graph uses
       --deny-warnings          Fail if the tools report any warning
 
 $ jci-audit check --help
@@ -44,6 +45,11 @@ Output:
           Fail if a configured [[bans.skip]] exception no longer fires.
           
           cargo-deny already reports this as `warning[unmatched-skip]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just stale exceptions, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Mirrors `prune --check`.
+
+      --deny-unused-licenses
+          Fail if deny.toml allows a license nothing in the graph uses.
+          
+          cargo-deny already reports this as `warning[license-not-encountered]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just unused allowances, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Unlike a duplicate crate, an unused allowance is never a legitimately-unfixable condition worth accepting — it's always just stale config, so there is no exception mechanism to pair this with.
 
       --deny-warnings
           Fail if the tools report any warning
