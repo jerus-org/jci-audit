@@ -12,7 +12,7 @@
 //! configured skip no longer matches anything.
 
 use anyhow::{Context, Result};
-use toml_edit::{DocumentMut, Item, TableLike, Value};
+use toml_edit::{DocumentMut, Item, TableLike, Value, value};
 
 /// One `[[bans.skip]]` entry, as configured in `deny.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -246,6 +246,29 @@ pub(crate) fn print_notice(accepted: &AcceptedWarnings) {
             println!("    - {}", entry.name);
         }
     }
+}
+
+/// Derive an ephemeral `deny.toml` that reports every `multiple-versions`
+/// duplicate as a plain warning, with no `[[bans.skip]]` exception applied —
+/// "as if the config was warn and the skips didn't exist"
+/// (jerus-org/jci-audit#49 review). Used only for the opt-in, `-vv`
+/// informational report: cargo-deny is silent about a duplicate its skip
+/// config accepts, so this is the only way to recover the crate-name/
+/// dependency-tree detail every other finding already gets at that
+/// verbosity. `[bans.skip-tree]` is untouched — out of scope, same as the
+/// rest of this module.
+pub(crate) fn as_warn_without_skip(deny_toml: &str) -> Result<String> {
+    let mut doc = deny_toml
+        .parse::<DocumentMut>()
+        .context("failed to parse deny.toml")?;
+    let bans = doc
+        .entry("bans")
+        .or_insert(toml_edit::table())
+        .as_table_mut()
+        .context("deny.toml [bans] is not a table")?;
+    bans["multiple-versions"] = value("warn");
+    bans.remove("skip");
+    Ok(doc.to_string())
 }
 
 #[cfg(test)]
@@ -490,6 +513,64 @@ warning[unmatched-skip]: skipped crate 'windows-sys = ^0.52' was not encountered
                 "rendered form: {rendered}"
             );
         }
+    }
+
+    #[test]
+    fn as_warn_without_skip_removes_block_syntax_skip_entries() {
+        let deny_toml = "\
+[bans]
+multiple-versions = \"deny\"
+
+[[bans.skip]]
+name = \"syn\"
+reason = \"genuinely duplicates today\"
+
+[licenses]
+allow = [\"MIT\"]
+";
+        let derived = as_warn_without_skip(deny_toml).unwrap();
+        assert!(
+            derived.contains("multiple-versions = \"warn\""),
+            "got:\n{derived}"
+        );
+        assert!(!derived.contains("[[bans.skip]]"), "got:\n{derived}");
+        assert!(!derived.contains("syn"), "got:\n{derived}");
+        assert!(
+            derived.contains("allow = [\"MIT\"]"),
+            "other sections must be preserved verbatim:\n{derived}"
+        );
+    }
+
+    #[test]
+    fn as_warn_without_skip_removes_inline_array_skip_entries() {
+        let deny_toml = "\
+[bans]
+multiple-versions = \"deny\"
+skip = [\"widget\", { crate = \"gadget@1.0.0\" }]
+";
+        let derived = as_warn_without_skip(deny_toml).unwrap();
+        assert!(
+            derived.contains("multiple-versions = \"warn\""),
+            "got:\n{derived}"
+        );
+        assert!(!derived.contains("skip"), "got:\n{derived}");
+        assert!(!derived.contains("widget"), "got:\n{derived}");
+        assert!(!derived.contains("gadget"), "got:\n{derived}");
+    }
+
+    #[test]
+    fn as_warn_without_skip_inserts_bans_table_when_absent() {
+        let derived = as_warn_without_skip("[licenses]\nallow = []\n").unwrap();
+        assert!(
+            derived.contains("multiple-versions = \"warn\""),
+            "got:\n{derived}"
+        );
+        assert!(derived.contains("allow = []"), "got:\n{derived}");
+    }
+
+    #[test]
+    fn as_warn_without_skip_rejects_malformed_toml() {
+        assert!(as_warn_without_skip("not = [valid").is_err());
     }
 
     #[test]

@@ -134,8 +134,10 @@ pub(crate) fn check_with<R: CommandRunner>(
         label: "cargo deny".to_string(),
         success: deny.success,
     });
-    let accepted_warnings = read_accepted_warnings(cwd, &deny.stderr);
+    let (deny_toml, accepted_warnings) =
+        read_deny_toml_and_accepted_warnings(cwd, &deny.stderr).unwrap_or_default();
     crate::exceptions::print_notice(&accepted_warnings);
+    report_accepted_duplicates_in_detail(runner, cwd, &deny_toml, &accepted_warnings, detail);
 
     // Always run cargo-audit too — never short-circuit on cargo-deny's result,
     // so both tools' findings are surfaced in one pass.
@@ -196,22 +198,83 @@ pub(crate) fn check_with<R: CommandRunner>(
     })
 }
 
-/// Read `deny.toml`'s configured `[[bans.skip]]` exceptions and split them
-/// against this run's cargo-deny stderr. Deliberately non-fatal: a missing or
-/// unparsable `deny.toml` is already the "cargo deny" step's own failure (or,
-/// for a workspace with no bans.skip at all, simply has nothing to report) —
-/// this is a visibility layer on top, not a new source of hard errors.
-fn read_accepted_warnings(cwd: &Path, deny_stderr: &str) -> crate::exceptions::AcceptedWarnings {
-    let Ok((deny_path, _)) = sync::locate_paths(cwd) else {
-        return Default::default();
+/// Read `deny.toml` and classify its configured `[[bans.skip]]` exceptions
+/// against this run's cargo-deny stderr. Returns the raw `deny.toml` text
+/// alongside the classification — [`report_accepted_duplicates_in_detail`]
+/// needs that same text to derive its own ephemeral config from, so it isn't
+/// re-read a second time. Deliberately non-fatal: a missing or unparsable
+/// `deny.toml` is already the "cargo deny" step's own failure (or, for a
+/// workspace with no bans.skip at all, simply has nothing to report) — this
+/// is a visibility layer on top, not a new source of hard errors.
+fn read_deny_toml_and_accepted_warnings(
+    cwd: &Path,
+    deny_stderr: &str,
+) -> Option<(String, crate::exceptions::AcceptedWarnings)> {
+    let (deny_path, _) = sync::locate_paths(cwd).ok()?;
+    let deny_toml = std::fs::read_to_string(&deny_path).ok()?;
+    let configured = crate::exceptions::extract_bans_skips(&deny_toml).ok()?;
+    let accepted = crate::exceptions::accepted_warnings(configured, deny_stderr);
+    Some((deny_toml, accepted))
+}
+
+/// Opt-in, `-vv`-only informational pass: cargo-deny is silent about a
+/// `[[bans.skip]]` entry that's actively suppressing a real duplicate (see
+/// [`crate::exceptions`]), so `-v`/`-vv` have nothing to show for an in-force
+/// exception the way they do for every other kind of finding. This recovers
+/// that by re-running `cargo-deny check bans` against an ephemeral config
+/// with `multiple-versions` forced to `"warn"` and every skip removed — "as
+/// if the config was warn and the skips didn't exist" — so every duplicate,
+/// including accepted ones, shows up as a plain `warning[duplicate]` and
+/// flows through the existing [`surface`]/[`crate::diagnostics::emit`]
+/// tiering unchanged.
+///
+/// Only runs when there's something to explain: measured live, a single
+/// `cargo deny check bans` costs real wall time (graph resolution, not the
+/// check itself, dominates), so this must not run on a routine default/`-v`
+/// check, or when nothing is actually being hidden. Its output is purely
+/// informational — the returned warning counts are discarded, never merged
+/// into [`CheckReport::warnings`], so an accepted exception can never be
+/// penalised by `--deny-warnings`. Any failure deriving/writing the config or
+/// running cargo-deny is swallowed, matching
+/// [`read_deny_toml_and_accepted_warnings`]'s "visibility layer, never a new
+/// hard-error source" principle.
+fn report_accepted_duplicates_in_detail<R: CommandRunner>(
+    runner: &R,
+    cwd: &Path,
+    deny_toml: &str,
+    accepted: &crate::exceptions::AcceptedWarnings,
+    detail: crate::diagnostics::Detail,
+) {
+    if detail != crate::diagnostics::Detail::Full || accepted.in_force.is_empty() {
+        return;
+    }
+    let Ok(derived) = crate::exceptions::as_warn_without_skip(deny_toml) else {
+        return;
     };
-    let Ok(deny_toml) = std::fs::read_to_string(&deny_path) else {
-        return Default::default();
-    };
-    let Ok(configured) = crate::exceptions::extract_bans_skips(&deny_toml) else {
-        return Default::default();
-    };
-    crate::exceptions::accepted_warnings(configured, deny_stderr)
+    let work_dir =
+        std::env::temp_dir().join(format!("jci-audit-check-naked-{}", std::process::id()));
+    if std::fs::create_dir_all(&work_dir).is_err() {
+        return;
+    }
+    let config_path = work_dir.join("deny.toml");
+    if std::fs::write(&config_path, derived).is_err() {
+        let _ = std::fs::remove_dir_all(&work_dir);
+        return;
+    }
+    if let Some(config_str) = config_path.to_str()
+        && let Ok(naked) = runner.run(
+            "cargo-deny",
+            &["--config", config_str, "check", "bans"],
+            cwd,
+        )
+    {
+        surface(
+            "cargo-deny check bans (informational — every duplicate, accepted exceptions included)",
+            &naked,
+            detail,
+        );
+    }
+    let _ = std::fs::remove_dir_all(&work_dir);
 }
 
 /// Run cargo-about's resolution check for every crate in `about_results`,
@@ -456,6 +519,72 @@ mod tests {
         assert_eq!(report.accepted_warnings.in_force[0].name, "syn");
         assert_eq!(report.accepted_warnings.stale.len(), 1);
         assert_eq!(report.accepted_warnings.stale[0].name, "widget");
+    }
+
+    /// A workspace with a genuine in-force `[[bans.skip]]` entry, for the
+    /// lazy informational-report tests below.
+    fn workspace_with_in_force_skip() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = []\n\n\
+             [[bans.skip]]\n\
+             name = \"syn\"\n\
+             reason = \"genuinely duplicates today\"\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn full_detail_with_an_in_force_exception_runs_the_informational_pass() {
+        let dir = workspace_with_in_force_skip();
+        // Call order: deny, [naked informational], audit, cargo-metadata.
+        // deny.stderr names nothing unmatched, so 'syn' is in force.
+        let runner = MockRunner::new(vec![ok(), ok(), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Full).unwrap();
+        assert_eq!(report.accepted_warnings.in_force.len(), 1);
+
+        let calls = runner.calls.borrow();
+        assert_eq!(
+            calls.len(),
+            4,
+            "expected a 4th, informational cargo-deny call: {calls:?}"
+        );
+        let naked = &calls[1];
+        assert_eq!(naked[0], "cargo-deny");
+        assert!(naked.contains(&"--config".to_string()), "call: {naked:?}");
+        assert!(naked.contains(&"bans".to_string()), "call: {naked:?}");
+        assert!(
+            !naked.contains(&"advisories".to_string()),
+            "must be scoped to bans only: {naked:?}"
+        );
+    }
+
+    #[test]
+    fn full_detail_with_no_in_force_exceptions_skips_the_informational_pass() {
+        let dir = empty_workspace();
+        let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Full).unwrap();
+        assert!(report.accepted_warnings.in_force.is_empty());
+        assert_eq!(
+            runner.calls.borrow().len(),
+            3,
+            "nothing to explain, so no extra call"
+        );
+    }
+
+    #[test]
+    fn list_detail_with_an_in_force_exception_skips_the_informational_pass() {
+        let dir = workspace_with_in_force_skip();
+        let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::List).unwrap();
+        assert_eq!(report.accepted_warnings.in_force.len(), 1);
+        assert_eq!(
+            runner.calls.borrow().len(),
+            3,
+            "the informational pass is -vv only"
+        );
     }
 
     #[test]

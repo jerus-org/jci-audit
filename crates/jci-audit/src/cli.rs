@@ -49,6 +49,16 @@ enum Commands {
         #[arg(long, default_value = ".", help_heading = "Input")]
         manifest_path: std::path::PathBuf,
 
+        /// Fail if a configured [[bans.skip]] exception no longer fires.
+        ///
+        /// cargo-deny already reports this as `warning[unmatched-skip]`
+        /// (surfaced via --deny-warnings too, along with every other
+        /// warning) — this is the same check narrowed to just stale
+        /// exceptions, so a repo can require deny.toml cleanup without
+        /// also failing on unrelated warnings. Mirrors `prune --check`.
+        #[arg(long, help_heading = "Output")]
+        deny_stale_exceptions: bool,
+
         #[command(flatten)]
         output: ToolOutput,
     },
@@ -199,8 +209,9 @@ impl Cli {
         match &self.command {
             Commands::Check {
                 manifest_path,
+                deny_stale_exceptions,
                 output,
-            } => run_check(manifest_path, output, detail),
+            } => run_check(manifest_path, *deny_stale_exceptions, output, detail),
             Commands::Release {
                 release_version,
                 advisory_db,
@@ -248,6 +259,7 @@ impl Cli {
 
 fn run_check(
     manifest_path: &std::path::Path,
+    deny_stale_exceptions: bool,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -265,12 +277,24 @@ fn run_check(
     tracing::info!(?manifest_path, "check");
     let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
     diagnostics::enforce(&report.warnings, output.deny_warnings)?;
-    if report.success() {
-        println!("security check passed (cargo deny + cargo audit + license policy)");
-        Ok(())
-    } else {
-        bail!("security check failed: {}", report.failures().join(", "))
+    if !report.success() {
+        bail!("security check failed: {}", report.failures().join(", "));
     }
+    if deny_stale_exceptions && !report.accepted_warnings.stale.is_empty() {
+        bail!(
+            "{} stale accepted duplicate exception(s) — remove from deny.toml: {}",
+            report.accepted_warnings.stale.len(),
+            report
+                .accepted_warnings
+                .stale
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    println!("security check passed (cargo deny + cargo audit + license policy)");
+    Ok(())
 }
 
 fn run_release(
@@ -796,11 +820,29 @@ mod tests {
         match cli.command {
             Commands::Check {
                 manifest_path,
+                deny_stale_exceptions,
                 output,
             } => {
                 assert_eq!(manifest_path, std::path::PathBuf::from("."));
                 assert!(!output.deny_warnings, "warnings are reported, not fatal");
+                assert!(
+                    !deny_stale_exceptions,
+                    "stale exceptions are reported, not fatal, by default"
+                );
             }
+            other => panic!("expected Check, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_check_accepts_deny_stale_exceptions() {
+        let cli = Cli::try_parse_from(["jci-audit", "check", "--deny-stale-exceptions"])
+            .expect("check parses");
+        match cli.command {
+            Commands::Check {
+                deny_stale_exceptions,
+                ..
+            } => assert!(deny_stale_exceptions),
             other => panic!("expected Check, got {other:?}"),
         }
     }
