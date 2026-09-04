@@ -4,6 +4,12 @@ All notable pull requests merged into this workspace are recorded here. This log
 tracks workspace-level changes (`v<VERSION>` tags); per-crate code changes are
 tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
+## [Unreleased]
+
+### Fixed
+
+- deps: update dependency jci-audit to v0.1.6(pr [#145])
+
 ## [0.1.6] - 2026-09-04
 
 ### Added
@@ -345,6 +351,8 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#141]: https://github.com/jerus-org/jci-audit/pull/141
 [#143]: https://github.com/jerus-org/jci-audit/pull/143
 [#144]: https://github.com/jerus-org/jci-audit/pull/144
+[#145]: https://github.com/jerus-org/jci-audit/pull/145
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...HEAD
 [0.1.6]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/jerus-org/jci-audit/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/jerus-org/jci-audit/compare/v0.1.3...v0.1.4
