@@ -221,20 +221,29 @@ pub(crate) fn check_with<R: CommandRunner>(
 ///
 /// so this walks each such block for the first quoted string in the lines
 /// that follow — the only quoted text in the block — stopping at the blank
-/// line that separates diagnostics.
+/// line that separates diagnostics, or at the next diagnostic's own header if
+/// there is no blank line (defends against swallowing a neighbouring block
+/// into this one, which would both misname it and drop it from the count).
+///
+/// Best-effort only: a block whose name can't be found this way contributes
+/// nothing here. Callers must not treat this list's length as the count of
+/// occurrences — [`CheckReport::warnings`]' own `license-not-encountered`
+/// count is the fail-safe source for "did this happen at all"; this is purely
+/// for naming what it can.
 fn unused_license_names(stderr: &str) -> Vec<String> {
     let mut names = Vec::new();
-    let mut lines = stderr.lines().map(strip_ansi);
+    let mut lines = stderr.lines().map(strip_ansi).peekable();
     while let Some(line) = lines.next() {
         if !line.starts_with("warning[license-not-encountered]") {
             continue;
         }
-        for detail_line in lines.by_ref() {
-            if let Some(name) = quoted_substring(&detail_line) {
-                names.push(name);
+        while let Some(detail_line) = lines.peek() {
+            if detail_line.trim().is_empty() || detail_line.starts_with("warning[") {
                 break;
             }
-            if detail_line.trim().is_empty() {
+            let detail_line = lines.next().expect("just peeked Some");
+            if let Some(name) = quoted_substring(&detail_line) {
+                names.push(name);
                 break;
             }
         }
@@ -858,6 +867,36 @@ licenses ok
             unused_license_names(LICENSE_NOT_ENCOUNTERED_STDERR),
             vec!["BSD-2-Clause".to_string(), "Zlib".to_string()]
         );
+    }
+
+    #[test]
+    fn unused_license_names_handles_adjacent_blocks_with_no_blank_line_between() {
+        // No blank line separates the two diagnostics here — the inner scan
+        // for the first block must stop at the second block's own header
+        // rather than reading through it looking for a quote, which would
+        // both misattribute the second license to the first block and drop
+        // the second block from the count entirely.
+        let stderr = "warning[license-not-encountered]: license was not encountered\n\
+             35 \u{2502}     \"BSD-2-Clause\",\n\
+             warning[license-not-encountered]: license was not encountered\n\
+             39 \u{2502}     \"Zlib\",\n";
+        assert_eq!(
+            unused_license_names(stderr),
+            vec!["BSD-2-Clause".to_string(), "Zlib".to_string()]
+        );
+    }
+
+    #[test]
+    fn unused_license_names_skips_a_block_it_cannot_parse_a_name_from() {
+        // A block whose annotated snippet never yields a quoted name (e.g. a
+        // future cargo-deny rendering change) must not swallow the next
+        // block's header while scanning for one.
+        let stderr = "warning[license-not-encountered]: license was not encountered\n\
+             (unexpected rendering, no quoted value here)\n\
+             \n\
+             warning[license-not-encountered]: license was not encountered\n\
+             39 \u{2502}     \"Zlib\",\n";
+        assert_eq!(unused_license_names(stderr), vec!["Zlib".to_string()]);
     }
 
     #[test]

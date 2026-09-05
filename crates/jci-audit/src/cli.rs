@@ -311,12 +311,28 @@ fn check_failures(
                 .join(", ")
         ));
     }
-    if deny_unused_licenses && !report.unused_licenses.is_empty() {
-        failures.push(format!(
-            "{} license(s) allowed in deny.toml but not used — trim the [licenses] allow list: {}",
-            report.unused_licenses.len(),
-            report.unused_licenses.join(", ")
-        ));
+    // Gated on `report.warnings`' own count, not `unused_licenses.len()`:
+    // the parsed names are best-effort (see `unused_license_names`) and must
+    // never let a name-extraction miss turn into a silent pass — a consumer
+    // asking for this to be fail-safe must actually get that.
+    let unused_license_count = report
+        .warnings
+        .iter()
+        .find(|(code, _)| code == "license-not-encountered")
+        .map(|(_, n)| *n);
+    if deny_unused_licenses && let Some(count) = unused_license_count {
+        failures.push(if report.unused_licenses.is_empty() {
+            format!(
+                "{count} license(s) allowed in deny.toml but not used — trim the \
+                 [licenses] allow list (run with -vv to see which)"
+            )
+        } else {
+            format!(
+                "{} license(s) allowed in deny.toml but not used — trim the [licenses] allow list: {}",
+                report.unused_licenses.len(),
+                report.unused_licenses.join(", ")
+            )
+        });
     }
     failures
 }
@@ -1305,6 +1321,7 @@ mod tests {
             version: None,
             reason: None,
         }];
+        report.warnings = vec![("license-not-encountered".to_string(), 2)];
         report.unused_licenses = vec!["BSD-2-Clause".to_string(), "Zlib".to_string()];
 
         let failures = check_failures(&report, false, true, true);
@@ -1341,10 +1358,30 @@ mod tests {
     #[test]
     fn check_failures_reports_deny_warnings_alongside_the_others() {
         let mut report = passing_report();
-        report.warnings = vec![("duplicate".to_string(), 2)];
+        report.warnings = vec![
+            ("duplicate".to_string(), 2),
+            ("license-not-encountered".to_string(), 1),
+        ];
         report.unused_licenses = vec!["Zlib".to_string()];
 
         let failures = check_failures(&report, true, false, true);
         assert_eq!(failures.len(), 2, "got {failures:?}");
+    }
+
+    #[test]
+    fn check_failures_stays_fail_safe_when_the_license_name_cannot_be_parsed() {
+        // `unused_license_names` is best-effort (see its own doc comment) —
+        // a name-extraction miss must never turn `--deny-unused-licenses`
+        // into a silent pass just because the parsed list came back empty.
+        let mut report = passing_report();
+        report.warnings = vec![("license-not-encountered".to_string(), 1)];
+        report.unused_licenses = vec![];
+
+        let failures = check_failures(&report, false, false, true);
+        assert_eq!(failures.len(), 1, "got {failures:?}");
+        assert!(
+            failures[0].contains('1'),
+            "still names the count: {failures:?}"
+        );
     }
 }
