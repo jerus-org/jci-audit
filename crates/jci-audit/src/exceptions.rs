@@ -8,8 +8,9 @@
 //! This module reads the configured exceptions straight out of `deny.toml` (the
 //! same file cargo-deny itself reads — nothing here needs its own config
 //! surface) and cross-references them against cargo-deny's own
-//! `warning[unmatched-skip]:` diagnostic, which fires for free whenever a
-//! configured skip no longer matches anything.
+//! `warning[unmatched-skip]:`/`warning[unnecessary-skip]:` diagnostics, which
+//! fire for free whenever a configured skip no longer matches a genuine
+//! duplicate.
 
 use anyhow::{Context, Result};
 use toml_edit::{DocumentMut, Item, TableLike, Value, value};
@@ -112,8 +113,9 @@ fn entry_from_table(table: &dyn TableLike) -> Option<SkipEntry> {
 /// crate name is only ASCII alphanumerics, `-`, and `_` (crates.io's own
 /// naming rule), so the first character outside that set always marks the
 /// end of the name, regardless of which separator (or none) follows it. Also
-/// used to read the name back out of cargo-deny's `unmatched-skip`
-/// diagnostic text, which echoes the same shapes (see [`unmatched_skip_name`]).
+/// used to read the name back out of cargo-deny's `unmatched-skip`/
+/// `unnecessary-skip` diagnostic text, which echoes the same shapes (see
+/// [`stale_skip_name`]).
 fn spec_name(spec: &str) -> &str {
     let end = spec
         .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
@@ -133,29 +135,34 @@ fn split_package_spec(spec: &str) -> (&str, Option<String>) {
     (name, (!rest.is_empty()).then(|| rest.to_string()))
 }
 
-/// Crate names named in `warning[unmatched-skip]:` lines this run — configured
-/// skips that matched nothing, so cargo-deny itself already flagged them.
+/// Crate names named in `warning[unmatched-skip]:` or `warning[unnecessary-skip]:`
+/// lines this run — configured skips cargo-deny itself already flagged as not
+/// accepting a genuine duplicate. The two codes cover different ways a skip
+/// can be pointless: `unmatched-skip` fires when the spec matches nothing at
+/// all in the graph; `unnecessary-skip` fires when it matches a crate that
+/// exists but was never actually duplicated (only one version). Both mean the
+/// same thing for jci-audit's purposes — safe to remove — so both count here.
 ///
-/// Only the `unmatched-skip` code counts: `unmatched-skip-root`/`unmatched-root`
-/// belong to `bans.skip-tree`, a different (and for now unsupported) exception
+/// Only these two codes count: `unmatched-skip-root`/`unmatched-root` belong
+/// to `bans.skip-tree`, a different (and for now unsupported) exception
 /// shape.
-pub(crate) fn unmatched_skip_names(stderr: &str) -> Vec<String> {
+pub(crate) fn stale_skip_names(stderr: &str) -> Vec<String> {
     stderr
         .lines()
         .map(strip_ansi)
-        .filter_map(|line| unmatched_skip_name(&line))
+        .filter_map(|line| stale_skip_name(&line))
         .collect()
 }
 
-/// The crate name of one `warning[unmatched-skip]:` line, if this line opens
-/// one. cargo-deny renders the skipped spec differently depending on how it
-/// was configured — a bare `skip = ["name..."]` string echoes verbatim (e.g.
-/// `'windows-sys<=0.52'`), while a `crate=`/`name=` table-form entry is
-/// re-rendered as `'name = requirement'` with spaces (e.g. `'windows-sys =
-/// ^0.52'`) — verified live for every form. [`spec_name`] handles both: a
-/// crate name can't contain a space, `<`, `>`, `=`, `^`, `~`, `,`, or `@`, so
-/// the first such character always marks the end of the name regardless of
-/// rendering.
+/// The crate name of one `warning[unmatched-skip]:` or `warning[unnecessary-skip]:`
+/// line, if this line opens one. cargo-deny renders the skipped spec
+/// differently depending on how it was configured — a bare `skip =
+/// ["name..."]` string echoes verbatim (e.g. `'windows-sys<=0.52'`), while a
+/// `crate=`/`name=` table-form entry is re-rendered as `'name = requirement'`
+/// with spaces (e.g. `'windows-sys = ^0.52'`) — verified live for every form,
+/// for both diagnostic codes. [`spec_name`] handles both: a crate name can't
+/// contain a space, `<`, `>`, `=`, `^`, `~`, `,`, or `@`, so the first such
+/// character always marks the end of the name regardless of rendering.
 ///
 /// This means two `[[bans.skip]]` entries for the same crate name at
 /// different versions cannot be told apart by this alone — cargo-deny's own
@@ -164,9 +171,14 @@ pub(crate) fn unmatched_skip_names(stderr: &str) -> Vec<String> {
 /// would couple this to internals (the `semver` crate's `VersionReq` Display
 /// format) rather than the documented diagnostic text. Narrow in practice —
 /// revisit only if a real config needs two skips for the same crate name.
-fn unmatched_skip_name(line: &str) -> Option<String> {
-    let rest = line.strip_prefix("warning[unmatched-skip]:")?;
-    let rest = rest.trim().strip_prefix("skipped crate '")?;
+fn stale_skip_name(line: &str) -> Option<String> {
+    if let Some(rest) = line.strip_prefix("warning[unmatched-skip]:") {
+        let rest = rest.trim().strip_prefix("skipped crate '")?;
+        let (spec, _) = rest.split_once('\'')?;
+        return Some(spec_name(spec).to_string());
+    }
+    let rest = line.strip_prefix("warning[unnecessary-skip]:")?;
+    let rest = rest.trim().strip_prefix("skip '")?;
     let (spec, _) = rest.split_once('\'')?;
     Some(spec_name(spec).to_string())
 }
@@ -193,21 +205,22 @@ fn strip_ansi(line: &str) -> String {
     out
 }
 
-/// Configured skips split by whether they fired `unmatched-skip` this run.
+/// Configured skips split by whether cargo-deny flagged them stale
+/// (`unmatched-skip` or `unnecessary-skip`) this run.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct AcceptedWarnings {
-    /// Configured skips NOT flagged unmatched this run — presumed still in force.
+    /// Configured skips NOT flagged stale this run — presumed still in force.
     pub(crate) in_force: Vec<SkipEntry>,
-    /// Configured skips flagged `unmatched-skip` this run — safe to remove.
+    /// Configured skips flagged stale this run — safe to remove.
     pub(crate) stale: Vec<SkipEntry>,
 }
 
 /// Split `configured` by whether each entry's name appears in
-/// [`unmatched_skip_names`] for `stderr`. Matches by crate name only — see
-/// [`unmatched_skip_name`] for why two skip entries naming the same crate at
+/// [`stale_skip_names`] for `stderr`. Matches by crate name only — see
+/// [`stale_skip_name`] for why two skip entries naming the same crate at
 /// different versions aren't disambiguated.
 pub(crate) fn accepted_warnings(configured: Vec<SkipEntry>, stderr: &str) -> AcceptedWarnings {
-    let unmatched = unmatched_skip_names(stderr);
+    let unmatched = stale_skip_names(stderr);
     let mut out = AcceptedWarnings::default();
     for entry in configured {
         if unmatched.contains(&entry.name) {
@@ -433,7 +446,7 @@ warning[unmatched-skip]: skipped crate 'totally-nonexistent-crate-xyz' was not e
 
     #[test]
     fn finds_the_unmatched_skip_crate_name() {
-        let names = unmatched_skip_names(STDERR_WITH_UNMATCHED);
+        let names = stale_skip_names(STDERR_WITH_UNMATCHED);
         assert_eq!(names, vec!["totally-nonexistent-crate-xyz".to_string()]);
     }
 
@@ -442,13 +455,13 @@ warning[unmatched-skip]: skipped crate 'totally-nonexistent-crate-xyz' was not e
         // syn genuinely duplicates and is skip-listed — cargo-deny is silent
         // about it, so there is nothing in stderr naming it at all.
         let stderr = "warning[duplicate]: found 2 duplicate entries for crate 'reqwest'\n";
-        assert!(unmatched_skip_names(stderr).is_empty());
+        assert!(stale_skip_names(stderr).is_empty());
     }
 
     #[test]
     fn colour_codes_do_not_hide_an_unmatched_skip() {
         let stderr = "\u{1b}[33mwarning\u{1b}[0m[unmatched-skip]: skipped crate 'widget' was not encountered\n";
-        assert_eq!(unmatched_skip_names(stderr), vec!["widget".to_string()]);
+        assert_eq!(stale_skip_names(stderr), vec!["widget".to_string()]);
     }
 
     #[test]
@@ -483,7 +496,67 @@ warning[unmatched-skip]: skipped crate 'windows-sys = ^0.52' was not encountered
         // 0.20.2. Only the name is meaningful for matching against a
         // configured SkipEntry.
         let stderr = "warning[unmatched-skip]: skipped crate 'syn = ^0.52' was not encountered\n";
-        assert_eq!(unmatched_skip_names(stderr), vec!["syn".to_string()]);
+        assert_eq!(stale_skip_names(stderr), vec!["syn".to_string()]);
+    }
+
+    #[test]
+    fn finds_the_unnecessary_skip_crate_name() {
+        // 'anyhow' carries exactly one version in the graph — cargo-deny
+        // flags this differently from an unmatched spec (`unnecessary-skip`,
+        // not `unmatched-skip`), but it means the same thing: this exception
+        // never accepted a genuine duplicate and is safe to remove.
+        let stderr = "\
+warning[unnecessary-skip]: skip 'anyhow' applied to a crate with only one version
+   ┌─ deny.toml:56:9
+   │
+56 │ name = \"anyhow\"
+   │         ━━━━━━ unnecessary skip configuration
+";
+        assert_eq!(stale_skip_names(stderr), vec!["anyhow".to_string()]);
+    }
+
+    #[test]
+    fn unnecessary_skip_name_strips_the_version_requirement() {
+        // A versioned skip renders the same `name = <requirement>` shape
+        // `unmatched-skip` uses for a table-form entry.
+        let stderr = "warning[unnecessary-skip]: skip 'anyhow = =1' applied to a crate with only one version\n";
+        assert_eq!(stale_skip_names(stderr), vec!["anyhow".to_string()]);
+    }
+
+    #[test]
+    fn colour_codes_do_not_hide_an_unnecessary_skip() {
+        let stderr = "\u{1b}[33mwarning\u{1b}[0m[unnecessary-skip]: skip 'anyhow' applied to a crate with only one version\n";
+        assert_eq!(stale_skip_names(stderr), vec!["anyhow".to_string()]);
+    }
+
+    #[test]
+    fn both_stale_skip_codes_are_collected_together() {
+        let stderr = "\
+warning[unmatched-skip]: skipped crate 'widget' was not encountered
+warning[unnecessary-skip]: skip 'anyhow' applied to a crate with only one version
+";
+        assert_eq!(
+            stale_skip_names(stderr),
+            vec!["widget".to_string(), "anyhow".to_string()]
+        );
+    }
+
+    #[test]
+    fn splits_in_force_from_stale_for_an_unnecessary_skip() {
+        // The full accepted_warnings path, not just the name extraction —
+        // a configured skip on a never-duplicated crate must land in
+        // `stale`, exactly like an unmatched one does.
+        let configured = vec![SkipEntry {
+            name: "anyhow".to_string(),
+            version: None,
+            reason: Some("dogfood".to_string()),
+        }];
+        let stderr =
+            "warning[unnecessary-skip]: skip 'anyhow' applied to a crate with only one version\n";
+        let result = accepted_warnings(configured, stderr);
+        assert!(result.in_force.is_empty());
+        assert_eq!(result.stale.len(), 1);
+        assert_eq!(result.stale[0].name, "anyhow");
     }
 
     #[test]
@@ -508,7 +581,7 @@ warning[unmatched-skip]: skipped crate 'windows-sys = ^0.52' was not encountered
                 "warning[unmatched-skip]: skipped crate '{rendered}' was not encountered\n"
             );
             assert_eq!(
-                unmatched_skip_names(&stderr),
+                stale_skip_names(&stderr),
                 vec![expected_name.to_string()],
                 "rendered form: {rendered}"
             );
