@@ -5,9 +5,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-09-05
+
+Summary: Fixed[2]
+
+### Fixed
+
+ - fix: keep unused-license gate fail-safe
+ - fix: check aggregates failures, names licenses
+
 ## [0.1.6] - 2026-09-04
 
-Summary: Added[3]
+Summary: Added[3], Chore[1]
 
 ### Added
 
@@ -199,7 +208,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/jerus-org/jci-audit/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/jerus-org/jci-audit/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/jerus-org/jci-audit/compare/v0.1.2...v0.1.3
