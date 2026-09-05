@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.8(pr [#150])
+- name duplicates under deny severity(pr [#153])
 
 ## [0.1.8] - 2026-09-05
 
@@ -375,6 +376,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#148]: https://github.com/jerus-org/jci-audit/pull/148
 [#149]: https://github.com/jerus-org/jci-audit/pull/149
 [#150]: https://github.com/jerus-org/jci-audit/pull/150
+[#153]: https://github.com/jerus-org/jci-audit/pull/153
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...HEAD
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...v0.1.7
