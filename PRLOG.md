@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- ci-deny duplicates, gate on stale bans.skip(pr [#151])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.9(pr [#154])
@@ -384,6 +388,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#150]: https://github.com/jerus-org/jci-audit/pull/150
 [#153]: https://github.com/jerus-org/jci-audit/pull/153
 [#154]: https://github.com/jerus-org/jci-audit/pull/154
+[#151]: https://github.com/jerus-org/jci-audit/pull/151
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
