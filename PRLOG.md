@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.6(pr [#145])
+- check aggregates failures, names licenses(pr [#146])
 
 ## [0.1.6] - 2026-09-04
 
@@ -352,6 +353,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#143]: https://github.com/jerus-org/jci-audit/pull/143
 [#144]: https://github.com/jerus-org/jci-audit/pull/144
 [#145]: https://github.com/jerus-org/jci-audit/pull/145
+[#146]: https://github.com/jerus-org/jci-audit/pull/146
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...HEAD
 [0.1.6]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/jerus-org/jci-audit/compare/v0.1.4...v0.1.5
