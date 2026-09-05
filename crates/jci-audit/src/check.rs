@@ -259,6 +259,10 @@ pub(crate) fn check_with<R: CommandRunner>(
 /// there is no blank line (defends against swallowing a neighbouring block
 /// into this one, which would both misname it and drop it from the count).
 ///
+/// Recognizes both severities, same as [`duplicate_crate_names`]: cargo-deny's
+/// generic `-D`/config lint overrides can raise `license-not-encountered` to
+/// `error[...]` same as any other lint, not just `bans::multiple-versions`.
+///
 /// Best-effort only: a block whose name can't be found this way contributes
 /// nothing here. Callers must not treat this list's length as the count of
 /// occurrences — [`CheckReport::warnings`]' own `license-not-encountered`
@@ -268,11 +272,16 @@ fn unused_license_names(stderr: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut lines = stderr.lines().map(strip_ansi).peekable();
     while let Some(line) = lines.next() {
-        if !line.starts_with("warning[license-not-encountered]") {
+        if !line.starts_with("warning[license-not-encountered]")
+            && !line.starts_with("error[license-not-encountered]")
+        {
             continue;
         }
         while let Some(detail_line) = lines.peek() {
-            if detail_line.trim().is_empty() || detail_line.starts_with("warning[") {
+            if detail_line.trim().is_empty()
+                || detail_line.starts_with("warning[")
+                || detail_line.starts_with("error[")
+            {
                 break;
             }
             let detail_line = lines.next().expect("just peeked Some");
@@ -963,6 +972,33 @@ licenses ok
              warning[license-not-encountered]: license was not encountered\n\
              39 \u{2502}     \"Zlib\",\n";
         assert_eq!(unused_license_names(stderr), vec!["Zlib".to_string()]);
+    }
+
+    #[test]
+    fn unused_license_names_recognizes_error_severity_too() {
+        // deny-toml's `-D license-not-encountered` (or an equivalent config
+        // lint override) renders this as `error[...]` instead of
+        // `warning[...]`, same as `multiple-versions = "deny"` does for
+        // `duplicate` — see `duplicate_crate_names`, which already handles
+        // both severities.
+        let stderr = "error[license-not-encountered]: license was not encountered\n\
+             35 \u{2502}     \"BSD-2-Clause\",\n";
+        assert_eq!(
+            unused_license_names(stderr),
+            vec!["BSD-2-Clause".to_string()]
+        );
+    }
+
+    #[test]
+    fn unused_license_names_stops_at_an_adjacent_error_severity_block_too() {
+        let stderr = "warning[license-not-encountered]: license was not encountered\n\
+             35 \u{2502}     \"BSD-2-Clause\",\n\
+             error[license-not-encountered]: license was not encountered\n\
+             39 \u{2502}     \"Zlib\",\n";
+        assert_eq!(
+            unused_license_names(stderr),
+            vec!["BSD-2-Clause".to_string(), "Zlib".to_string()]
+        );
     }
 
     #[test]
