@@ -74,6 +74,11 @@ pub(crate) struct CheckReport {
     /// that's actively suppressing a real duplicate, so this is jci-audit's
     /// own visibility on top of it, not a cargo-deny diagnostic.
     pub(crate) accepted_warnings: crate::exceptions::AcceptedWarnings,
+    /// Licenses `deny.toml`'s `[licenses] allow` list permits but that
+    /// nothing in the graph carries (cargo-deny's `license-not-encountered`),
+    /// named individually — see [`unused_license_names`] for why this needs
+    /// its own parse rather than reusing [`CheckReport::warnings`]' counts.
+    pub(crate) unused_licenses: Vec<String>,
 }
 
 impl CheckReport {
@@ -138,6 +143,7 @@ pub(crate) fn check_with<R: CommandRunner>(
         read_deny_toml_and_accepted_warnings(cwd, &deny.stderr).unwrap_or_default();
     crate::exceptions::print_notice(&accepted_warnings);
     report_accepted_duplicates_in_detail(runner, cwd, &deny_toml, &accepted_warnings, detail);
+    let unused_licenses = unused_license_names(&deny.stderr);
 
     // Always run cargo-audit too — never short-circuit on cargo-deny's result,
     // so both tools' findings are surfaced in one pass.
@@ -195,7 +201,82 @@ pub(crate) fn check_with<R: CommandRunner>(
         steps,
         warnings,
         accepted_warnings,
+        unused_licenses,
     })
+}
+
+/// Names of licenses cargo-deny flagged `license-not-encountered`: allowed by
+/// `deny.toml`'s `[licenses] allow` list but not carried by anything in the
+/// current graph. The diagnostic's headline (`warning[license-not-encountered]:
+/// license was not encountered`) never names the license — only the annotated
+/// `deny.toml` source snippet printed underneath it does, e.g.:
+///
+/// ```text
+/// warning[license-not-encountered]: license was not encountered
+///    ┌─ deny.toml:35:6
+///    │
+/// 35 │     "BSD-2-Clause",
+///    │      ━━━━━━━━━━━━ unmatched license allowance
+/// ```
+///
+/// so this walks each such block for the first quoted string in the lines
+/// that follow — the only quoted text in the block — stopping at the blank
+/// line that separates diagnostics, or at the next diagnostic's own header if
+/// there is no blank line (defends against swallowing a neighbouring block
+/// into this one, which would both misname it and drop it from the count).
+///
+/// Best-effort only: a block whose name can't be found this way contributes
+/// nothing here. Callers must not treat this list's length as the count of
+/// occurrences — [`CheckReport::warnings`]' own `license-not-encountered`
+/// count is the fail-safe source for "did this happen at all"; this is purely
+/// for naming what it can.
+fn unused_license_names(stderr: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut lines = stderr.lines().map(strip_ansi).peekable();
+    while let Some(line) = lines.next() {
+        if !line.starts_with("warning[license-not-encountered]") {
+            continue;
+        }
+        while let Some(detail_line) = lines.peek() {
+            if detail_line.trim().is_empty() || detail_line.starts_with("warning[") {
+                break;
+            }
+            let detail_line = lines.next().expect("just peeked Some");
+            if let Some(name) = quoted_substring(&detail_line) {
+                names.push(name);
+                break;
+            }
+        }
+    }
+    names
+}
+
+/// The contents of the first `"..."` pair on the line, if any.
+fn quoted_substring(line: &str) -> Option<String> {
+    let start = line.find('"')? + 1;
+    let end = start + line[start..].find('"')?;
+    Some(line[start..end].to_string())
+}
+
+/// Duplicated from `crate::diagnostics`'s private `strip_ansi` rather than
+/// exposed across the module boundary — four lines, and classification here
+/// is policy, not the counting `diagnostics` already owns (same rationale as
+/// `crate::exceptions`'s own copy).
+fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        for c in chars.by_ref() {
+            if c.is_ascii_alphabetic() {
+                break;
+            }
+        }
+    }
+    out
 }
 
 /// Read `deny.toml` and classify its configured `[[bans.skip]]` exceptions
@@ -759,5 +840,98 @@ mod tests {
             report.failures(),
             vec!["about.toml license policy", "cargo-about license policy"]
         );
+    }
+
+    /// Real, live-captured cargo-deny 0.20.2 stderr for two unmatched
+    /// license allowances (`deny.toml`'s `BSD-2-Clause` and `Zlib` entries),
+    /// piped (non-tty), so no ANSI codes.
+    const LICENSE_NOT_ENCOUNTERED_STDERR: &str = "\
+warning[license-not-encountered]: license was not encountered
+   \u{250c}\u{2500} deny.toml:35:6
+   \u{2502}
+35 \u{2502}     \"BSD-2-Clause\",
+   \u{2502}      \u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501}\u{2501} unmatched license allowance
+
+warning[license-not-encountered]: license was not encountered
+   \u{250c}\u{2500} deny.toml:39:6
+   \u{2502}
+39 \u{2502}     \"Zlib\",
+   \u{2502}      \u{2501}\u{2501}\u{2501}\u{2501} unmatched license allowance
+
+licenses ok
+";
+
+    #[test]
+    fn unused_license_names_extracts_every_flagged_license() {
+        assert_eq!(
+            unused_license_names(LICENSE_NOT_ENCOUNTERED_STDERR),
+            vec!["BSD-2-Clause".to_string(), "Zlib".to_string()]
+        );
+    }
+
+    #[test]
+    fn unused_license_names_handles_adjacent_blocks_with_no_blank_line_between() {
+        // No blank line separates the two diagnostics here — the inner scan
+        // for the first block must stop at the second block's own header
+        // rather than reading through it looking for a quote, which would
+        // both misattribute the second license to the first block and drop
+        // the second block from the count entirely.
+        let stderr = "warning[license-not-encountered]: license was not encountered\n\
+             35 \u{2502}     \"BSD-2-Clause\",\n\
+             warning[license-not-encountered]: license was not encountered\n\
+             39 \u{2502}     \"Zlib\",\n";
+        assert_eq!(
+            unused_license_names(stderr),
+            vec!["BSD-2-Clause".to_string(), "Zlib".to_string()]
+        );
+    }
+
+    #[test]
+    fn unused_license_names_skips_a_block_it_cannot_parse_a_name_from() {
+        // A block whose annotated snippet never yields a quoted name (e.g. a
+        // future cargo-deny rendering change) must not swallow the next
+        // block's header while scanning for one.
+        let stderr = "warning[license-not-encountered]: license was not encountered\n\
+             (unexpected rendering, no quoted value here)\n\
+             \n\
+             warning[license-not-encountered]: license was not encountered\n\
+             39 \u{2502}     \"Zlib\",\n";
+        assert_eq!(unused_license_names(stderr), vec!["Zlib".to_string()]);
+    }
+
+    #[test]
+    fn unused_license_names_is_empty_when_nothing_flagged() {
+        assert!(unused_license_names("licenses ok\n").is_empty());
+        assert!(unused_license_names("warning[duplicate]: found 2\n").is_empty());
+    }
+
+    #[test]
+    fn unused_license_names_ignores_ansi_colour_codes() {
+        let coloured = "\u{1b}[33mwarning[license-not-encountered]\u{1b}[0m: license was not encountered\n\
+             35 \u{2502}     \"\u{1b}[33mBSD-2-Clause\u{1b}[0m\",\n";
+        assert_eq!(
+            unused_license_names(coloured),
+            vec!["BSD-2-Clause".to_string()]
+        );
+    }
+
+    #[test]
+    fn deny_stderr_naming_unused_licenses_populates_the_report() {
+        let dir = empty_workspace();
+        let runner = MockRunner::new(vec![
+            fail(LICENSE_NOT_ENCOUNTERED_STDERR),
+            ok(),
+            workspace_metadata(&[]),
+        ]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert_eq!(report.unused_licenses, vec!["BSD-2-Clause", "Zlib"]);
+    }
+
+    #[test]
+    fn no_license_not_encountered_warnings_means_no_unused_licenses() {
+        let dir = empty_workspace();
+        let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert!(report.unused_licenses.is_empty());
     }
 }

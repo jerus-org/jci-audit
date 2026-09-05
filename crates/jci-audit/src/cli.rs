@@ -276,6 +276,67 @@ impl Cli {
     }
 }
 
+/// Every reason `check` should fail, collected rather than short-circuited —
+/// mirrors `check_with`'s own "aggregated, not short-circuited" step model
+/// (see `check.rs`'s module doc) at this layer too, so `--deny-stale-exceptions`
+/// and `--deny-unused-licenses` findings are never hidden behind an earlier
+/// bail. A pure function of the already-computed report so it's unit-testable
+/// without a real cargo-deny invocation.
+fn check_failures(
+    report: &check::CheckReport,
+    deny_warnings: bool,
+    deny_stale_exceptions: bool,
+    deny_unused_licenses: bool,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    if let Err(e) = diagnostics::enforce(&report.warnings, deny_warnings) {
+        failures.push(e.to_string());
+    }
+    if !report.success() {
+        failures.push(format!(
+            "security check failed: {}",
+            report.failures().join(", ")
+        ));
+    }
+    if deny_stale_exceptions && !report.accepted_warnings.stale.is_empty() {
+        failures.push(format!(
+            "{} stale accepted duplicate exception(s) — remove from deny.toml: {}",
+            report.accepted_warnings.stale.len(),
+            report
+                .accepted_warnings
+                .stale
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    // Gated on `report.warnings`' own count, not `unused_licenses.len()`:
+    // the parsed names are best-effort (see `unused_license_names`) and must
+    // never let a name-extraction miss turn into a silent pass — a consumer
+    // asking for this to be fail-safe must actually get that.
+    let unused_license_count = report
+        .warnings
+        .iter()
+        .find(|(code, _)| code == "license-not-encountered")
+        .map(|(_, n)| *n);
+    if deny_unused_licenses && let Some(count) = unused_license_count {
+        failures.push(if report.unused_licenses.is_empty() {
+            format!(
+                "{count} license(s) allowed in deny.toml but not used — trim the \
+                 [licenses] allow list (run with -vv to see which)"
+            )
+        } else {
+            format!(
+                "{} license(s) allowed in deny.toml but not used — trim the [licenses] allow list: {}",
+                report.unused_licenses.len(),
+                report.unused_licenses.join(", ")
+            )
+        });
+    }
+    failures
+}
+
 fn run_check(
     manifest_path: &std::path::Path,
     deny_stale_exceptions: bool,
@@ -296,33 +357,14 @@ fn run_check(
     ])?;
     tracing::info!(?manifest_path, "check");
     let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
-    diagnostics::enforce(&report.warnings, output.deny_warnings)?;
-    if !report.success() {
-        bail!("security check failed: {}", report.failures().join(", "));
-    }
-    if deny_stale_exceptions && !report.accepted_warnings.stale.is_empty() {
-        bail!(
-            "{} stale accepted duplicate exception(s) — remove from deny.toml: {}",
-            report.accepted_warnings.stale.len(),
-            report
-                .accepted_warnings
-                .stale
-                .iter()
-                .map(|e| e.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-    if deny_unused_licenses
-        && report
-            .warnings
-            .iter()
-            .any(|(code, _)| code == "license-not-encountered")
-    {
-        bail!(
-            "deny.toml allows a license nothing in the graph uses — trim the \
-             [licenses] allow list to what's actually used"
-        );
+    let failures = check_failures(
+        &report,
+        output.deny_warnings,
+        deny_stale_exceptions,
+        deny_unused_licenses,
+    );
+    if !failures.is_empty() {
+        bail!("{}", failures.join("\n"));
     }
     println!("security check passed (cargo deny + cargo audit + license policy)");
     Ok(())
@@ -1242,5 +1284,104 @@ mod tests {
         assert_eq!(owner, "some-org");
         assert_eq!(repo, "some-repo");
         assert_eq!(tag_prefix, "some-repo-v");
+    }
+
+    fn passing_report() -> check::CheckReport {
+        check::CheckReport {
+            steps: vec![
+                check::CheckStep {
+                    label: "cargo deny".to_string(),
+                    success: true,
+                },
+                check::CheckStep {
+                    label: "cargo audit".to_string(),
+                    success: true,
+                },
+            ],
+            warnings: vec![],
+            accepted_warnings: crate::exceptions::AcceptedWarnings::default(),
+            unused_licenses: vec![],
+        }
+    }
+
+    #[test]
+    fn check_failures_is_empty_for_a_clean_report() {
+        assert!(check_failures(&passing_report(), false, false, false).is_empty());
+    }
+
+    #[test]
+    fn check_failures_collects_every_applicable_reason_in_one_pass() {
+        // Every gate that CAN fail here does fail here, at once — the bug
+        // being fixed is that a consumer previously only ever saw the first
+        // one and had to fix-and-rerun repeatedly to discover the rest.
+        let mut report = passing_report();
+        report.steps[0].success = false;
+        report.accepted_warnings.stale = vec![crate::exceptions::SkipEntry {
+            name: "widget".to_string(),
+            version: None,
+            reason: None,
+        }];
+        report.warnings = vec![("license-not-encountered".to_string(), 2)];
+        report.unused_licenses = vec!["BSD-2-Clause".to_string(), "Zlib".to_string()];
+
+        let failures = check_failures(&report, false, true, true);
+
+        assert_eq!(failures.len(), 3, "got {failures:?}");
+        assert!(failures.iter().any(|f| f.contains("cargo deny")));
+        assert!(failures.iter().any(|f| f.contains("widget")));
+        let license_failure = failures
+            .iter()
+            .find(|f| f.contains("license"))
+            .expect("a license failure: {failures:?}");
+        assert!(
+            license_failure.contains("BSD-2-Clause") && license_failure.contains("Zlib"),
+            "must name every offending license, not just report that one exists: {license_failure}"
+        );
+    }
+
+    #[test]
+    fn check_failures_ignores_stale_exceptions_and_unused_licenses_when_not_opted_in() {
+        let mut report = passing_report();
+        report.accepted_warnings.stale = vec![crate::exceptions::SkipEntry {
+            name: "widget".to_string(),
+            version: None,
+            reason: None,
+        }];
+        report.unused_licenses = vec!["Zlib".to_string()];
+
+        assert!(
+            check_failures(&report, false, false, false).is_empty(),
+            "both flags default to reporting only, per the existing --deny-stale-exceptions convention"
+        );
+    }
+
+    #[test]
+    fn check_failures_reports_deny_warnings_alongside_the_others() {
+        let mut report = passing_report();
+        report.warnings = vec![
+            ("duplicate".to_string(), 2),
+            ("license-not-encountered".to_string(), 1),
+        ];
+        report.unused_licenses = vec!["Zlib".to_string()];
+
+        let failures = check_failures(&report, true, false, true);
+        assert_eq!(failures.len(), 2, "got {failures:?}");
+    }
+
+    #[test]
+    fn check_failures_stays_fail_safe_when_the_license_name_cannot_be_parsed() {
+        // `unused_license_names` is best-effort (see its own doc comment) —
+        // a name-extraction miss must never turn `--deny-unused-licenses`
+        // into a silent pass just because the parsed list came back empty.
+        let mut report = passing_report();
+        report.warnings = vec![("license-not-encountered".to_string(), 1)];
+        report.unused_licenses = vec![];
+
+        let failures = check_failures(&report, false, false, true);
+        assert_eq!(failures.len(), 1, "got {failures:?}");
+        assert!(
+            failures[0].contains('1'),
+            "still names the count: {failures:?}"
+        );
     }
 }
