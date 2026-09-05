@@ -66,9 +66,9 @@ pub(crate) struct VerifyOutcome {
     pub(crate) mismatches: Vec<String>,
     /// Warnings the gate reported, for `--deny-warnings`.
     pub(crate) warnings: Vec<crate::diagnostics::WarningCount>,
-    /// Configured `[[bans.skip]]` exceptions this fresh re-run flagged
-    /// `unmatched-skip` — safe to remove from `deny.toml`. See
-    /// [`crate::exceptions`].
+    /// Configured `[[bans.skip]]` exceptions this fresh re-run flagged stale
+    /// (`unmatched-skip` or `unnecessary-skip`) — safe to remove from
+    /// `deny.toml`. See [`crate::exceptions`].
     pub(crate) stale_exceptions: Vec<String>,
 }
 
