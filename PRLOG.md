@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- ci-enable deny_unused_licenses gate (closes #31)(pr [#148])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.7(pr [#147])
@@ -361,6 +365,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#145]: https://github.com/jerus-org/jci-audit/pull/145
 [#146]: https://github.com/jerus-org/jci-audit/pull/146
 [#147]: https://github.com/jerus-org/jci-audit/pull/147
+[#148]: https://github.com/jerus-org/jci-audit/pull/148
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...HEAD
 [0.1.7]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...v0.1.6
