@@ -45,8 +45,17 @@ allow = [
 # the graph — an exception nobody can account for is one nobody will question later.
 
 [bans]
-multiple-versions = "warn"
+multiple-versions = "deny"
 wildcards = "allow"
+
+# Deliberately stale for the first commit of jerus-org/jci-audit#31's dogfood
+# sequence: 'anyhow' carries exactly one version in this graph, so cargo-deny
+# reports this skip `unnecessary-skip` (jerus-org/jci-audit#149) and
+# --deny-stale-exceptions should fail on it. Removed in the next commit once
+# that's confirmed on CI.
+[[bans.skip]]
+name = "anyhow"
+reason = "dogfood: deliberately stale, anyhow has no duplicate"
 
 [sources]
 unknown-registry = "warn"
