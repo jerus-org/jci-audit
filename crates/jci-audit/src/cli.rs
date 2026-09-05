@@ -1302,6 +1302,7 @@ mod tests {
             warnings: vec![],
             accepted_warnings: crate::exceptions::AcceptedWarnings::default(),
             unused_licenses: vec![],
+            duplicate_crates: vec![],
         }
     }
 
