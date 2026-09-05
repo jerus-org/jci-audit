@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.7(pr [#147])
+- recognize unnecessary-skip as stale too(pr [#149])
 
 ## [0.1.7] - 2026-09-05
 
@@ -366,6 +367,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#146]: https://github.com/jerus-org/jci-audit/pull/146
 [#147]: https://github.com/jerus-org/jci-audit/pull/147
 [#148]: https://github.com/jerus-org/jci-audit/pull/148
+[#149]: https://github.com/jerus-org/jci-audit/pull/149
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...HEAD
 [0.1.7]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...v0.1.6
