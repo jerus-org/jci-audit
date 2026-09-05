@@ -72,11 +72,16 @@ workflows:
       # dogfoods the published orb exactly as any consumer would.
       #
       # deny_unused_licenses: true dogfoods #144's flag on this repo's own
-      # deny.toml, closing #31 — it forces `deny.toml`'s [licenses] allow
-      # list to stay trimmed to what the graph actually uses, the same way
-      # deny_stale_exceptions already forces bans.skip cleanup.
+      # deny.toml (#31, closed) — it forces `deny.toml`'s [licenses] allow
+      # list to stay trimmed to what the graph actually uses.
+      #
+      # deny_stale_exceptions: true dogfoods #143's flag now that
+      # multiple-versions is "deny" (jerus-org/jci-audit#31 follow-up): it
+      # forces `[[bans.skip]]` to stay trimmed to genuinely in-force
+      # exceptions, the same way deny_unused_licenses forces the allow list.
       - jci-audit/check:
           deny_unused_licenses: true
+          deny_stale_exceptions: true
 
       - toolkit/security:
           name: security with sonarcloud
