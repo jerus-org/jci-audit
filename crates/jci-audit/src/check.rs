@@ -80,6 +80,11 @@ pub(crate) struct CheckReport {
     /// named individually — see [`unused_license_names`] for why this needs
     /// its own parse rather than reusing [`CheckReport::warnings`]' counts.
     pub(crate) unused_licenses: Vec<String>,
+    /// Crates cargo-deny flagged `duplicate` (multiple versions in the
+    /// graph) this run, named individually — see [`duplicate_crate_names`]
+    /// for why `multiple-versions = "deny"` makes this invisible to
+    /// [`CheckReport::warnings`]' tiered Summary/List reporting.
+    pub(crate) duplicate_crates: Vec<String>,
 }
 
 impl CheckReport {
@@ -145,6 +150,16 @@ pub(crate) fn check_with<R: CommandRunner>(
     crate::exceptions::print_notice(&accepted_warnings);
     report_accepted_duplicates_in_detail(runner, cwd, &deny_toml, &accepted_warnings, detail);
     let unused_licenses = unused_license_names(&deny.stderr);
+    let duplicate_crates = duplicate_crate_names(&deny.stderr);
+    if !duplicate_crates.is_empty() {
+        println!(
+            "  {} duplicate crate version(s) need a [[bans.skip]] entry:",
+            duplicate_crates.len()
+        );
+        for name in &duplicate_crates {
+            println!("    - {name}");
+        }
+    }
 
     // Always run cargo-audit too — never short-circuit on cargo-deny's result,
     // so both tools' findings are surfaced in one pass.
@@ -203,6 +218,7 @@ pub(crate) fn check_with<R: CommandRunner>(
         warnings,
         accepted_warnings,
         unused_licenses,
+        duplicate_crates,
     })
 }
 
@@ -250,6 +266,39 @@ fn unused_license_names(stderr: &str) -> Vec<String> {
         }
     }
     names
+}
+
+/// Crates cargo-deny flagged `duplicate` (multiple versions in the graph)
+/// this run, parsed from its own diagnostic header line — e.g. `error[duplicate]:
+/// found 2 duplicate entries for crate 'core-foundation'`.
+///
+/// Recognizes both severities: at the default `multiple-versions = "warn"`
+/// policy the header is `warning[duplicate]:`; under `"deny"` it's
+/// `error[duplicate]:`. That second form matters because
+/// [`crate::diagnostics`]'s tiered Summary/List reporting only ever
+/// recognizes a `warning[` prefix — under "deny" severity a duplicate is
+/// otherwise invisible at every verbosity short of `-vv`'s raw dependency-
+/// tree dump, so this recovers the same "which crates" answer
+/// `--deny-stale-exceptions`/`--deny-unused-licenses` already give for their
+/// own findings, unconditionally and regardless of severity or verbosity.
+fn duplicate_crate_names(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .map(strip_ansi)
+        .filter_map(|line| {
+            let rest = line
+                .strip_prefix("warning[duplicate]:")
+                .or_else(|| line.strip_prefix("error[duplicate]:"))?;
+            let rest = rest.trim().strip_prefix("found")?.trim_start();
+            let rest = rest
+                .split_once("duplicate entries for crate")?
+                .1
+                .trim_start()
+                .strip_prefix('\'')?;
+            let (name, _) = rest.split_once('\'')?;
+            Some(name.to_string())
+        })
+        .collect()
 }
 
 /// The contents of the first `"..."` pair on the line, if any.
@@ -934,5 +983,62 @@ licenses ok
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert!(report.unused_licenses.is_empty());
+    }
+
+    #[test]
+    fn duplicate_crate_names_extracts_every_flagged_crate_under_error_severity() {
+        // multiple-versions = "deny" makes cargo-deny emit these as
+        // `error[duplicate]:`, invisible to diagnostics.rs's warning-only
+        // Summary/List tiers — this is the recovery for "which crates".
+        let stderr = "\
+error[duplicate]: found 2 duplicate entries for crate 'core-foundation'
+   ┌─ Cargo.lock:30:1
+   │
+error[duplicate]: found 2 duplicate entries for crate 'syn'
+   ┌─ Cargo.lock:100:1
+   │
+";
+        assert_eq!(
+            duplicate_crate_names(stderr),
+            vec!["core-foundation".to_string(), "syn".to_string()]
+        );
+    }
+
+    #[test]
+    fn duplicate_crate_names_also_extracts_under_warn_severity() {
+        // Same identification is useful under the default "warn" policy too
+        // — not gated on severity.
+        let stderr = "warning[duplicate]: found 2 duplicate entries for crate 'reqwest'\n";
+        assert_eq!(duplicate_crate_names(stderr), vec!["reqwest".to_string()]);
+    }
+
+    #[test]
+    fn duplicate_crate_names_is_empty_when_nothing_flagged() {
+        assert!(duplicate_crate_names("bans ok\n").is_empty());
+        assert!(duplicate_crate_names("warning[unnecessary-skip]: skip 'x'\n").is_empty());
+    }
+
+    #[test]
+    fn duplicate_crate_names_ignores_ansi_colour_codes() {
+        let stderr =
+            "\u{1b}[33mwarning\u{1b}[0m[duplicate]: found 2 duplicate entries for crate 'syn'\n";
+        assert_eq!(duplicate_crate_names(stderr), vec!["syn".to_string()]);
+    }
+
+    #[test]
+    fn deny_severity_duplicates_are_named_in_the_report() {
+        let dir = empty_workspace();
+        let deny_stderr = "error[duplicate]: found 2 duplicate entries for crate 'syn'\n";
+        let runner = MockRunner::new(vec![fail(deny_stderr), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert_eq!(report.duplicate_crates, vec!["syn".to_string()]);
+    }
+
+    #[test]
+    fn no_duplicates_means_an_empty_duplicate_crates_list() {
+        let dir = empty_workspace();
+        let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert!(report.duplicate_crates.is_empty());
     }
 }
