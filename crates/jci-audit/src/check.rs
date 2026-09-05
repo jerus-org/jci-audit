@@ -81,10 +81,10 @@ pub(crate) struct CheckReport {
     /// its own parse rather than reusing [`CheckReport::warnings`]' counts.
     pub(crate) unused_licenses: Vec<String>,
     /// Crates cargo-deny flagged `duplicate` (multiple versions in the
-    /// graph) this run, named individually — see [`duplicate_crate_names`]
-    /// for why `multiple-versions = "deny"` makes this invisible to
-    /// [`CheckReport::warnings`]' tiered Summary/List reporting. Excludes any
-    /// crate already carrying an in-force `[[bans.skip]]` (in
+    /// graph) this run, named individually and unconditionally — see
+    /// [`duplicate_crate_names`] for why this exists alongside
+    /// [`CheckReport::warnings`]' own tiered Summary/List reporting. Excludes
+    /// any crate already carrying an in-force `[[bans.skip]]` (in
     /// `accepted_warnings.in_force`) — reporting "needs a skip" for a crate
     /// that already has one in force would contradict that notice.
     pub(crate) duplicate_crates: Vec<String>,
@@ -291,13 +291,12 @@ fn unused_license_names(stderr: &str) -> Vec<String> {
 ///
 /// Recognizes both severities: at the default `multiple-versions = "warn"`
 /// policy the header is `warning[duplicate]:`; under `"deny"` it's
-/// `error[duplicate]:`. That second form matters because
-/// [`crate::diagnostics`]'s tiered Summary/List reporting only ever
-/// recognizes a `warning[` prefix — under "deny" severity a duplicate is
-/// otherwise invisible at every verbosity short of `-vv`'s raw dependency-
-/// tree dump, so this recovers the same "which crates" answer
+/// `error[duplicate]:`. [`crate::diagnostics`]'s tiered Summary/List
+/// reporting already surfaces both (see its `Severity`), but only at `-v` and
+/// above; this gives the same "which crates" answer
 /// `--deny-stale-exceptions`/`--deny-unused-licenses` already give for their
-/// own findings, unconditionally and regardless of severity or verbosity.
+/// own findings unconditionally, at every verbosity, matching that
+/// established convention rather than gating it on `-v`.
 fn duplicate_crate_names(stderr: &str) -> Vec<String> {
     stderr
         .lines()
@@ -1005,8 +1004,8 @@ licenses ok
     #[test]
     fn duplicate_crate_names_extracts_every_flagged_crate_under_error_severity() {
         // multiple-versions = "deny" makes cargo-deny emit these as
-        // `error[duplicate]:`, invisible to diagnostics.rs's warning-only
-        // Summary/List tiers — this is the recovery for "which crates".
+        // `error[duplicate]:` — this names them unconditionally, at every
+        // verbosity, rather than only at diagnostics.rs's `-v` tier.
         let stderr = "\
 error[duplicate]: found 2 duplicate entries for crate 'core-foundation'
    ┌─ Cargo.lock:30:1
