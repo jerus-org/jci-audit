@@ -48,6 +48,38 @@ allow = [
 multiple-versions = "deny"
 wildcards = "allow"
 
+# Each entry below is a genuine transitive split, verified live via `cargo
+# deny check bans`'s dependency trees, not an unreviewed default. Remove an
+# entry as soon as `jci-audit check --deny-stale-exceptions` reports it
+# stale — a skip nobody can account for is one nobody will question later.
+[[bans.skip]]
+crate = "reqwest"
+reason = "0.12 via pcu-release-assets' GitHub API chain (gql_client, octocrate-core); 0.13 used directly by jci-audit"
+
+[[bans.skip]]
+crate = "core-foundation"
+reason = "transitive via reqwest's 0.12/0.13 split above, each version pulling its own TLS backend chain"
+
+[[bans.skip]]
+crate = "thiserror"
+reason = "1.0 via octocrate (pcu-release-assets); 2.0 via the jni/rustls-platform-verifier chain"
+
+[[bans.skip]]
+crate = "thiserror-impl"
+reason = "follows thiserror's 1.0/2.0 split above"
+
+[[bans.skip]]
+crate = "syn"
+reason = "2.0 via the jni proc-macro chain (rustls-platform-verifier's Android support); 3.0 via clap_derive/serde_derive"
+
+[[bans.skip]]
+crate = "windows-sys"
+reason = "0.52 via ring (TLS/crypto stack); 0.61 via clap's anstream/anstyle-query terminal-detection chain"
+
+[[bans.skip]]
+crate = "getrandom"
+reason = "0.2 via ring; 0.4 via jobserver/cc's build-time chain (aws-lc-sys) — unrelated consumers"
+
 [sources]
 unknown-registry = "warn"
 unknown-git = "warn"
