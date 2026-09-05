@@ -4459,7 +4459,7 @@ limitations under the License.
 
 Used by:
 
-- jci-audit 0.1.7
+- jci-audit 0.1.8
 
 ```text
                               Apache License
