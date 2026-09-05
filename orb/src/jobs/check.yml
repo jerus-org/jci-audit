@@ -15,7 +15,7 @@ parameters:
     default: .
   deny_stale_exceptions:
     type: boolean
-    description: Fail if a configured [[bans.skip]] exception no longer fires. cargo-deny already reports this as `warning[unmatched-skip]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just stale exceptions, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Mirrors `prune --check`.
+    description: Fail if a configured [[bans.skip]] exception no longer fires. cargo-deny already reports this as `warning[unmatched-skip]` or `warning[unnecessary-skip]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just stale exceptions, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Mirrors `prune --check`.
     default: false
   deny_unused_licenses:
     type: boolean

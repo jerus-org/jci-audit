@@ -69,8 +69,9 @@ pub(crate) struct CheckReport {
     /// Warnings the tools reported, for `--deny-warnings`.
     pub(crate) warnings: Vec<crate::diagnostics::WarningCount>,
     /// `deny.toml`'s configured `[[bans.skip]]` exceptions, split by whether
-    /// cargo-deny flagged each one `unmatched-skip` this run. See
-    /// [`crate::exceptions`] — cargo-deny is otherwise silent about a skip
+    /// cargo-deny flagged each one stale (`unmatched-skip` or
+    /// `unnecessary-skip`) this run. See [`crate::exceptions`] — cargo-deny
+    /// is otherwise silent about a skip
     /// that's actively suppressing a real duplicate, so this is jci-audit's
     /// own visibility on top of it, not a cargo-deny diagnostic.
     pub(crate) accepted_warnings: crate::exceptions::AcceptedWarnings,

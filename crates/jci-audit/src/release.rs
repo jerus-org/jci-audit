@@ -57,7 +57,8 @@ pub(crate) struct ReleaseOutcome {
     /// Advisory ids the live (non-blocking) audit reported.
     pub(crate) live_findings: Vec<String>,
     /// `deny.toml`'s `[[bans.skip]]` exceptions, split by whether cargo-deny
-    /// flagged each one `unmatched-skip` this run. See [`crate::exceptions`].
+    /// flagged each one stale (`unmatched-skip` or `unnecessary-skip`) this
+    /// run. See [`crate::exceptions`].
     pub(crate) accepted_warnings: crate::exceptions::AcceptedWarnings,
 }
 

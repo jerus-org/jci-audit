@@ -51,11 +51,12 @@ enum Commands {
 
         /// Fail if a configured [[bans.skip]] exception no longer fires.
         ///
-        /// cargo-deny already reports this as `warning[unmatched-skip]`
-        /// (surfaced via --deny-warnings too, along with every other
-        /// warning) — this is the same check narrowed to just stale
-        /// exceptions, so a repo can require deny.toml cleanup without
-        /// also failing on unrelated warnings. Mirrors `prune --check`.
+        /// cargo-deny already reports this as `warning[unmatched-skip]` or
+        /// `warning[unnecessary-skip]` (surfaced via --deny-warnings too,
+        /// along with every other warning) — this is the same check
+        /// narrowed to just stale exceptions, so a repo can require
+        /// deny.toml cleanup without also failing on unrelated warnings.
+        /// Mirrors `prune --check`.
         #[arg(long, help_heading = "Output")]
         deny_stale_exceptions: bool,
 
