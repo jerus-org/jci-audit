@@ -83,7 +83,10 @@ pub(crate) struct CheckReport {
     /// Crates cargo-deny flagged `duplicate` (multiple versions in the
     /// graph) this run, named individually — see [`duplicate_crate_names`]
     /// for why `multiple-versions = "deny"` makes this invisible to
-    /// [`CheckReport::warnings`]' tiered Summary/List reporting.
+    /// [`CheckReport::warnings`]' tiered Summary/List reporting. Excludes any
+    /// crate already carrying an in-force `[[bans.skip]]` (in
+    /// `accepted_warnings.in_force`) — reporting "needs a skip" for a crate
+    /// that already has one in force would contradict that notice.
     pub(crate) duplicate_crates: Vec<String>,
 }
 
@@ -150,7 +153,21 @@ pub(crate) fn check_with<R: CommandRunner>(
     crate::exceptions::print_notice(&accepted_warnings);
     report_accepted_duplicates_in_detail(runner, cwd, &deny_toml, &accepted_warnings, detail);
     let unused_licenses = unused_license_names(&deny.stderr);
-    let duplicate_crates = duplicate_crate_names(&deny.stderr);
+    // Excludes any crate with an in-force skip: cargo-deny still emits
+    // `duplicate` for a crate name that has more versions than a single
+    // skip fully accounts for (e.g. 3 versions, one skipped, two still
+    // duplicated), and reporting "needs a [[bans.skip]] entry" alongside
+    // "accepted exception in force" for the same name would flatly
+    // contradict itself.
+    let duplicate_crates: Vec<String> = duplicate_crate_names(&deny.stderr)
+        .into_iter()
+        .filter(|name| {
+            !accepted_warnings
+                .in_force
+                .iter()
+                .any(|entry| &entry.name == name)
+        })
+        .collect();
     if !duplicate_crates.is_empty() {
         println!(
             "  {} duplicate crate version(s) need a [[bans.skip]] entry:",
@@ -1032,6 +1049,36 @@ error[duplicate]: found 2 duplicate entries for crate 'syn'
         let runner = MockRunner::new(vec![fail(deny_stderr), ok(), workspace_metadata(&[])]);
         let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
         assert_eq!(report.duplicate_crates, vec!["syn".to_string()]);
+    }
+
+    #[test]
+    fn a_crate_with_an_in_force_skip_is_not_also_reported_as_needing_one() {
+        // A crate can carry more versions than a single skip fully accounts
+        // for (e.g. 3 versions, one skipped, two still duplicated) — in that
+        // case cargo-deny still emits `duplicate` for the crate name even
+        // though a configured skip for it is genuinely in force. Reporting
+        // it as "needs a [[bans.skip]] entry" alongside "accepted exception
+        // in force" for the same name would flatly contradict itself.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = []\n\n\
+             [[bans.skip]]\n\
+             name = \"syn\"\n\
+             reason = \"one of three versions genuinely duplicates\"\n",
+        )
+        .unwrap();
+        // No unmatched-skip/unnecessary-skip for 'syn' -> presumed in force,
+        // per exceptions.rs's own convention (silence = still matching).
+        let deny_stderr = "error[duplicate]: found 2 duplicate entries for crate 'syn'\n";
+        let runner = MockRunner::new(vec![fail(deny_stderr), ok(), workspace_metadata(&[])]);
+        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        assert_eq!(report.accepted_warnings.in_force.len(), 1);
+        assert!(
+            report.duplicate_crates.is_empty(),
+            "got {:?}",
+            report.duplicate_crates
+        );
     }
 
     #[test]
