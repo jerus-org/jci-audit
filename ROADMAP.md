@@ -112,8 +112,7 @@ releases Phase 0-2 bugfixes have been shipping as.
   workspace `Cargo.lock`, and giving the release record a crate-name-qualified path so multiple
   crates can release under different versions in one pipeline run without colliding.
 - **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
-  Required for the initial published pre-release, not deferred to general consumer-migration
-  readiness as earlier drafts of this roadmap assumed: a tool with no onboarding command isn't
+  Required for the initial published pre-release: a tool with no onboarding command isn't
   actually installable software for anyone outside this repo, pre-1.0 or not.
 - **[#63 — `license_scope`/`about.toml` ignore-build/ignore-transitive-dependencies.](https://github.com/jerus-org/jci-audit/issues/63)**
   Honour those settings in the derivation instead of always including build dependencies.
