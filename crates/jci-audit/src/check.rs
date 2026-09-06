@@ -81,10 +81,10 @@ pub(crate) struct CheckReport {
     /// its own parse rather than reusing [`CheckReport::warnings`]' counts.
     pub(crate) unused_licenses: Vec<String>,
     /// Crates cargo-deny flagged `duplicate` (multiple versions in the
-    /// graph) this run, named individually — see [`duplicate_crate_names`]
-    /// for why `multiple-versions = "deny"` makes this invisible to
-    /// [`CheckReport::warnings`]' tiered Summary/List reporting. Excludes any
-    /// crate already carrying an in-force `[[bans.skip]]` (in
+    /// graph) this run, named individually and unconditionally — see
+    /// [`duplicate_crate_names`] for why this exists alongside
+    /// [`CheckReport::warnings`]' own tiered Summary/List reporting. Excludes
+    /// any crate already carrying an in-force `[[bans.skip]]` (in
     /// `accepted_warnings.in_force`) — reporting "needs a skip" for a crate
     /// that already has one in force would contradict that notice.
     pub(crate) duplicate_crates: Vec<String>,
@@ -259,6 +259,10 @@ pub(crate) fn check_with<R: CommandRunner>(
 /// there is no blank line (defends against swallowing a neighbouring block
 /// into this one, which would both misname it and drop it from the count).
 ///
+/// Recognizes both severities, same as [`duplicate_crate_names`]: cargo-deny's
+/// generic `-D`/config lint overrides can raise `license-not-encountered` to
+/// `error[...]` same as any other lint, not just `bans::multiple-versions`.
+///
 /// Best-effort only: a block whose name can't be found this way contributes
 /// nothing here. Callers must not treat this list's length as the count of
 /// occurrences — [`CheckReport::warnings`]' own `license-not-encountered`
@@ -268,11 +272,16 @@ fn unused_license_names(stderr: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut lines = stderr.lines().map(strip_ansi).peekable();
     while let Some(line) = lines.next() {
-        if !line.starts_with("warning[license-not-encountered]") {
+        if !line.starts_with("warning[license-not-encountered]")
+            && !line.starts_with("error[license-not-encountered]")
+        {
             continue;
         }
         while let Some(detail_line) = lines.peek() {
-            if detail_line.trim().is_empty() || detail_line.starts_with("warning[") {
+            if detail_line.trim().is_empty()
+                || detail_line.starts_with("warning[")
+                || detail_line.starts_with("error[")
+            {
                 break;
             }
             let detail_line = lines.next().expect("just peeked Some");
@@ -291,13 +300,12 @@ fn unused_license_names(stderr: &str) -> Vec<String> {
 ///
 /// Recognizes both severities: at the default `multiple-versions = "warn"`
 /// policy the header is `warning[duplicate]:`; under `"deny"` it's
-/// `error[duplicate]:`. That second form matters because
-/// [`crate::diagnostics`]'s tiered Summary/List reporting only ever
-/// recognizes a `warning[` prefix — under "deny" severity a duplicate is
-/// otherwise invisible at every verbosity short of `-vv`'s raw dependency-
-/// tree dump, so this recovers the same "which crates" answer
+/// `error[duplicate]:`. [`crate::diagnostics`]'s tiered Summary/List
+/// reporting already surfaces both (see its `Severity`), but only at `-v` and
+/// above; this gives the same "which crates" answer
 /// `--deny-stale-exceptions`/`--deny-unused-licenses` already give for their
-/// own findings, unconditionally and regardless of severity or verbosity.
+/// own findings unconditionally, at every verbosity, matching that
+/// established convention rather than gating it on `-v`.
 fn duplicate_crate_names(stderr: &str) -> Vec<String> {
     stderr
         .lines()
@@ -967,6 +975,33 @@ licenses ok
     }
 
     #[test]
+    fn unused_license_names_recognizes_error_severity_too() {
+        // deny-toml's `-D license-not-encountered` (or an equivalent config
+        // lint override) renders this as `error[...]` instead of
+        // `warning[...]`, same as `multiple-versions = "deny"` does for
+        // `duplicate` — see `duplicate_crate_names`, which already handles
+        // both severities.
+        let stderr = "error[license-not-encountered]: license was not encountered\n\
+             35 \u{2502}     \"BSD-2-Clause\",\n";
+        assert_eq!(
+            unused_license_names(stderr),
+            vec!["BSD-2-Clause".to_string()]
+        );
+    }
+
+    #[test]
+    fn unused_license_names_stops_at_an_adjacent_error_severity_block_too() {
+        let stderr = "warning[license-not-encountered]: license was not encountered\n\
+             35 \u{2502}     \"BSD-2-Clause\",\n\
+             error[license-not-encountered]: license was not encountered\n\
+             39 \u{2502}     \"Zlib\",\n";
+        assert_eq!(
+            unused_license_names(stderr),
+            vec!["BSD-2-Clause".to_string(), "Zlib".to_string()]
+        );
+    }
+
+    #[test]
     fn unused_license_names_is_empty_when_nothing_flagged() {
         assert!(unused_license_names("licenses ok\n").is_empty());
         assert!(unused_license_names("warning[duplicate]: found 2\n").is_empty());
@@ -1005,8 +1040,8 @@ licenses ok
     #[test]
     fn duplicate_crate_names_extracts_every_flagged_crate_under_error_severity() {
         // multiple-versions = "deny" makes cargo-deny emit these as
-        // `error[duplicate]:`, invisible to diagnostics.rs's warning-only
-        // Summary/List tiers — this is the recovery for "which crates".
+        // `error[duplicate]:` — this names them unconditionally, at every
+        // verbosity, rather than only at diagnostics.rs's `-v` tier.
         let stderr = "\
 error[duplicate]: found 2 duplicate entries for crate 'core-foundation'
    ┌─ Cargo.lock:30:1

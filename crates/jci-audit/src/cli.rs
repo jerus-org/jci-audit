@@ -319,8 +319,8 @@ fn check_failures(
     let unused_license_count = report
         .warnings
         .iter()
-        .find(|(code, _)| code == "license-not-encountered")
-        .map(|(_, n)| *n);
+        .find(|(_, code, _)| code == "license-not-encountered")
+        .map(|(_, _, n)| *n);
     if deny_unused_licenses && let Some(count) = unused_license_count {
         failures.push(if report.unused_licenses.is_empty() {
             format!(
@@ -1323,7 +1323,11 @@ mod tests {
             version: None,
             reason: None,
         }];
-        report.warnings = vec![("license-not-encountered".to_string(), 2)];
+        report.warnings = vec![(
+            diagnostics::Severity::Warning,
+            "license-not-encountered".to_string(),
+            2,
+        )];
         report.unused_licenses = vec!["BSD-2-Clause".to_string(), "Zlib".to_string()];
 
         let failures = check_failures(&report, false, true, true);
@@ -1361,8 +1365,12 @@ mod tests {
     fn check_failures_reports_deny_warnings_alongside_the_others() {
         let mut report = passing_report();
         report.warnings = vec![
-            ("duplicate".to_string(), 2),
-            ("license-not-encountered".to_string(), 1),
+            (diagnostics::Severity::Warning, "duplicate".to_string(), 2),
+            (
+                diagnostics::Severity::Warning,
+                "license-not-encountered".to_string(),
+                1,
+            ),
         ];
         report.unused_licenses = vec!["Zlib".to_string()];
 
@@ -1376,7 +1384,11 @@ mod tests {
         // a name-extraction miss must never turn `--deny-unused-licenses`
         // into a silent pass just because the parsed list came back empty.
         let mut report = passing_report();
-        report.warnings = vec![("license-not-encountered".to_string(), 1)];
+        report.warnings = vec![(
+            diagnostics::Severity::Warning,
+            "license-not-encountered".to_string(),
+            1,
+        )];
         report.unused_licenses = vec![];
 
         let failures = check_failures(&report, false, false, true);
