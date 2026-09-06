@@ -388,9 +388,7 @@ fn run_release(
         Tool::Cargo,
     ])?;
     let cwd = std::env::current_dir()?;
-    let db_root = advisory_db
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(release::default_db_root);
+    let db_root = advisory_db.map_or_else(release::default_db_root, std::path::Path::to_path_buf);
     // The derived cargo-deny config is ephemeral: deny.toml stays the single
     // source of truth, so nothing derived persists beyond this run except the
     // record itself, written locally only (see jerus-org/jci-audit#75 for how
@@ -540,9 +538,8 @@ fn run_verify(
         // Tool::Cargo: verify_with's about.toml digest recomputation shells
         // out to `cargo metadata`, same as check/release-prep.
         preflight::ensure_available(&[Tool::CargoDeny, Tool::Cargo])?;
-        let db_root = advisory_db
-            .map(std::path::Path::to_path_buf)
-            .unwrap_or_else(release::default_db_root);
+        let db_root =
+            advisory_db.map_or_else(release::default_db_root, std::path::Path::to_path_buf);
         let work = release::work_dir();
         tracing::info!(version, db = %db_root.display(), "verify");
 

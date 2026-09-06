@@ -131,12 +131,11 @@ pub(crate) fn scope_from_metadata(
         let Some(license) = pkg.get("license").and_then(Value::as_str) else {
             continue;
         };
-        let expr = match spdx::Expression::parse(license) {
-            Ok(e) => e,
-            // A crate whose license field spdx cannot parse is cargo-deny's
-            // problem to fail on, not this derivation's — it contributes
-            // nothing to the accepted set rather than guessing.
-            Err(_) => continue,
+        // A crate whose license field spdx cannot parse is cargo-deny's
+        // problem to fail on, not this derivation's — it contributes
+        // nothing to the accepted set rather than guessing.
+        let Ok(expr) = spdx::Expression::parse(license) else {
+            continue;
         };
         for req in expr.requirements() {
             let text = req.req.to_string();
@@ -289,7 +288,7 @@ mod tests {
     "#;
 
     fn allow(items: &[&str]) -> BTreeSet<String> {
-        items.iter().map(|s| s.to_string()).collect()
+        items.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]

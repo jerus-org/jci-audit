@@ -125,8 +125,7 @@ pub(crate) fn prune_with<R: CommandRunner>(
     let (deny_path, _audit_path) = locate_paths(start)?;
     let root = deny_path
         .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     let lockfile = root.join("Cargo.lock");
     if !lockfile.is_file() {
         bail!("no Cargo.lock found at '{}'", lockfile.display());
@@ -171,7 +170,7 @@ pub(crate) fn naked_run_dir() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, path::PathBuf};
+    use std::{cell::RefCell, fmt::Write as _, path::PathBuf};
 
     use super::*;
     use crate::check::ToolOutput;
@@ -195,7 +194,7 @@ mod tests {
         fn run(&self, program: &str, args: &[&str], cwd: &Path) -> Result<ToolOutput> {
             self.calls.borrow_mut().push((
                 program.to_string(),
-                args.iter().map(|s| s.to_string()).collect(),
+                args.iter().map(std::string::ToString::to_string).collect(),
                 cwd.to_path_buf(),
             ));
             Ok(self.response.clone())
@@ -235,7 +234,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut deny = String::from("[advisories]\nignore = [\n");
         for id in ignores {
-            deny.push_str(&format!("    \"{id}\",\n"));
+            let _ = writeln!(deny, "    \"{id}\",");
         }
         deny.push_str("]\n");
         std::fs::write(dir.path().join("deny.toml"), deny).unwrap();

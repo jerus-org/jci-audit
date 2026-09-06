@@ -25,7 +25,7 @@ pub(crate) struct SkipEntry {
 
 /// Parse every `[[bans.skip]]` entry out of a `deny.toml` string.
 ///
-/// `skip` accepts every form cargo-deny's own PackageSpec docs describe
+/// `skip` accepts every form cargo-deny's own `PackageSpec` docs describe
 /// (<https://embarkstudios.github.io/cargo-deny/checks/cfg.html#package-specs>,
 /// verified live against cargo-deny 0.20.2 — a customer follows that page, not
 /// this crate) and can be written either as a plain array (`skip = [...]`,
@@ -61,7 +61,7 @@ pub(crate) fn extract_bans_skips(deny_toml: &str) -> Result<Vec<SkipEntry>> {
     Ok(array.iter().filter_map(entry_from_value).collect())
 }
 
-/// One `skip = [...]` array element: a bare PackageSpec string, or an inline
+/// One `skip = [...]` array element: a bare `PackageSpec` string, or an inline
 /// table (`{ crate = "..." }` or the deprecated `{ name = "...", version =
 /// "..." }`).
 fn entry_from_value(value: &Value) -> Option<SkipEntry> {
@@ -123,7 +123,7 @@ fn spec_name(spec: &str) -> &str {
     &spec[..end]
 }
 
-/// Split a bare PackageSpec string into its name and, if present, the raw
+/// Split a bare `PackageSpec` string into its name and, if present, the raw
 /// text of whatever version requirement follows — kept verbatim (not
 /// reinterpreted as semver) for the release record and notices. The `:`/`@`
 /// separator, if any, is dropped; the requirement text itself is not, since

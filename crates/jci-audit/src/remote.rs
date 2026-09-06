@@ -59,6 +59,7 @@
 //! from within it for the full comparison; [`RemoteVerifyOutcome::unchecked`]
 //! says plainly what this mode alone does not cover.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -256,7 +257,8 @@ fn resolve_package_manifest(
         members.join(", ")
     );
     if !skipped_globs.is_empty() {
-        msg += &format!(
+        let _ = write!(
+            msg,
             " — skipped glob member(s), not resolvable without a directory listing: {}",
             skipped_globs.join(", ")
         );
@@ -383,7 +385,7 @@ impl<S: ReleaseAssetSource> PubkeySource for AssetPubkeySource<'_, S> {
             .with_context(|| format!("failed to extract a pubkey from '{pub_name}'"))
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "release asset (release-<VERSION>.json.pub)"
     }
 }
@@ -496,7 +498,7 @@ impl PubkeySource for ManifestPubkeySource {
         extract_pubkey_from_manifest(&matched)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Cargo.toml at the release tag"
     }
 }
@@ -844,7 +846,7 @@ mod tests {
     impl CommandRunner for MockRunner {
         fn run(&self, program: &str, args: &[&str], _cwd: &Path) -> Result<ToolOutput> {
             let mut call = vec![program.to_string()];
-            call.extend(args.iter().map(|s| s.to_string()));
+            call.extend(args.iter().map(std::string::ToString::to_string));
             self.calls.borrow_mut().push(call);
             Ok(ToolOutput {
                 success: self.rsign_ok,

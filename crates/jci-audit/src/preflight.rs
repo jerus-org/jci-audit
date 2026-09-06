@@ -18,6 +18,7 @@
 //! `cargo` isn't `cargo binstall`-able like the other three, so its absence
 //! needs different install guidance (rustup, not binstall).
 
+use std::fmt::Write as _;
 use std::process::Command;
 
 use anyhow::{Result, bail};
@@ -42,7 +43,7 @@ pub(crate) enum Tool {
 
 impl Tool {
     /// The binary this tool probes and invokes.
-    fn binary(&self) -> &'static str {
+    fn binary(self) -> &'static str {
         match self {
             Tool::CargoAudit => "cargo-audit",
             Tool::CargoDeny => "cargo-deny",
@@ -53,7 +54,7 @@ impl Tool {
     }
 
     /// Human-facing invocation, e.g. `cargo audit`.
-    pub(crate) fn invocation(&self) -> &'static str {
+    pub(crate) fn invocation(self) -> &'static str {
         match self {
             Tool::CargoAudit => "cargo audit",
             Tool::CargoDeny => "cargo deny",
@@ -64,7 +65,7 @@ impl Tool {
     }
 
     /// Human-facing install guidance for one missing tool.
-    fn install_hint(&self) -> String {
+    fn install_hint(self) -> String {
         match self {
             Tool::Cargo => "part of a Rust toolchain, not a `cargo install`-able crate — \
                  install one via rustup (https://rustup.rs), or use an image \
@@ -82,7 +83,7 @@ impl Tool {
     }
 
     /// Probe whether the tool's binary responds to `--version`.
-    fn is_present(&self) -> bool {
+    fn is_present(self) -> bool {
         probe_version(self.binary())
     }
 }
@@ -94,15 +95,14 @@ fn probe_version(binary: &str) -> bool {
     Command::new(binary)
         .arg("--version")
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
 }
 
 /// Pure core: given a presence probe, return the subset of `tools` that are
 /// absent, preserving input order. Separated from the subprocess probe so it is
 /// unit-testable without a real cargo installation.
-pub(crate) fn missing_tools(tools: &[Tool], probe: impl Fn(&Tool) -> bool) -> Vec<Tool> {
-    tools.iter().copied().filter(|t| !probe(t)).collect()
+pub(crate) fn missing_tools(tools: &[Tool], probe: impl Fn(Tool) -> bool) -> Vec<Tool> {
+    tools.iter().copied().filter(|t| !probe(*t)).collect()
 }
 
 /// Ensure every tool in `tools` is available on PATH, or return an error that
@@ -114,11 +114,7 @@ pub(crate) fn ensure_available(tools: &[Tool]) -> Result<()> {
     }
     let mut msg = String::from("required tool(s) not found on PATH:\n");
     for t in &missing {
-        msg.push_str(&format!(
-            "  - `{}` ({})\n",
-            t.invocation(),
-            t.install_hint()
-        ));
+        let _ = writeln!(msg, "  - `{}` ({})", t.invocation(), t.install_hint());
     }
     bail!(msg)
 }
@@ -145,7 +141,7 @@ mod tests {
     fn missing_tools_reports_only_absent_tool_preserving_order() {
         let tools = [Tool::CargoAudit, Tool::CargoDeny];
         // Only cargo-deny is absent.
-        let missing = missing_tools(&tools, |t| *t == Tool::CargoAudit);
+        let missing = missing_tools(&tools, |t| t == Tool::CargoAudit);
         assert_eq!(missing, vec![Tool::CargoDeny]);
     }
 

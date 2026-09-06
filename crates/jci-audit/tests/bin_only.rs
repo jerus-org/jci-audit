@@ -34,8 +34,7 @@ fn crate_has_no_library_target() {
         .any(|t| {
             t["kind"]
                 .as_array()
-                .map(|kinds| kinds.iter().any(|k| k == "lib" || k == "rlib"))
-                .unwrap_or(false)
+                .is_some_and(|kinds| kinds.iter().any(|k| k == "lib" || k == "rlib"))
         });
 
     assert!(

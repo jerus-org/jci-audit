@@ -4,7 +4,7 @@
 //!
 //! `cargo deny` enforces policy (advisories, bans, licenses, sources) with the
 //! justified, file-based ignores in `deny.toml`; `cargo audit` adds a fresh
-//! scan against the live RustSec database; the drift check confirms each
+//! scan against the live `RustSec` database; the drift check confirms each
 //! crate's `about.toml` still reflects `deny.toml`'s license policy — a pure
 //! derivation, the same one `jci-audit sync --check` performs, no
 //! `cargo-about` invocation needed; the resolution check confirms
@@ -447,19 +447,16 @@ pub(crate) fn resolve_license_policy<R: CommandRunner>(
 ) -> Vec<String> {
     let mut unresolved = Vec::new();
     for result in about_results {
-        let crate_dir = match result.about_toml_path.parent() {
-            Some(p) => p,
-            None => {
-                println!(
-                    "  {}: about.toml path has no parent directory",
-                    result.about_toml_path.display()
-                );
-                unresolved.push(format!(
-                    "{}: about.toml path has no parent directory",
-                    result.about_toml_path.display()
-                ));
-                continue;
-            }
+        let Some(crate_dir) = result.about_toml_path.parent() else {
+            println!(
+                "  {}: about.toml path has no parent directory",
+                result.about_toml_path.display()
+            );
+            unresolved.push(format!(
+                "{}: about.toml path has no parent directory",
+                result.about_toml_path.display()
+            ));
+            continue;
         };
         match runner.run(
             "cargo-about",
@@ -529,7 +526,7 @@ mod tests {
     impl CommandRunner for MockRunner {
         fn run(&self, program: &str, args: &[&str], _cwd: &Path) -> Result<ToolOutput> {
             let mut call = vec![program.to_string()];
-            call.extend(args.iter().map(|s| s.to_string()));
+            call.extend(args.iter().map(std::string::ToString::to_string));
             self.calls.borrow_mut().push(call);
             let i = *self.idx.borrow();
             *self.idx.borrow_mut() = i + 1;
