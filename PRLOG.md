@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - invoke tools via cargo <sub> dispatch(pr [#158])
+- per-crate --package for release/verify(pr [#162])
 
 ### Changed
 
@@ -406,6 +407,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#159]: https://github.com/jerus-org/jci-audit/pull/159
 [#160]: https://github.com/jerus-org/jci-audit/pull/160
 [#161]: https://github.com/jerus-org/jci-audit/pull/161
+[#162]: https://github.com/jerus-org/jci-audit/pull/162
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
