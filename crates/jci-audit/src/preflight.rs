@@ -192,6 +192,24 @@ mod tests {
     }
 
     #[test]
+    fn cargo_plugins_dispatch_through_a_cargo_subcommand() {
+        // These three are invoked (and probed) as `cargo <sub>`, matching the
+        // real subprocess call in check.rs/release.rs/verify.rs/prune.rs — not
+        // as their own standalone binaries.
+        assert_eq!(Tool::CargoAudit.cargo_subcommand(), Some("audit"));
+        assert_eq!(Tool::CargoDeny.cargo_subcommand(), Some("deny"));
+        assert_eq!(Tool::CargoAbout.cargo_subcommand(), Some("about"));
+    }
+
+    #[test]
+    fn non_plugin_tools_have_no_cargo_subcommand() {
+        // `cargo` itself and `rsign` are probed/invoked as standalone
+        // binaries, never dispatched through `cargo <sub>`.
+        assert_eq!(Tool::Cargo.cargo_subcommand(), None);
+        assert_eq!(Tool::Rsign.cargo_subcommand(), None);
+    }
+
+    #[test]
     fn bare_cargo_gets_toolchain_install_guidance_not_binstall() {
         // cargo itself isn't `cargo binstall`-able — its guidance must say so,
         // not repeat the same "provided by the `cargo` crate" phrasing the
