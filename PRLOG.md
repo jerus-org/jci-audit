@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.9(pr [#154])
+- diagnostics.rs recognizes error-severity lints(pr [#155])
 
 ## [0.1.9] - 2026-09-05
 
@@ -389,6 +390,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#153]: https://github.com/jerus-org/jci-audit/pull/153
 [#154]: https://github.com/jerus-org/jci-audit/pull/154
 [#151]: https://github.com/jerus-org/jci-audit/pull/151
+[#155]: https://github.com/jerus-org/jci-audit/pull/155
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
