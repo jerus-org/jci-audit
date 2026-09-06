@@ -233,19 +233,39 @@ pub(crate) fn verify_with<R: CommandRunner>(
         .with_context(|| format!("no Cargo.lock at '{}'", root.display()))?;
     let deny_toml = std::fs::read_to_string(&deny_path)
         .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
-    let dependencies = match package {
-        Some(name) => {
-            let manifest_path = crate::sync::resolve_member_manifest_path(runner, &root, name)?;
-            let metadata_json = crate::license_scope::crate_metadata(runner, &manifest_path)?;
+    // Resolved once, reused below to also scope the about.toml digest to just
+    // this crate's own notices — not the whole workspace's (a sibling crate's
+    // unrelated about.toml change must not cause a false MISMATCH here).
+    let package_manifest = package
+        .map(|name| crate::sync::resolve_member_manifest_path(runner, &root, name))
+        .transpose()?;
+    let dependencies = match &package_manifest {
+        Some(manifest_path) => {
+            let metadata_json = crate::license_scope::crate_metadata(runner, manifest_path)?;
             crate::release::dependency_set_digest_for_package(&lock_text, &metadata_json)?
         }
         None => dependency_set_digest(&lock_text)?,
+    };
+    let about_toml = match &package_manifest {
+        Some(manifest_path) => {
+            let about_path = manifest_path
+                .parent()
+                .context("manifest_path has no parent directory")?
+                .join("about.toml");
+            let paths: Vec<PathBuf> = if about_path.is_file() {
+                vec![about_path]
+            } else {
+                Vec::new()
+            };
+            crate::sync::about_toml_digest_from_paths(&paths, &root)?
+        }
+        None => about_toml_digest(runner, &root)?,
     };
     let digests = CheckoutDigests {
         dependencies,
         lockfile_raw: lockfile_digest(lock_text.as_bytes()),
         deny_toml: lockfile_digest(deny_toml.as_bytes()),
-        about_toml: about_toml_digest(runner, &root)?,
+        about_toml,
     };
     let (mismatches, unverified) = compare_inputs(&record, &digests, package);
 
@@ -800,8 +820,9 @@ checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     fn metadata_for_crate_a(crate_a_dir: &Path) -> String {
         format!(
             r#"{{"packages":[
-                {{"name":"crate-a","version":"0.1.0","id":"id-a","license":null,"manifest_path":"{manifest}"}},
-                {{"name":"clap","version":"4.6.4","id":"id-clap","license":"MIT"}}
+                {{"name":"crate-a","version":"0.1.0","id":"id-a","source":null,"license":null,"manifest_path":"{manifest}"}},
+                {{"name":"clap","version":"4.6.4","id":"id-clap",
+                  "source":"registry+https://github.com/rust-lang/crates.io-index","license":"MIT"}}
             ],"resolve":{{"root":"id-a","nodes":[
                 {{"id":"id-a","deps":[
                     {{"name":"clap","pkg":"id-clap","dep_kinds":[{{"kind":null,"target":null}}]}}
@@ -856,6 +877,72 @@ checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         )
         .unwrap();
         assert!(out.is_ok(), "should reproduce: {out:?}");
+    }
+
+    #[test]
+    fn verify_package_scoped_about_toml_ignores_a_siblings_notices() {
+        // THE property #62's about.toml scoping fix exists for: crate-b's
+        // about.toml must not affect a `verify --package crate-a` outcome,
+        // or it would report a false MISMATCH the moment an unrelated
+        // sibling's notices next change.
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::write(repo.path().join("deny.toml"), DENY).unwrap();
+        std::fs::write(repo.path().join("Cargo.lock"), LOCK_TWO_CRATES).unwrap();
+        let crate_a_dir = repo.path().join("crates/crate-a");
+        std::fs::create_dir_all(&crate_a_dir).unwrap();
+        std::fs::write(crate_a_dir.join("about.toml"), "accepted = [\"MIT\"]\n").unwrap();
+        let sibling_dir = repo.path().join("crates/crate-b");
+        std::fs::create_dir_all(&sibling_dir).unwrap();
+        std::fs::write(
+            sibling_dir.join("about.toml"),
+            "accepted = [\"Apache-2.0\"]\n",
+        )
+        .unwrap();
+        let metadata_json = metadata_for_crate_a(&crate_a_dir);
+
+        let scoped_dependencies =
+            crate::release::dependency_set_digest_for_package(LOCK_TWO_CRATES, &metadata_json)
+                .unwrap();
+        let about_digest = crate::sync::about_toml_digest_from_paths(
+            &[crate_a_dir.join("about.toml")],
+            repo.path(),
+        )
+        .unwrap();
+        let rec = json!({
+            "schema_version": 6,
+            "version": "1.2.0",
+            "advisory_db": { "commit": "abc1234def" },
+            "tools": { "cargo_deny": "cargo-deny 0.20.2", "cargo_audit": "cargo-audit 0.22.0" },
+            "lockfile": { "dependencies_sha256": scoped_dependencies },
+            "policy": { "deny_toml_sha256": lockfile_digest(DENY.as_bytes()), "about_toml_sha256": about_digest },
+            "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
+            "package": "crate-a",
+        });
+        let dir = repo.path().join(".security");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("crate-a-release-1.2.0.json"),
+            serde_json::to_string_pretty(&rec).unwrap(),
+        )
+        .unwrap();
+        let db = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(db.path().join("advisory-db-3157b0e258782691")).unwrap();
+
+        let runner = MockRunner::new(true).with_metadata_json(metadata_json);
+        let out = verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+            crate::diagnostics::Detail::Summary,
+            Some("crate-a"),
+        )
+        .unwrap();
+        assert!(
+            out.is_ok(),
+            "crate-b's about.toml must not affect crate-a's verify: {out:?}"
+        );
     }
 
     #[test]
