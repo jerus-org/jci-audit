@@ -28,7 +28,8 @@ pub(crate) type WarningCount = (Severity, String, usize);
 /// line: tree lines and prose mentioning either word must not inflate the
 /// total, or the summary is not worth printing.
 pub(crate) fn count_diagnostics(stderr: &str) -> Vec<WarningCount> {
-    let mut counts: std::collections::BTreeMap<(Severity, String), usize> = Default::default();
+    let mut counts: std::collections::BTreeMap<(Severity, String), usize> =
+        std::collections::BTreeMap::default();
     for line in stderr.lines() {
         if let Some(key) = diagnostic_code(&strip_ansi(line)) {
             *counts.entry(key).or_default() += 1;

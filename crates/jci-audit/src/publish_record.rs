@@ -79,7 +79,7 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
     version: &str,
     tag: &str,
     work_dir: &Path,
-    publish: bool,
+    should_publish: bool,
 ) -> Result<PublishRecordOutcome> {
     if !record_path.is_file() {
         bail!(
@@ -169,7 +169,7 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
         .upload_asset(tag, &record_pub_path, &pub_name)
         .with_context(|| format!("failed to upload '{pub_name}' to release '{tag}'"))?;
 
-    let published = if publish {
+    let did_publish = if should_publish {
         publisher
             .publish_release(tag)
             .with_context(|| format!("failed to publish release '{tag}'"))?;
@@ -181,7 +181,7 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
     Ok(PublishRecordOutcome {
         pubkey,
         uploaded: vec![record_name, sig_name, pub_name],
-        published,
+        published: did_publish,
     })
 }
 
@@ -307,7 +307,7 @@ mod tests {
         fn run(&self, program: &str, args: &[&str], _cwd: &Path) -> Result<ToolOutput> {
             assert_eq!(program, "rsign");
             let mut call = vec![program.to_string()];
-            call.extend(args.iter().map(|s| s.to_string()));
+            call.extend(args.iter().map(std::string::ToString::to_string));
             self.calls.borrow_mut().push(call);
 
             if args.contains(&"generate") {

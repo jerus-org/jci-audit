@@ -199,8 +199,7 @@ pub(crate) fn verify_with<R: CommandRunner>(
     let (deny_path, _audit_path) = locate_paths(start)?;
     let root = deny_path
         .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
 
     let record = load_record(&record_path(&root, version))?;
     let db_commit = field(&record, &["advisory_db", "commit"])?.to_string();
@@ -257,8 +256,7 @@ pub(crate) fn verify_with<R: CommandRunner>(
             &["-C", &checkout_str, "rev-parse", "--is-shallow-repository"],
             &root,
         )
-        .map(|o| o.stdout.trim() == "true")
-        .unwrap_or(false);
+        .is_ok_and(|o| o.stdout.trim() == "true");
     let fetch_args: Vec<&str> = if shallow {
         vec!["-C", &checkout_str, "fetch", "--unshallow", "origin"]
     } else {
@@ -444,7 +442,7 @@ mod tests {
     impl CommandRunner for MockRunner {
         fn run(&self, program: &str, args: &[&str], _cwd: &Path) -> Result<ToolOutput> {
             let mut call = vec![program.to_string()];
-            call.extend(args.iter().map(|s| s.to_string()));
+            call.extend(args.iter().map(std::string::ToString::to_string));
             self.calls.borrow_mut().push(call);
             let ok = |s: &str| ToolOutput {
                 success: true,
@@ -466,7 +464,6 @@ mod tests {
                     ok(if self.shallow { "true\n" } else { "false\n" })
                 }
                 ("git", _) if has("rev-parse") => ok("0ldc0mm1t\n"),
-                ("git", _) => ok(""),
                 ("cargo-deny", _) => ToolOutput {
                     success: self.deny_ok,
                     stdout: "advisories ok\n".to_string(),

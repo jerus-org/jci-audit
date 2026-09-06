@@ -3,7 +3,7 @@
 //! Division of labour between the two tools:
 //!
 //! - **cargo-audit is the currency check** — it always runs against the *live*
-//!   RustSec database. Every PR gates on it (see [`crate::check`]), so newly
+//!   `RustSec` database. Every PR gates on it (see [`crate::check`]), so newly
 //!   published advisories are caught continuously between releases. At release
 //!   time it runs again purely as a **non-blocking** warning.
 //! - **cargo-deny is the release gate** — it runs against a **local copy** of the
@@ -252,8 +252,7 @@ pub(crate) fn release_with<R: CommandRunner>(
     let (deny_path, _audit_path) = locate_paths(start)?;
     let root = deny_path
         .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     let lockfile = root.join("Cargo.lock");
     let lock_text = std::fs::read_to_string(&lockfile)
         .with_context(|| format!("no Cargo.lock found at '{}'", lockfile.display()))?;
@@ -411,8 +410,7 @@ pub(crate) fn work_dir() -> PathBuf {
 /// cargo-deny's default `db-path`, resolved from `$HOME`.
 pub(crate) fn default_db_root() -> PathBuf {
     std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+        .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".cargo")
         .join("advisory-db")
 }
@@ -697,7 +695,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
     /// (`find_about_toml_paths`, jerus-org/jci-audit#100 — reads
     /// `manifest_path`) and each crate's own license-scope call
     /// (`scope_for_crate` — reads `resolve`/`license`), since this
-    /// MockRunner returns the same response for any `cargo metadata` call.
+    /// `MockRunner` returns the same response for any `cargo metadata` call.
     /// No `manifest_path` here — tests with no real about.toml on disk don't
     /// need one, since a missing crate directory is filtered out either way.
     fn trivial_metadata_json() -> String {
@@ -760,7 +758,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
     impl CommandRunner for MockRunner {
         fn run(&self, program: &str, args: &[&str], _cwd: &Path) -> Result<ToolOutput> {
             let mut call = vec![program.to_string()];
-            call.extend(args.iter().map(|s| s.to_string()));
+            call.extend(args.iter().map(std::string::ToString::to_string));
             self.calls.borrow_mut().push(call);
             let ok = |s: &str| ToolOutput {
                 success: true,

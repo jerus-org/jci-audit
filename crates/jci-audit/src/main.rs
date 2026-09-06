@@ -5,7 +5,7 @@
 //! [`cargo-deny`](https://crates.io/crates/cargo-deny), leveraging the
 //! complementary strengths of each:
 //!
-//! - **`cargo audit`** — fresh, *live* advisories from the RustSec database.
+//! - **`cargo audit`** — fresh, *live* advisories from the `RustSec` database.
 //! - **`cargo deny`** — policy enforcement (advisories, bans, licenses,
 //!   sources) with **file-based** ignores that carry written justifications.
 //!

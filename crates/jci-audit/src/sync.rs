@@ -14,6 +14,7 @@
 
 use std::{
     collections::BTreeSet,
+    fmt::Write as _,
     path::{Path, PathBuf},
 };
 
@@ -53,20 +54,18 @@ pub(crate) fn extract_ignores(deny_toml: &str) -> Result<Vec<IgnoreEntry>> {
         .parse::<DocumentMut>()
         .context("failed to parse deny.toml")?;
 
-    let array = match doc
+    let Some(array) = doc
         .get("advisories")
         .and_then(|a| a.get("ignore"))
         .and_then(Item::as_array)
-    {
-        Some(a) => a,
-        None => return Ok(Vec::new()),
+    else {
+        return Ok(Vec::new());
     };
 
     let mut entries = Vec::with_capacity(array.len());
-    for value in array.iter() {
-        let id = match value_id(value) {
-            Some(id) => id,
-            None => bail!("deny.toml [advisories].ignore has an entry with no advisory id"),
+    for value in array {
+        let Some(id) = value_id(value) else {
+            bail!("deny.toml [advisories].ignore has an entry with no advisory id");
         };
         let comment = value
             .decor()
@@ -91,7 +90,7 @@ fn value_id(value: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Pull the first `#` comment out of a toml_edit decor prefix, stripped of the
+/// Pull the first `#` comment out of a `toml_edit` decor prefix, stripped of the
 /// leading `#` and surrounding whitespace.
 fn first_comment(prefix: &str) -> Option<String> {
     prefix.lines().find_map(|line| {
@@ -124,9 +123,9 @@ pub(crate) fn render_audit_toml(ignores: &[IgnoreEntry]) -> String {
     out.push_str("ignore = [\n");
     for entry in ignores {
         if let Some(comment) = &entry.comment {
-            out.push_str(&format!("    # {comment}\n"));
+            let _ = writeln!(out, "    # {comment}");
         }
-        out.push_str(&format!("    \"{}\",\n", entry.id));
+        let _ = writeln!(out, "    \"{}\",", entry.id);
     }
     out.push_str("]\n");
     out
@@ -169,7 +168,7 @@ pub(crate) fn extract_license_policy(deny_toml: &str) -> Result<LicensePolicy> {
         .and_then(|l| l.get("exceptions"))
         .and_then(Item::as_array_of_tables)
     {
-        for table in array_of_tables.iter() {
+        for table in array_of_tables {
             let Some(name) = table.get("name").and_then(Item::as_str) else {
                 continue;
             };
@@ -518,10 +517,10 @@ ignore = [
 allow = ["MIT"]
 "#;
 
-    const DENY_EMPTY_IGNORE: &str = r#"
+    const DENY_EMPTY_IGNORE: &str = r"
 [advisories]
 ignore = []
-"#;
+";
 
     const DENY_NO_ADVISORIES: &str = r#"
 [licenses]
@@ -686,10 +685,13 @@ allow = ["MPL-2.0"]
         reachable_exceptions: &[&str],
     ) -> crate::license_scope::CrateLicenseScope {
         crate::license_scope::CrateLicenseScope {
-            accepted: accepted.iter().map(|s| s.to_string()).collect(),
+            accepted: accepted
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             reachable_exception_crates: reachable_exceptions
                 .iter()
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
         }
     }
