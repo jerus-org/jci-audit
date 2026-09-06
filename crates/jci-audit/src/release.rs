@@ -314,12 +314,13 @@ pub(crate) fn release_with<R: CommandRunner>(
     // Blocking gate. Fetching is allowed here: refreshing the local copy is what
     // makes the snapshot current at release time.
     let mut deny_args = vec![
+        "deny",
         "--config",
         config_path.to_str().unwrap_or_default(),
         "check",
     ];
     deny_args.extend_from_slice(DENY_CHECKS);
-    let deny = runner.run("cargo-deny", &deny_args, &root)?;
+    let deny = runner.run("cargo", &deny_args, &root)?;
     let warnings = crate::diagnostics::emit(&deny.stdout, &deny.stderr, detail);
     // Visibility on top of deny.toml's own [[bans.skip]] exceptions — cargo-deny
     // itself is silent about one that's actively suppressing a real duplicate.
@@ -352,13 +353,24 @@ pub(crate) fn release_with<R: CommandRunner>(
         bail!("advisory-db commit came back empty; cannot lock the release");
     }
 
+    // Deliberately standalone, not `cargo <sub>` dispatch (jerus-org/jci-audit#136):
+    // these two strings are embedded verbatim in the release record's `tools`
+    // field. cargo-deny's dispatch and standalone `--version` output are
+    // byte-identical, but cargo-audit's are not (`cargo audit` dispatch
+    // reinserts an `audit` token before exec'ing the plugin, producing
+    // "cargo-audit-audit x.y.z" instead of "cargo-audit x.y.z" — verified
+    // directly). Keeping both standalone here avoids a confusing, tool-specific
+    // asymmetry in what gets recorded, and matches `verify`'s comparison of
+    // the recorded `cargo_deny` version, which must use the same form.
     let deny_version = first_line(&runner.run("cargo-deny", &["--version"], &root)?.stdout);
     let audit_version = first_line(&runner.run("cargo-audit", &["--version"], &root)?.stdout);
 
     // Currency check — informational only. PRs already gate on the live audit, so
-    // a fresh advisory here is a warning, not a release blocker.
+    // a fresh advisory here is a warning, not a release blocker. `audit` here is
+    // cargo's own dispatch selector, not a redundant standalone-binary arg (see
+    // check.rs's module comment on AUDIT_ARGS for why cargo-audit needs only one).
     let live = runner.run(
-        "cargo-audit",
+        "cargo",
         &[
             "audit",
             "--file",
@@ -745,11 +757,14 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             self.deny_stderr = stderr.to_string();
             self
         }
-        fn ran(&self, program: &str) -> Vec<Vec<String>> {
+        /// Calls dispatched as `cargo <sub>` (jerus-org/jci-audit#136) —
+        /// `cargo deny`/`cargo audit`/`cargo about`/`cargo metadata` now all
+        /// share the program name, so the subcommand is what distinguishes them.
+        fn ran_cargo(&self, sub: &str) -> Vec<Vec<String>> {
             self.calls
                 .borrow()
                 .iter()
-                .filter(|c| c[0] == program)
+                .filter(|c| c[0] == "cargo" && c.get(1).map(String::as_str) == Some(sub))
                 .cloned()
                 .collect()
         }
@@ -767,16 +782,20 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             };
             Ok(match (program, args.first().copied()) {
                 ("git", _) => ok("abc1234def\n"),
+                // Version probes stay standalone (release.rs's deliberate
+                // exception — see the module comment near their call sites),
+                // so they're the only calls still literally "cargo-deny"/
+                // "cargo-audit" as the program name.
                 ("cargo-deny", Some("--version")) => ok("cargo-deny 0.20.2\n"),
                 ("cargo-audit", Some("--version")) => ok("cargo-audit 0.22.0\n"),
-                ("cargo-audit", _) => ok(&self.live_json),
-                ("cargo-deny", _) => ToolOutput {
+                ("cargo", Some("metadata")) => ok(&self.metadata_json),
+                ("cargo", Some("audit")) => ok(&self.live_json),
+                ("cargo", Some("deny")) => ToolOutput {
                     success: self.deny_ok,
                     stdout: "advisories ok\n".to_string(),
                     stderr: self.deny_stderr.clone(),
                 },
-                ("cargo", Some("metadata")) => ok(&self.metadata_json),
-                ("cargo-about", _) => ToolOutput {
+                ("cargo", Some("about")) => ToolOutput {
                     success: self.about_ok,
                     stdout: String::new(),
                     stderr: if self.about_ok {
@@ -870,7 +889,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         .unwrap();
 
         let gate = runner
-            .ran("cargo-deny")
+            .ran_cargo("deny")
             .into_iter()
             .find(|c| c.contains(&"check".to_string()))
             .expect("no cargo-deny check call");
@@ -1066,7 +1085,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "an in-sync about.toml must produce a real digest, not null:\n{written}"
         );
         // cargo-about was invoked (policy-resolution check ran).
-        assert_eq!(runner.ran("cargo-about").len(), 1);
+        assert_eq!(runner.ran_cargo("about").len(), 1);
     }
 
     #[test]
@@ -1096,7 +1115,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "a drifted about.toml must not leave a record"
         );
         // The expensive cargo-deny gate must not have run — caught earlier.
-        assert!(runner.ran("cargo-deny").is_empty());
+        assert!(runner.ran_cargo("deny").is_empty());
     }
 
     #[test]
@@ -1128,7 +1147,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "an unresolvable licence must not leave a record"
         );
         // The expensive cargo-deny gate must not have run — caught earlier.
-        assert!(runner.ran("cargo-deny").is_empty());
+        assert!(runner.ran_cargo("deny").is_empty());
     }
 
     #[test]

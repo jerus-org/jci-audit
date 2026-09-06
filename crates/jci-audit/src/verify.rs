@@ -221,6 +221,8 @@ pub(crate) fn verify_with<R: CommandRunner>(
     // surfacing even though we cannot install the recorded version here.
     let mut unverified = unverified;
     if let Ok(recorded_tool) = field(&record, &["tools", "cargo_deny"]) {
+        // Deliberately standalone, matching how release.rs's own version
+        // probe records `recorded_tool` — see its comment (jerus-org/jci-audit#136).
         let installed = runner.run("cargo-deny", &["--version"], &root)?;
         let installed = installed.stdout.lines().next().unwrap_or_default().trim();
         if !installed.is_empty() && installed != recorded_tool {
@@ -292,13 +294,14 @@ pub(crate) fn verify_with<R: CommandRunner>(
         .with_context(|| format!("failed to write '{}'", config_path.display()))?;
 
     let mut args = vec![
+        "deny",
         "--offline",
         "--config",
         config_path.to_str().unwrap_or_default(),
         "check",
     ];
     args.extend_from_slice(DENY_CHECKS);
-    let gate = runner.run("cargo-deny", &args, &root);
+    let gate = runner.run("cargo", &args, &root);
 
     // The gate is the last thing that needs the database pinned, so put the shared
     // checkout back now — before propagating any failure from it.
@@ -464,7 +467,7 @@ mod tests {
                     ok(if self.shallow { "true\n" } else { "false\n" })
                 }
                 ("git", _) if has("rev-parse") => ok("0ldc0mm1t\n"),
-                ("cargo-deny", _) => ToolOutput {
+                ("cargo", Some("deny")) => ToolOutput {
                     success: self.deny_ok,
                     stdout: "advisories ok\n".to_string(),
                     stderr: self.deny_stderr.clone(),
@@ -738,7 +741,7 @@ mod tests {
         );
         let gate = calls
             .iter()
-            .find(|c| c[0] == "cargo-deny" && c.contains(&"check".to_string()))
+            .find(|c| c[0] == "cargo" && c[1] == "deny" && c.contains(&"check".to_string()))
             .expect("must re-run the gate");
         assert!(
             gate.contains(&"--offline".to_string()),

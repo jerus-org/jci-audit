@@ -140,7 +140,11 @@ pub(crate) fn prune_with<R: CommandRunner>(
 
     let args = audit_args(&lockfile);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let out = runner.run("cargo-audit", &arg_refs, naked_cwd)?;
+    // `cargo <sub>` dispatch (jerus-org/jci-audit#136): `audit_args`'s leading
+    // "audit" is cargo's own subcommand selector here, not a redundant
+    // standalone-binary arg — see check.rs's module comment for why
+    // cargo-audit needs only the one token either way.
+    let out = runner.run("cargo", &arg_refs, naked_cwd)?;
     // cargo-audit exits NON-ZERO whenever it reports anything, and a naked run
     // reports everything — so the exit status carries no failure signal here.
     // The JSON report on stdout is what matters. Surface stderr only when there
@@ -315,7 +319,7 @@ mod tests {
         let calls = runner.calls.borrow();
         assert_eq!(calls.len(), 1);
         let (program, args, cwd) = &calls[0];
-        assert_eq!(program, "cargo-audit");
+        assert_eq!(program, "cargo");
         assert_eq!(args[0], "audit");
         assert!(args.contains(&"--json".to_string()), "args: {args:?}");
         // Absolute lockfile path, and cwd OUTSIDE the repo so the repo's
