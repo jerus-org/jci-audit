@@ -314,12 +314,13 @@ pub(crate) fn release_with<R: CommandRunner>(
     // Blocking gate. Fetching is allowed here: refreshing the local copy is what
     // makes the snapshot current at release time.
     let mut deny_args = vec![
+        "deny",
         "--config",
         config_path.to_str().unwrap_or_default(),
         "check",
     ];
     deny_args.extend_from_slice(DENY_CHECKS);
-    let deny = runner.run("cargo-deny", &deny_args, &root)?;
+    let deny = runner.run("cargo", &deny_args, &root)?;
     let warnings = crate::diagnostics::emit(&deny.stdout, &deny.stderr, detail);
     // Visibility on top of deny.toml's own [[bans.skip]] exceptions — cargo-deny
     // itself is silent about one that's actively suppressing a real duplicate.
@@ -352,13 +353,17 @@ pub(crate) fn release_with<R: CommandRunner>(
         bail!("advisory-db commit came back empty; cannot lock the release");
     }
 
-    let deny_version = first_line(&runner.run("cargo-deny", &["--version"], &root)?.stdout);
-    let audit_version = first_line(&runner.run("cargo-audit", &["--version"], &root)?.stdout);
+    // Recorded verbatim in the release record's `tools` field, via the same
+    // `cargo <sub>` dispatch every other invocation here uses — so an auditor
+    // reproducing the release by running the exact command jci-audit ran gets
+    // a version string that matches the record byte for byte.
+    let deny_version = first_line(&runner.run("cargo", &["deny", "--version"], &root)?.stdout);
+    let audit_version = first_line(&runner.run("cargo", &["audit", "--version"], &root)?.stdout);
 
     // Currency check — informational only. PRs already gate on the live audit, so
     // a fresh advisory here is a warning, not a release blocker.
     let live = runner.run(
-        "cargo-audit",
+        "cargo",
         &[
             "audit",
             "--file",
@@ -745,11 +750,14 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             self.deny_stderr = stderr.to_string();
             self
         }
-        fn ran(&self, program: &str) -> Vec<Vec<String>> {
+        /// Calls dispatched as `cargo <sub>`: `cargo deny`/`cargo audit`/
+        /// `cargo about`/`cargo metadata` share the program name, so the
+        /// subcommand is what distinguishes them.
+        fn ran_cargo(&self, sub: &str) -> Vec<Vec<String>> {
             self.calls
                 .borrow()
                 .iter()
-                .filter(|c| c[0] == program)
+                .filter(|c| c[0] == "cargo" && c.get(1).map(String::as_str) == Some(sub))
                 .cloned()
                 .collect()
         }
@@ -765,28 +773,30 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
                 stdout: s.to_string(),
                 stderr: String::new(),
             };
-            Ok(match (program, args.first().copied()) {
-                ("git", _) => ok("abc1234def\n"),
-                ("cargo-deny", Some("--version")) => ok("cargo-deny 0.20.2\n"),
-                ("cargo-audit", Some("--version")) => ok("cargo-audit 0.22.0\n"),
-                ("cargo-audit", _) => ok(&self.live_json),
-                ("cargo-deny", _) => ToolOutput {
-                    success: self.deny_ok,
-                    stdout: "advisories ok\n".to_string(),
-                    stderr: self.deny_stderr.clone(),
-                },
-                ("cargo", Some("metadata")) => ok(&self.metadata_json),
-                ("cargo-about", _) => ToolOutput {
-                    success: self.about_ok,
-                    stdout: String::new(),
-                    stderr: if self.about_ok {
-                        String::new()
-                    } else {
-                        "unresolved licence".to_string()
+            Ok(
+                match (program, args.first().copied(), args.get(1).copied()) {
+                    ("git", _, _) => ok("abc1234def\n"),
+                    ("cargo", Some("deny"), Some("--version")) => ok("cargo-deny 0.20.2\n"),
+                    ("cargo", Some("audit"), Some("--version")) => ok("cargo-audit 0.22.0\n"),
+                    ("cargo", Some("metadata"), _) => ok(&self.metadata_json),
+                    ("cargo", Some("audit"), _) => ok(&self.live_json),
+                    ("cargo", Some("deny"), _) => ToolOutput {
+                        success: self.deny_ok,
+                        stdout: "advisories ok\n".to_string(),
+                        stderr: self.deny_stderr.clone(),
                     },
+                    ("cargo", Some("about"), _) => ToolOutput {
+                        success: self.about_ok,
+                        stdout: String::new(),
+                        stderr: if self.about_ok {
+                            String::new()
+                        } else {
+                            "unresolved licence".to_string()
+                        },
+                    },
+                    _ => ok(""),
                 },
-                _ => ok(""),
-            })
+            )
         }
     }
 
@@ -870,7 +880,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         .unwrap();
 
         let gate = runner
-            .ran("cargo-deny")
+            .ran_cargo("deny")
             .into_iter()
             .find(|c| c.contains(&"check".to_string()))
             .expect("no cargo-deny check call");
@@ -1066,7 +1076,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "an in-sync about.toml must produce a real digest, not null:\n{written}"
         );
         // cargo-about was invoked (policy-resolution check ran).
-        assert_eq!(runner.ran("cargo-about").len(), 1);
+        assert_eq!(runner.ran_cargo("about").len(), 1);
     }
 
     #[test]
@@ -1096,7 +1106,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "a drifted about.toml must not leave a record"
         );
         // The expensive cargo-deny gate must not have run — caught earlier.
-        assert!(runner.ran("cargo-deny").is_empty());
+        assert!(runner.ran_cargo("deny").is_empty());
     }
 
     #[test]
@@ -1128,7 +1138,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "an unresolvable licence must not leave a record"
         );
         // The expensive cargo-deny gate must not have run — caught earlier.
-        assert!(runner.ran("cargo-deny").is_empty());
+        assert!(runner.ran_cargo("deny").is_empty());
     }
 
     #[test]

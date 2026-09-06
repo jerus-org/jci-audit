@@ -106,19 +106,33 @@ impl CheckReport {
     }
 }
 
-// Tools are invoked as their STANDALONE binaries (`cargo-deny`, `cargo-audit`)
-// rather than via `cargo <sub>`, matching how preflight.rs probes them. Both
-// forms resolve to the same binaries — the orb's executor image ships a full
-// Rust toolchain alongside these tool binaries (it's built `FROM
-// rust:*-slim`), so this is a presence-detection choice, not a constraint
-// imposed by a toolchain-less environment.
+// Tools are invoked via `cargo <sub>` dispatch, matching preflight.rs's
+// presence probe.
+//
+// cargo-audit is the one asymmetry: `AUDIT_ARGS` already starts with `audit`
+// (needed for the *standalone* binary's own `cargo-audit audit` form), and
+// empirically `cargo audit <rest>` dispatches to *exactly* `cargo-audit audit
+// <rest>` — cargo reinserts `audit` before exec'ing the plugin. So the
+// dispatch call for cargo-audit is `cargo` + `AUDIT_ARGS` UNCHANGED (still
+// one `audit` token), not `cargo` + `"audit"` + `AUDIT_ARGS` (which would
+// double it and cargo-audit would reject the second `audit` as an unknown
+// subcommand — verified directly, not assumed).
 
-/// cargo-deny standalone: full policy enforcement.
+/// `cargo deny`'s policy-enforcement args, without the leading `deny` cargo
+/// dispatch needs — see [`deny_dispatch_args`].
 const DENY_ARGS: &[&str] = &["check", "advisories", "bans", "licenses", "sources"];
-/// cargo-audit standalone: the `audit` subcommand runs the live advisory scan
-/// (`cargo-audit audit` — the exact form `cargo audit` dispatches to; a bare
-/// `cargo-audit` does not scan).
+/// cargo-audit's live advisory scan. Already includes the one `audit` token
+/// `cargo audit` dispatch needs — see the module comment above.
 const AUDIT_ARGS: &[&str] = &["audit"];
+
+/// `DENY_ARGS`-shaped args with `deny` prepended for `cargo deny` dispatch —
+/// cargo-deny's own CLI has no such redundant leading token (unlike
+/// cargo-audit's), so this one genuinely needs adding.
+fn deny_dispatch_args<'a>(deny_args: &[&'a str]) -> Vec<&'a str> {
+    std::iter::once("deny")
+        .chain(deny_args.iter().copied())
+        .collect()
+}
 
 /// Run cargo-deny and cargo-audit in `cwd` (the workspace root — both need to
 /// find `deny.toml`/`Cargo.lock` there), then the about.toml drift check and
@@ -138,7 +152,7 @@ pub(crate) fn check_with<R: CommandRunner>(
 ) -> Result<CheckReport> {
     let mut steps = Vec::with_capacity(4);
 
-    let deny = runner.run("cargo-deny", DENY_ARGS, cwd)?;
+    let deny = runner.run("cargo", &deny_dispatch_args(DENY_ARGS), cwd)?;
     let mut warnings = surface(
         "cargo-deny check advisories bans licenses sources",
         &deny,
@@ -180,7 +194,7 @@ pub(crate) fn check_with<R: CommandRunner>(
 
     // Always run cargo-audit too — never short-circuit on cargo-deny's result,
     // so both tools' findings are surfaced in one pass.
-    let audit = runner.run("cargo-audit", AUDIT_ARGS, cwd)?;
+    let audit = runner.run("cargo", AUDIT_ARGS, cwd)?;
     warnings.extend(surface("cargo-audit audit", &audit, detail));
     steps.push(CheckStep {
         label: "cargo audit".to_string(),
@@ -419,8 +433,8 @@ fn report_accepted_duplicates_in_detail<R: CommandRunner>(
     }
     if let Some(config_str) = config_path.to_str()
         && let Ok(naked) = runner.run(
-            "cargo-deny",
-            &["--config", config_str, "check", "bans"],
+            "cargo",
+            &deny_dispatch_args(&["--config", config_str, "check", "bans"]),
             cwd,
         )
     {
@@ -459,8 +473,9 @@ pub(crate) fn resolve_license_policy<R: CommandRunner>(
             continue;
         };
         match runner.run(
-            "cargo-about",
+            "cargo",
             &[
+                "about",
                 "generate",
                 "--locked",
                 "about.hbs",
@@ -590,13 +605,12 @@ mod tests {
 
         let calls = runner.calls.borrow();
         assert_eq!(calls.len(), 3);
-        // Standalone binaries (no `cargo` dispatch) — matches how
-        // preflight.rs probes them; the executor image has a full Rust
-        // toolchain regardless (see check.rs's module comment above).
+        // `cargo <sub>` dispatch — matches how preflight.rs probes them.
         assert_eq!(
             calls[0],
             vec![
-                "cargo-deny",
+                "cargo",
+                "deny",
                 "check",
                 "advisories",
                 "bans",
@@ -604,7 +618,7 @@ mod tests {
                 "sources"
             ]
         );
-        assert_eq!(calls[1], vec!["cargo-audit", "audit"]);
+        assert_eq!(calls[1], vec!["cargo", "audit"]);
     }
 
     #[test]
@@ -705,7 +719,8 @@ mod tests {
             "expected a 4th, informational cargo-deny call: {calls:?}"
         );
         let naked = &calls[1];
-        assert_eq!(naked[0], "cargo-deny");
+        assert_eq!(naked[0], "cargo");
+        assert_eq!(naked[1], "deny");
         assert!(naked.contains(&"--config".to_string()), "call: {naked:?}");
         assert!(naked.contains(&"bans".to_string()), "call: {naked:?}");
         assert!(
@@ -832,7 +847,8 @@ mod tests {
         assert_eq!(
             calls[4],
             vec![
-                "cargo-about",
+                "cargo",
+                "about",
                 "generate",
                 "--locked",
                 "about.hbs",

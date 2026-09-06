@@ -8,13 +8,11 @@
 //! discipline warns against). Every subcommand that shells out runs this
 //! preflight first.
 //!
-//! `cargo-audit`/`cargo-deny`/`cargo-about` are invoked as standalone
-//! binaries (not via `cargo <sub>`), matching the exact form the presence
-//! probe checks. The license-policy derivation additionally shells out to
-//! `cargo metadata`, a built-in cargo subcommand — [`Tool::Cargo`] preflights
-//! that separately, not because the environment might lack a Rust toolchain
-//! (the orb's executor image is built `FROM rust:*-slim`, so bare `cargo` is
-//! always present in CI alongside the three tool binaries), but because
+//! `cargo-audit`/`cargo-deny`/`cargo-about` are invoked via `cargo <sub>`
+//! dispatch, matching the form the presence probe checks below. The
+//! license-policy derivation additionally shells out to `cargo metadata`, a
+//! built-in cargo subcommand — [`Tool::Cargo`] preflights that separately,
+//! not because the environment might lack a Rust toolchain, but because
 //! `cargo` isn't `cargo binstall`-able like the other three, so its absence
 //! needs different install guidance (rustup, not binstall).
 
@@ -82,18 +80,36 @@ impl Tool {
         }
     }
 
-    /// Probe whether the tool's binary responds to `--version`.
+    /// The `cargo <sub>` form this tool is invoked in for its actual work —
+    /// `None` for `cargo` itself and for `rsign`, which isn't a cargo plugin
+    /// at all.
+    fn cargo_subcommand(self) -> Option<&'static str> {
+        match self {
+            Tool::CargoAudit => Some("audit"),
+            Tool::CargoDeny => Some("deny"),
+            Tool::CargoAbout => Some("about"),
+            Tool::Cargo | Tool::Rsign => None,
+        }
+    }
+
+    /// Probe whether the tool responds to `--version`, via the same `cargo
+    /// <sub>` dispatch form the real invocations use, so presence detection
+    /// can't silently drift from what `check`/`release-prep`/`verify` do.
     fn is_present(self) -> bool {
-        probe_version(self.binary())
+        match self.cargo_subcommand() {
+            Some(sub) => probe_version("cargo", Some(sub)),
+            None => probe_version(self.binary(), None),
+        }
     }
 }
 
-/// Run `<binary> --version` (e.g. `cargo-audit --version`), returning true on a
-/// successful exit. Probes the standalone binary so presence detection matches
-/// how `check` invokes the tool.
-fn probe_version(binary: &str) -> bool {
-    Command::new(binary)
-        .arg("--version")
+/// Run `<program> [subcommand] --version`, returning true on a successful exit.
+fn probe_version(program: &str, subcommand: Option<&str>) -> bool {
+    let mut cmd = Command::new(program);
+    if let Some(sub) = subcommand {
+        cmd.arg(sub);
+    }
+    cmd.arg("--version")
         .output()
         .is_ok_and(|o| o.status.success())
 }
