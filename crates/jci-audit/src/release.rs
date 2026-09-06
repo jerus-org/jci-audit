@@ -175,49 +175,56 @@ pub(crate) fn record_path(root: &Path, version: &str) -> PathBuf {
         .join(format!("release-{version}.json"))
 }
 
+/// Inputs to [`build_record`], named rather than positional so two
+/// same-typed `&str` fields (e.g. `deny_version`/`audit_version`) cannot be
+/// swapped at a call site with no compiler check.
+pub(crate) struct RecordInputs<'a> {
+    pub(crate) version: &'a str,
+    pub(crate) db_commit: &'a str,
+    pub(crate) deny_version: &'a str,
+    pub(crate) audit_version: &'a str,
+    pub(crate) dependencies_sha256: &'a str,
+    pub(crate) deny_toml_sha256: &'a str,
+    pub(crate) about_toml_sha256: Option<&'a str>,
+    pub(crate) accepted_duplicates: &'a [crate::exceptions::SkipEntry],
+}
+
 /// Build the release record.
 ///
 /// Deterministic by construction: no timestamps, and no live-audit results (the
 /// live database moves, so including it would break byte-identical re-runs).
 /// `serde_json` maps are sorted, so key order is stable too.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn build_record(
-    version: &str,
-    db_commit: &str,
-    deny_version: &str,
-    audit_version: &str,
-    dependencies_sha256: &str,
-    deny_toml_sha256: &str,
-    about_toml_sha256: Option<&str>,
-    accepted_duplicates: &[crate::exceptions::SkipEntry],
-) -> Value {
+pub(crate) fn build_record(inputs: &RecordInputs<'_>) -> Value {
     // The in-force `[[bans.skip]]` exceptions at release time — what was
     // actually known and tolerated, not the full configured list (which may
     // include stale entries; see `crate::exceptions`). No digest of its own:
     // it lives inside deny.toml, so deny_toml_sha256 already covers whether
     // the exception set changed since release.
     let accepted_warnings = json!({
-        "duplicate": accepted_duplicates
+        "duplicate": inputs.accepted_duplicates
             .iter()
             .map(|e| json!({ "name": e.name, "version": e.version, "reason": e.reason }))
             .collect::<Vec<_>>(),
     });
     json!({
         "schema_version": RECORD_SCHEMA_VERSION,
-        "version": version,
-        "advisory_db": { "commit": db_commit },
-        "tools": { "cargo_deny": deny_version, "cargo_audit": audit_version },
+        "version": inputs.version,
+        "advisory_db": { "commit": inputs.db_commit },
+        "tools": { "cargo_deny": inputs.deny_version, "cargo_audit": inputs.audit_version },
         // The EXTERNAL dependency set, not the raw file: cargo-release rewrites
         // the crate's own version in Cargo.lock as part of the release commit,
         // so a raw digest would not survive the release it describes.
-        "lockfile": { "dependencies_sha256": dependencies_sha256 },
+        "lockfile": { "dependencies_sha256": inputs.dependencies_sha256 },
         // The policy digest makes the record self-verifying: it proves WHICH
         // exception set (deny.toml ignores, licenses, bans, sources) was in
         // force, rather than trusting git history to supply it.
         // about_toml_sha256 is the same guarantee for license policy, only
         // present once the drift + policy-resolution checks have passed —
         // `None` (-> null) when the workspace has no about.toml at all.
-        "policy": { "deny_toml_sha256": deny_toml_sha256, "about_toml_sha256": about_toml_sha256 },
+        "policy": {
+            "deny_toml_sha256": inputs.deny_toml_sha256,
+            "about_toml_sha256": inputs.about_toml_sha256,
+        },
         "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
         "accepted_warnings": accepted_warnings,
     })
@@ -378,16 +385,16 @@ pub(crate) fn release_with<R: CommandRunner>(
         bail!("release gate failed: cargo-deny reported findings (no record written)");
     }
 
-    let record = build_record(
+    let record = build_record(&RecordInputs {
         version,
-        &db_commit,
-        &deny_version,
-        &audit_version,
-        &dependencies_sha256,
-        &deny_toml_sha256,
-        about_toml_sha256.as_deref(),
-        &accepted_warnings.in_force,
-    );
+        db_commit: &db_commit,
+        deny_version: &deny_version,
+        audit_version: &audit_version,
+        dependencies_sha256: &dependencies_sha256,
+        deny_toml_sha256: &deny_toml_sha256,
+        about_toml_sha256: about_toml_sha256.as_deref(),
+        accepted_duplicates: &accepted_warnings.in_force,
+    });
     let path = record_path(&root, version);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -414,8 +421,13 @@ pub(crate) fn work_dir() -> PathBuf {
 
 /// cargo-deny's default `db-path`, resolved from `$HOME`.
 pub(crate) fn default_db_root() -> PathBuf {
-    std::env::var_os("HOME")
-        .map_or_else(|| PathBuf::from("."), PathBuf::from)
+    db_root_from_home(std::env::var_os("HOME").as_deref())
+}
+
+/// Pure core of [`default_db_root`], injectable so the `$HOME`-unset fallback
+/// is testable without mutating the process environment.
+fn db_root_from_home(home: Option<&std::ffi::OsStr>) -> PathBuf {
+    home.map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".cargo")
         .join("advisory-db")
 }
@@ -554,26 +566,18 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
 
     #[test]
     fn record_is_deterministic_and_omits_volatile_data() {
-        let a = build_record(
-            "1.2.0",
-            "abc123",
-            "cargo-deny 0.20.2",
-            "cargo-audit 0.22.0",
-            "deps1",
-            "p1",
-            Some("a1"),
-            &[],
-        );
-        let b = build_record(
-            "1.2.0",
-            "abc123",
-            "cargo-deny 0.20.2",
-            "cargo-audit 0.22.0",
-            "deps1",
-            "p1",
-            Some("a1"),
-            &[],
-        );
+        let inputs = || RecordInputs {
+            version: "1.2.0",
+            db_commit: "abc123",
+            deny_version: "cargo-deny 0.20.2",
+            audit_version: "cargo-audit 0.22.0",
+            dependencies_sha256: "deps1",
+            deny_toml_sha256: "p1",
+            about_toml_sha256: Some("a1"),
+            accepted_duplicates: &[],
+        };
+        let a = build_record(&inputs());
+        let b = build_record(&inputs());
         assert_eq!(render_record(&a).unwrap(), render_record(&b).unwrap());
         // Both policy digests prove which exception set was in force.
         assert!(
@@ -621,16 +625,16 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
                 reason: None,
             },
         ];
-        let record = build_record(
-            "1.2.0",
-            "abc123",
-            "cargo-deny 0.20.2",
-            "cargo-audit 0.22.0",
-            "deps1",
-            "p1",
-            Some("a1"),
-            &accepted,
-        );
+        let record = build_record(&RecordInputs {
+            version: "1.2.0",
+            db_commit: "abc123",
+            deny_version: "cargo-deny 0.20.2",
+            audit_version: "cargo-audit 0.22.0",
+            dependencies_sha256: "deps1",
+            deny_toml_sha256: "p1",
+            about_toml_sha256: Some("a1"),
+            accepted_duplicates: &accepted,
+        });
         let rendered = render_record(&record).unwrap();
         assert!(
             rendered.contains("\"schema_version\": 5"),
@@ -655,16 +659,16 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
 
     #[test]
     fn no_accepted_exceptions_is_an_empty_list_not_absent() {
-        let record = build_record(
-            "1.2.0",
-            "abc123",
-            "cargo-deny 0.20.2",
-            "cargo-audit 0.22.0",
-            "deps1",
-            "p1",
-            None,
-            &[],
-        );
+        let record = build_record(&RecordInputs {
+            version: "1.2.0",
+            db_commit: "abc123",
+            deny_version: "cargo-deny 0.20.2",
+            audit_version: "cargo-audit 0.22.0",
+            dependencies_sha256: "deps1",
+            deny_toml_sha256: "p1",
+            about_toml_sha256: None,
+            accepted_duplicates: &[],
+        });
         let rendered = render_record(&record).unwrap();
         assert!(
             rendered.contains("\"duplicate\": []"),
@@ -685,6 +689,24 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "cargo-deny 0.20.2"
         );
         assert_eq!(first_line(""), "");
+    }
+
+    #[test]
+    fn db_root_falls_back_to_current_dir_when_home_is_unset() {
+        assert_eq!(
+            db_root_from_home(None),
+            PathBuf::from(".").join(".cargo").join("advisory-db")
+        );
+    }
+
+    #[test]
+    fn db_root_is_under_home_cargo_advisory_db() {
+        assert_eq!(
+            db_root_from_home(Some(std::ffi::OsStr::new("/home/alice"))),
+            PathBuf::from("/home/alice")
+                .join(".cargo")
+                .join("advisory-db")
+        );
     }
 
     // ── orchestration ──────────────────────────────────────────────────────

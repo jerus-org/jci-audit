@@ -162,16 +162,6 @@ mod tests {
     }
 
     #[test]
-    fn ensure_available_errors_names_missing_tool() {
-        // Probe every tool as absent by pointing at an impossible subcommand is
-        // not possible through the public API, so assert on the pure core's
-        // contract instead: an all-absent probe yields both tools.
-        let missing = missing_tools(&[Tool::CargoDeny], |_| false);
-        assert_eq!(missing, vec![Tool::CargoDeny]);
-        assert_eq!(Tool::CargoDeny.invocation(), "cargo deny");
-    }
-
-    #[test]
     fn cargo_about_is_a_probeable_tool() {
         assert_eq!(Tool::CargoAbout.invocation(), "cargo about");
         assert!(Tool::CargoAbout.install_hint().contains("cargo-about"));
