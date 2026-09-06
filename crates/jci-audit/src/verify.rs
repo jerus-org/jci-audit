@@ -106,12 +106,33 @@ pub(crate) fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
 ///
 /// Returns `(mismatches, unverified)`. A record without a policy digest
 /// (`schema_version` 1) yields an `unverified` note rather than a false pass.
+/// `expected_package` is the `--package` the caller passed to `verify`
+/// (`None` for a whole-workspace verify) — checked against the record's own
+/// `package` field (schema 6+) so a scoping mismatch is reported plainly
+/// rather than surfacing only as a confusing dependency-digest mismatch
+/// (jerus-org/jci-audit#62).
 pub(crate) fn compare_inputs(
     record: &Value,
     digests: &CheckoutDigests,
+    expected_package: Option<&str>,
 ) -> (Vec<String>, Vec<String>) {
     let mut mismatches = Vec::new();
     let mut unverified = Vec::new();
+
+    let recorded_package = record.get("package").and_then(Value::as_str);
+    match (expected_package, recorded_package) {
+        (Some(want), Some(got)) if want != got => mismatches.push(format!(
+            "record is for package '{got}', not '{want}' — wrong record for this --package"
+        )),
+        (Some(want), None) => mismatches.push(format!(
+            "record has no package (a whole-workspace release, or schema predates \
+             per-package releases) — cannot verify it as package '{want}'"
+        )),
+        (None, Some(got)) => mismatches.push(format!(
+            "record is scoped to package '{got}' — pass --package {got} to verify it"
+        )),
+        _ => {}
+    }
 
     let lockfile = record.get("lockfile");
     let recorded_deps = lockfile
@@ -187,7 +208,9 @@ pub(crate) fn compare_inputs(
     (mismatches, unverified)
 }
 
-/// Re-verify the release named by `version`.
+/// Re-verify the release named by `version`. `package` must match whatever
+/// `release-prep --package` (if any) the record was written under — see
+/// [`compare_inputs`] (jerus-org/jci-audit#62).
 pub(crate) fn verify_with<R: CommandRunner>(
     runner: &R,
     start: &Path,
@@ -195,13 +218,14 @@ pub(crate) fn verify_with<R: CommandRunner>(
     db_root: &Path,
     work_dir: &Path,
     detail: crate::diagnostics::Detail,
+    package: Option<&str>,
 ) -> Result<VerifyOutcome> {
     let (deny_path, _audit_path) = locate_paths(start)?;
     let root = deny_path
         .parent()
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
 
-    let record = load_record(&record_path(&root, version))?;
+    let record = load_record(&record_path(&root, version, package))?;
     let db_commit = field(&record, &["advisory_db", "commit"])?.to_string();
 
     // Compare the checked-out inputs with what the record attests.
@@ -209,13 +233,21 @@ pub(crate) fn verify_with<R: CommandRunner>(
         .with_context(|| format!("no Cargo.lock at '{}'", root.display()))?;
     let deny_toml = std::fs::read_to_string(&deny_path)
         .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
+    let dependencies = match package {
+        Some(name) => {
+            let manifest_path = crate::sync::resolve_member_manifest_path(runner, &root, name)?;
+            let metadata_json = crate::license_scope::crate_metadata(runner, &manifest_path)?;
+            crate::release::dependency_set_digest_for_package(&lock_text, &metadata_json)?
+        }
+        None => dependency_set_digest(&lock_text)?,
+    };
     let digests = CheckoutDigests {
-        dependencies: dependency_set_digest(&lock_text)?,
+        dependencies,
         lockfile_raw: lockfile_digest(lock_text.as_bytes()),
         deny_toml: lockfile_digest(deny_toml.as_bytes()),
         about_toml: about_toml_digest(runner, &root)?,
     };
-    let (mismatches, unverified) = compare_inputs(&record, &digests);
+    let (mismatches, unverified) = compare_inputs(&record, &digests, package);
 
     // The tool's semantics can change between versions, so a difference is worth
     // surfacing even though we cannot install the recorded version here.
@@ -381,6 +413,21 @@ mod tests {
         })
     }
 
+    /// Schema 6+: carries an explicit `package`, `None` for a workspace-wide
+    /// release (jerus-org/jci-audit#62).
+    fn record_v6(deps: &str, policy: &str, about: Option<&str>, package: Option<&str>) -> Value {
+        json!({
+            "schema_version": 6,
+            "version": "1.2.0",
+            "advisory_db": { "commit": "abc1234def" },
+            "tools": { "cargo_deny": "cargo-deny 0.20.2", "cargo_audit": "cargo-audit 0.22.0" },
+            "lockfile": { "dependencies_sha256": deps },
+            "policy": { "deny_toml_sha256": policy, "about_toml_sha256": about },
+            "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
+            "package": package,
+        })
+    }
+
     /// Legacy schema: digests the raw lockfile.
     fn record_v2(lock: &str, policy: &str) -> Value {
         json!({
@@ -410,6 +457,7 @@ mod tests {
         deny_stderr: String,
         deny_version: String,
         shallow: bool,
+        metadata_json: String,
         calls: RefCell<Vec<Vec<String>>>,
     }
 
@@ -420,12 +468,20 @@ mod tests {
                 deny_stderr: String::new(),
                 deny_version: "cargo-deny 0.20.2".to_string(),
                 shallow: false,
+                metadata_json: r#"{"packages":[]}"#.to_string(),
                 calls: RefCell::new(Vec::new()),
             }
         }
 
         fn shallow(mut self) -> Self {
             self.shallow = true;
+            self
+        }
+
+        /// Used by `--package`-scoped tests, which need a real reachable
+        /// dependency graph rather than the default empty one.
+        fn with_metadata_json(mut self, json: String) -> Self {
+            self.metadata_json = json;
             self
         }
 
@@ -485,8 +541,9 @@ mod tests {
                 },
                 // No test scenario here has a real about.toml on disk, so an
                 // empty workspace is always correct — find_about_toml_paths
-                // filters by file existence anyway.
-                ("cargo", Some("metadata")) => ok(r#"{"packages":[]}"#),
+                // filters by file existence anyway. `--package` tests override
+                // this via `with_metadata_json` for a real reachable graph.
+                ("cargo", Some("metadata")) => ok(&self.metadata_json),
                 _ => ok(""),
             })
         }
@@ -522,9 +579,66 @@ mod tests {
             deny_toml: "policy-sha".into(),
             about_toml: Some("about-sha".to_string()),
         };
-        let (mismatches, unverified) = compare_inputs(&rec, &d);
+        let (mismatches, unverified) = compare_inputs(&rec, &d, None);
         assert!(mismatches.is_empty(), "got {mismatches:?}");
         assert!(unverified.is_empty(), "got {unverified:?}");
+    }
+
+    #[test]
+    fn matching_package_has_no_mismatch() {
+        let rec = record_v6("deps-sha", "policy-sha", Some("about-sha"), Some("crate-a"));
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: Some("about-sha".to_string()),
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d, Some("crate-a"));
+        assert!(mismatches.is_empty(), "got {mismatches:?}");
+    }
+
+    #[test]
+    fn wrong_package_given_is_a_mismatch() {
+        let rec = record_v6("deps-sha", "policy-sha", Some("about-sha"), Some("crate-a"));
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: Some("about-sha".to_string()),
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d, Some("crate-b"));
+        assert_eq!(mismatches.len(), 1, "got {mismatches:?}");
+        assert!(
+            mismatches[0].contains("crate-a") && mismatches[0].contains("crate-b"),
+            "got {mismatches:?}"
+        );
+    }
+
+    #[test]
+    fn package_given_but_record_is_workspace_wide_is_a_mismatch() {
+        let rec = record_v4("deps-sha", "policy-sha", Some("about-sha"));
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: Some("about-sha".to_string()),
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d, Some("crate-a"));
+        assert_eq!(mismatches.len(), 1, "got {mismatches:?}");
+    }
+
+    #[test]
+    fn record_scoped_to_a_package_but_none_given_is_a_mismatch() {
+        let rec = record_v6("deps-sha", "policy-sha", Some("about-sha"), Some("crate-a"));
+        let d = CheckoutDigests {
+            dependencies: "deps-sha".into(),
+            lockfile_raw: "raw".into(),
+            deny_toml: "policy-sha".into(),
+            about_toml: Some("about-sha".to_string()),
+        };
+        let (mismatches, _) = compare_inputs(&rec, &d, None);
+        assert_eq!(mismatches.len(), 1, "got {mismatches:?}");
+        assert!(mismatches[0].contains("crate-a"), "got {mismatches:?}");
     }
 
     #[test]
@@ -536,7 +650,7 @@ mod tests {
             deny_toml: "policy-sha".into(),
             about_toml: None,
         };
-        let (mismatches, _) = compare_inputs(&rec, &d);
+        let (mismatches, _) = compare_inputs(&rec, &d, None);
         assert_eq!(mismatches.len(), 1);
         assert!(
             mismatches[0].contains("dependency set"),
@@ -553,7 +667,7 @@ mod tests {
             deny_toml: "DIFFERENT".into(),
             about_toml: None,
         };
-        let (mismatches, _) = compare_inputs(&rec, &d);
+        let (mismatches, _) = compare_inputs(&rec, &d, None);
         assert_eq!(mismatches.len(), 1);
         assert!(mismatches[0].contains("deny.toml"), "got {mismatches:?}");
     }
@@ -567,7 +681,7 @@ mod tests {
             deny_toml: "policy-sha".into(),
             about_toml: Some("DIFFERENT".to_string()),
         };
-        let (mismatches, _) = compare_inputs(&rec, &d);
+        let (mismatches, _) = compare_inputs(&rec, &d, None);
         assert_eq!(mismatches.len(), 1);
         assert!(mismatches[0].contains("about.toml"), "got {mismatches:?}");
     }
@@ -582,7 +696,7 @@ mod tests {
             deny_toml: "policy-sha".into(),
             about_toml: None,
         };
-        let (mismatches, _) = compare_inputs(&rec, &d);
+        let (mismatches, _) = compare_inputs(&rec, &d, None);
         assert_eq!(mismatches.len(), 1);
         assert!(mismatches[0].contains("about.toml"), "got {mismatches:?}");
     }
@@ -599,7 +713,7 @@ mod tests {
             deny_toml: "policy-sha".into(),
             about_toml: Some("anything".to_string()),
         };
-        let (mismatches, unverified) = compare_inputs(&rec, &d);
+        let (mismatches, unverified) = compare_inputs(&rec, &d, None);
         assert!(mismatches.is_empty(), "got {mismatches:?}");
         assert_eq!(unverified.len(), 1);
         assert!(
@@ -620,7 +734,7 @@ mod tests {
             deny_toml: "policy-sha".into(),
             about_toml: Some("something-added-since".to_string()),
         };
-        let (mismatches, unverified) = compare_inputs(&rec, &d);
+        let (mismatches, unverified) = compare_inputs(&rec, &d, None);
         assert!(mismatches.is_empty(), "got {mismatches:?}");
         assert_eq!(unverified.len(), 1);
     }
@@ -634,7 +748,7 @@ mod tests {
             deny_toml: "anything".into(),
             about_toml: None,
         };
-        let (mismatches, unverified) = compare_inputs(&rec, &d);
+        let (mismatches, unverified) = compare_inputs(&rec, &d, None);
         assert!(mismatches.is_empty(), "v1 policy absence is not a mismatch");
         // A v1 record predates both the deny.toml and the about.toml digest.
         assert_eq!(unverified.len(), 2, "got {unverified:?}");
@@ -653,8 +767,95 @@ mod tests {
             lockfile_raw: "DIFFERENT".into(),
             ..d
         };
-        let (mismatches, _) = compare_inputs(&rec, &d);
+        let (mismatches, _) = compare_inputs(&rec, &d, None);
         assert_eq!(mismatches.len(), 1);
+    }
+
+    const LOCK_TWO_CRATES: &str = r#"
+version = 4
+
+[[package]]
+name = "crate-a"
+version = "0.1.0"
+dependencies = ["clap"]
+
+[[package]]
+name = "crate-b"
+version = "0.1.0"
+dependencies = ["serde"]
+
+[[package]]
+name = "clap"
+version = "4.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#;
+
+    fn metadata_for_crate_a(crate_a_dir: &Path) -> String {
+        format!(
+            r#"{{"packages":[
+                {{"name":"crate-a","version":"0.1.0","id":"id-a","license":null,"manifest_path":"{manifest}"}},
+                {{"name":"clap","version":"4.6.4","id":"id-clap","license":"MIT"}}
+            ],"resolve":{{"root":"id-a","nodes":[
+                {{"id":"id-a","deps":[
+                    {{"name":"clap","pkg":"id-clap","dep_kinds":[{{"kind":null,"target":null}}]}}
+                ]}},
+                {{"id":"id-clap","deps":[]}}
+            ]}}}}"#,
+            manifest = crate_a_dir.join("Cargo.toml").display()
+        )
+    }
+
+    #[test]
+    fn verify_reproduces_a_package_scoped_release() {
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::write(repo.path().join("deny.toml"), DENY).unwrap();
+        std::fs::write(repo.path().join("Cargo.lock"), LOCK_TWO_CRATES).unwrap();
+        let crate_a_dir = repo.path().join("crates/crate-a");
+        std::fs::create_dir_all(&crate_a_dir).unwrap();
+        let metadata_json = metadata_for_crate_a(&crate_a_dir);
+
+        let scoped_digest =
+            crate::release::dependency_set_digest_for_package(LOCK_TWO_CRATES, &metadata_json)
+                .unwrap();
+        let rec = json!({
+            "schema_version": 6,
+            "version": "1.2.0",
+            "advisory_db": { "commit": "abc1234def" },
+            "tools": { "cargo_deny": "cargo-deny 0.20.2", "cargo_audit": "cargo-audit 0.22.0" },
+            "lockfile": { "dependencies_sha256": scoped_digest },
+            "policy": { "deny_toml_sha256": lockfile_digest(DENY.as_bytes()) },
+            "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
+            "package": "crate-a",
+        });
+        let dir = repo.path().join(".security");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("crate-a-release-1.2.0.json"),
+            serde_json::to_string_pretty(&rec).unwrap(),
+        )
+        .unwrap();
+        let db = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(db.path().join("advisory-db-3157b0e258782691")).unwrap();
+
+        let runner = MockRunner::new(true).with_metadata_json(metadata_json);
+        let out = verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+            crate::diagnostics::Detail::Summary,
+            Some("crate-a"),
+        )
+        .unwrap();
+        assert!(out.is_ok(), "should reproduce: {out:?}");
     }
 
     #[test]
@@ -672,6 +873,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
         assert!(out.is_ok(), "should reproduce: {out:?}");
@@ -696,6 +898,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
         assert!(
@@ -750,6 +953,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -771,6 +975,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -813,6 +1018,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -842,6 +1048,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -870,6 +1077,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -908,6 +1116,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         );
         let restored = runner
             .calls
@@ -935,6 +1144,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
         assert!(!out.is_ok(), "a failing gate must not verify");
@@ -957,6 +1167,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
         assert!(!out.is_ok());
@@ -981,6 +1192,7 @@ mod tests {
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("release record"), "got: {err}");

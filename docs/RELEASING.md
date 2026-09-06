@@ -50,6 +50,26 @@ Releases run on CircleCI ([`.circleci/release.yml`](../.circleci/release.yml)):
 The private GPG key and the ephemeral signing key live only in CI contexts, never in the
 repository.
 
+## Multi-crate workspaces
+
+jci-audit's own workspace holds one crate today, but `release-prep`/`verify` support the
+per-crate release sequence the garden-level `CLAUDE.md` documents for a multi-crate workspace
+(release dependent crates first, each individually, in dependency order):
+
+```bash
+jci-audit release-prep <version> --package <crate-name>
+jci-audit verify <version> --package <crate-name>
+```
+
+`--package` (cargo's own `-p`/`--package` convention; resolved from the workspace's own `cargo
+metadata`, not a raw path) scopes the dependency digest — and the record's own path,
+`.security/<crate-name>-release-<version>.json` instead of `.security/release-<version>.json` — to
+just that crate's reachable dependency graph, so releasing several crates at different versions in
+one pipeline run doesn't collide on the same record path or validate more of the graph than that
+crate actually ships. The advisory policy gate itself (`deny.toml`, cargo-deny) stays
+workspace-wide either way, matching cargo-deny's own model. Omit `--package` for a single-crate
+workspace's whole-graph record — unchanged behaviour.
+
 ## Verifying a release
 
 ### 1. The signed git tag
@@ -134,7 +154,10 @@ it enables the stronger Cargo.toml pubkey source ([design.md
 §5.4](design.md#54-verifying-without-a-checkout),
 [jerus-org/jci-audit#124](https://github.com/jerus-org/jci-audit/issues/124)). Without it, `verify`
 checks only the release's own `.pub` asset — sufficient for any consumer, since
-`jci-audit publish-record` always uploads one.
+`jci-audit publish-record` always uploads one. This is the same `--package` flag the [multi-crate
+workspace](#multi-crate-workspaces) section above describes — when a local record is found,
+`verify` additionally uses it to locate the right record and re-scope its own digest
+recomputation; on this fetch-only path (no local record), it only drives pubkey resolution.
 
 ## Trust model summary
 

@@ -62,6 +62,17 @@ pub(crate) fn scope_for_crate<R: CommandRunner>(
     allow: &BTreeSet<String>,
     exception_crates: &BTreeSet<String>,
 ) -> Result<CrateLicenseScope> {
+    let json = crate_metadata(runner, manifest_path)?;
+    scope_from_metadata(&json, allow, exception_crates)
+}
+
+/// Run `cargo metadata --all-features` scoped to one crate's own manifest,
+/// from that crate's own directory — the raw JSON, shared by
+/// [`scope_for_crate`] (license derivation) and `release.rs`/`verify.rs`'s
+/// per-package dependency-digest scoping ([`reachable_dependency_versions`],
+/// jerus-org/jci-audit#62), which each parse the same reachable graph for a
+/// different purpose.
+pub(crate) fn crate_metadata<R: CommandRunner>(runner: &R, manifest_path: &Path) -> Result<String> {
     let manifest = manifest_path.to_string_lossy();
     let crate_dir = manifest_path
         .parent()
@@ -81,7 +92,7 @@ pub(crate) fn scope_for_crate<R: CommandRunner>(
     if !out.success {
         bail!("cargo metadata failed for '{manifest}': {}", out.stderr);
     }
-    scope_from_metadata(&out.stdout, allow, exception_crates)
+    Ok(out.stdout)
 }
 
 /// Parse `cargo metadata --format-version 1` JSON and compute the license
@@ -145,6 +156,52 @@ pub(crate) fn scope_from_metadata(
         }
     }
     Ok(scope)
+}
+
+/// `(name, version)` pairs reachable, via edges that ship, from the crate
+/// whose `cargo metadata` output this is — excluding the crate's own
+/// package. Used to scope `release.rs`/`verify.rs`'s dependency digest to one
+/// crate's reachable graph instead of the whole workspace `Cargo.lock`
+/// (jerus-org/jci-audit#62), reusing the exact reachability rule
+/// [`scope_from_metadata`] already established for per-crate `about.toml`
+/// derivation — a dev-only dependency of the crate being released doesn't
+/// ship to its consumers, so it doesn't belong in that crate's own advisory
+/// exposure either.
+pub(crate) fn reachable_dependency_versions(
+    metadata_json: &str,
+) -> Result<BTreeSet<(String, String)>> {
+    let doc: Value =
+        serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
+
+    let packages = doc
+        .get("packages")
+        .and_then(Value::as_array)
+        .context("cargo metadata JSON has no 'packages' array")?;
+    let resolve = doc.get("resolve").context(
+        "cargo metadata JSON has no 'resolve' (run with --format-version 1, not --no-deps)",
+    )?;
+    let root = resolve
+        .get("root")
+        .and_then(Value::as_str)
+        .context("cargo metadata JSON has no 'resolve.root'")?;
+    let nodes = resolve
+        .get("nodes")
+        .and_then(Value::as_array)
+        .context("cargo metadata JSON has no 'resolve.nodes'")?;
+
+    let reachable = reachable_shipped_ids(root, nodes);
+    let id_to_pkg = index_by_id(packages);
+
+    Ok(reachable
+        .iter()
+        .filter(|id| id.as_str() != root)
+        .filter_map(|id| {
+            let pkg = id_to_pkg.get(id.as_str())?;
+            let name = pkg.get("name")?.as_str()?;
+            let version = pkg.get("version")?.as_str()?;
+            Some((name.to_string(), version.to_string()))
+        })
+        .collect())
 }
 
 /// Package ids reachable from `root` via edges that ship (excludes an edge
@@ -391,6 +448,24 @@ mod tests {
                 stderr: String::new(),
             })
         }
+    }
+
+    #[test]
+    fn reachable_dependency_versions_excludes_root_and_dev_only_deps() {
+        // Same fixture as the license-scope tests: tempfile is dev-only and
+        // must be excluded; anyhow/option-ext/cc ship and must be included;
+        // the root crate itself must not appear in its own dependency set.
+        let versions = reachable_dependency_versions(METADATA_JSON).unwrap();
+        assert_eq!(
+            versions,
+            [
+                ("anyhow".to_string(), "1.0.104".to_string()),
+                ("cc".to_string(), "1.0.0".to_string()),
+                ("option-ext".to_string(), "0.2.0".to_string()),
+            ]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+        );
     }
 
     #[test]

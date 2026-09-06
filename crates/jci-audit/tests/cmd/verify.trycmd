@@ -19,7 +19,9 @@ Remote release:
       --owner <OWNER>            GitHub repository owner that published the release (e.g. "jerus-org")
       --repo <REPO>              GitHub repository name that published the release (e.g. "jci-audit")
       --tag-prefix <TAG_PREFIX>  Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
-  -p, --package <PACKAGE>        The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved against the release repo's workspace, for the stronger Cargo.toml pubkey source
+
+Input:
+  -p, --package <PACKAGE>  The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved from the workspace's own `cargo metadata`, not a raw path. Must match whatever `release-prep --package` (if any) the record was written under
 
 Output:
       --deny-warnings  Fail if the tools report any warning
@@ -65,10 +67,13 @@ Remote release:
       --tag-prefix <TAG_PREFIX>
           Release tag prefix (e.g. "jci-audit-v"); combined with the version to form the tag to fetch when no local record is found
 
+Input:
   -p, --package <PACKAGE>
-          The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved against the release repo's workspace, for the stronger Cargo.toml pubkey source.
+          The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved from the workspace's own `cargo metadata`, not a raw path. Must match whatever `release-prep --package` (if any) the record was written under.
           
-          Optional: without it, only the release's own .pub asset is checked. This source only runs when a package is given.
+          When a local record is found: re-scopes the dependency digest to just this crate's reachable graph and looks for the record at `.security/<package>-release-<VERSION>.json`, matching `release-prep`'s own per-crate release sequence (garden-level CLAUDE.md, jerus-org/jci-audit#62). Omit for a single-crate workspace's whole-graph record — unchanged behaviour.
+          
+          On the remote-fetch fallback (no local record): resolved against the release repo's workspace instead, for the stronger Cargo.toml pubkey source. Optional there too — without it, only the release's own `.pub` asset is checked.
 
 Output:
       --deny-warnings

@@ -108,10 +108,13 @@ releases Phase 0-2 bugfixes have been shipping as.
   adds the `docker:pinDigests`/`customManagers:dockerfileVersions` extends that this repo's
   `renovate.json` was missing — without them, those comments would have stayed inert.
 - **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
-  Add a `pcu release package <PACKAGE>`-equivalent selector to `release-prep`/`verify`, scoping
-  the dependency digest and advisory gate to one crate's reachable graph instead of the whole
-  workspace `Cargo.lock`, and giving the release record a crate-name-qualified path so multiple
-  crates can release under different versions in one pipeline run without colliding.
+  ✅ Done — `release-prep`/`verify --package <NAME>` scope the dependency digest to that crate's
+  reachable graph (via `cargo metadata`, reusing `license_scope`'s reachability rule) and the
+  record's own path (`.security/<name>-release-<version>.json`), so multiple crates can release
+  under different versions in one pipeline run without colliding. The advisory gate itself
+  (deny.toml, cargo-deny) stays workspace-wide, matching cargo-deny's own model. `publish-record`
+  and `verify`'s remote-fetch path don't take a per-package record path yet — deferred until a
+  real multi-crate consumer needs the full pipeline, per the issue's own "why post-MVP" note.
 - **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
   Required for the initial published pre-release: a tool with no onboarding command isn't
   actually installable software for anyone outside this repo, pre-1.0 or not.

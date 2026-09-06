@@ -182,11 +182,11 @@ without the release itself changing. That is not useful as a durable record. jci
 4. Separately runs a **live** `cargo audit` as a non-blocking warning, so newly published
    advisories are visible without blocking the release on them.
 
-### 5.2 Record schema (`schema_version: 4`)
+### 5.2 Record schema (`schema_version: 6`)
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 6,
   "version": "0.0.7",
   "advisory_db": { "commit": "<pinned commit sha>" },
   "tools": { "cargo_deny": "cargo-deny 0.20.2", "cargo_audit": "cargo-audit 0.22.0" },
@@ -195,7 +195,9 @@ without the release itself changing. That is not useful as a durable record. jci
     "deny_toml_sha256": "<digest of deny.toml>",
     "about_toml_sha256": "<digest of the about.toml policy files, or null>"
   },
-  "checks": { "deny": { "passed": true, "checks": ["advisories", "bans", "licenses", "sources"] } }
+  "checks": { "deny": { "passed": true, "checks": ["advisories", "bans", "licenses", "sources"] } },
+  "accepted_warnings": { "duplicate": [ { "name": "syn", "version": null, "reason": "..." } ] },
+  "package": "<crate name, or null for a whole-workspace release>"
 }
 ```
 
@@ -204,6 +206,10 @@ Design notes:
 - **`lockfile.dependencies_sha256` digests the external dependency set, not the raw
   `Cargo.lock` file.** `cargo-release` rewrites the crate's own version in `Cargo.lock` as part of
   the release commit, so a raw-file digest would not survive the release it is meant to describe.
+  With `--package <NAME>` (schema ≥6, [#62](https://github.com/jerus-org/jci-audit/issues/62)), it
+  digests only the `(name, version)` pairs reachable from that crate's own manifest — via `cargo
+  metadata`, reusing the same reachability rule §6's `about.toml` derivation established — instead
+  of the whole workspace's `Cargo.lock`.
 - **`policy.about_toml_sha256` digests the policy *files*, not the rendered
   `THIRD-PARTY-LICENSES.md`.** `cargo-about` resolves license text partly from files extracted into
   the local cargo registry cache, so identical inputs render different bytes across cache states —
@@ -214,6 +220,11 @@ Design notes:
 - **`about_toml_sha256` is `null` on schema versions before 4** (and on a workspace with no
   `about.toml` at all) — `verify` treats an absent digest as "unverified," not a mismatch, so old
   records stay valid rather than failing retroactively.
+- **`package` is always present (schema ≥6), `null` for a whole-workspace release** — never
+  omitted, so a reader never has to guess whether an absent key means "whole workspace" or "record
+  predates this field." `verify --package <NAME>` cross-checks it against the given name and
+  reports a plain mismatch on a mismatch, rather than surfacing only as a confusing
+  dependency-digest difference.
 - **No timestamps, no live-audit results** in the record — both would break byte-identical re-runs
   of `build_record` for the same inputs. `serde_json`'s map serialization keeps key order stable.
 
