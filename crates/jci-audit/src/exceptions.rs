@@ -1,10 +1,10 @@
 //! Visibility for cargo-deny's native `[[bans.skip]]` exceptions.
 //!
-//! `multiple-versions = "deny"` plus a named `[[bans.skip]]` entry already gives
-//! cargo-deny exactly the policy jerus-org/jci-audit#49 wants: deny by default,
-//! pass cleanly for a named exception. What it does not give is visibility — a
-//! skip entry that matches a genuine duplicate is completely silent, so nobody
-//! reading a CI log or a release record can tell what was actually tolerated.
+//! `multiple-versions = "deny"` plus a named `[[bans.skip]]` entry gives
+//! cargo-deny a deny-by-default policy that passes cleanly for a named
+//! exception. What it does not give is visibility — a skip entry that
+//! matches a genuine duplicate is completely silent, so nobody reading a CI
+//! log or a release record can tell what was actually tolerated.
 //! This module reads the configured exceptions straight out of `deny.toml` (the
 //! same file cargo-deny itself reads — nothing here needs its own config
 //! surface) and cross-references them against cargo-deny's own
@@ -262,9 +262,8 @@ pub(crate) fn print_notice(accepted: &AcceptedWarnings) {
 }
 
 /// Derive an ephemeral `deny.toml` that reports every `multiple-versions`
-/// duplicate as a plain warning, with no `[[bans.skip]]` exception applied —
-/// "as if the config was warn and the skips didn't exist"
-/// (jerus-org/jci-audit#49 review). Used only for the opt-in, `-vv`
+/// duplicate as a plain warning, as if the config were `warn` and no
+/// `[[bans.skip]]` exceptions existed. Used only for the opt-in, `-vv`
 /// informational report: cargo-deny is silent about a duplicate its skip
 /// config accepts, so this is the only way to recover the crate-name/
 /// dependency-tree detail every other finding already gets at that

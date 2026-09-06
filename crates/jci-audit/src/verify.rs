@@ -408,6 +408,7 @@ mod tests {
     struct MockRunner {
         deny_ok: bool,
         deny_stderr: String,
+        deny_version: String,
         shallow: bool,
         calls: RefCell<Vec<Vec<String>>>,
     }
@@ -417,6 +418,7 @@ mod tests {
             Self {
                 deny_ok,
                 deny_stderr: String::new(),
+                deny_version: "cargo-deny 0.20.2".to_string(),
                 shallow: false,
                 calls: RefCell::new(Vec::new()),
             }
@@ -424,6 +426,13 @@ mod tests {
 
         fn shallow(mut self) -> Self {
             self.shallow = true;
+            self
+        }
+
+        /// Report a different `cargo deny --version` than the record's
+        /// `tools.cargo_deny`, to exercise the tool-version-divergence branch.
+        fn with_deny_version(mut self, version: &str) -> Self {
+            self.deny_version = version.to_string();
             self
         }
 
@@ -454,7 +463,9 @@ mod tests {
             };
             let has = |needle: &str| args.contains(&needle);
             Ok(match (program, args.first().copied()) {
-                ("cargo", Some("deny")) if has("--version") => ok("cargo-deny 0.20.2\n"),
+                ("cargo", Some("deny")) if has("--version") => {
+                    ok(&format!("{}\n", self.deny_version))
+                }
                 // Model the behaviour that caused the bug: git refuses --unshallow
                 // on a repository that is already complete.
                 ("git", _) if has("--unshallow") && !self.shallow => ToolOutput {
@@ -665,6 +676,39 @@ mod tests {
         .unwrap();
         assert!(out.is_ok(), "should reproduce: {out:?}");
         assert_eq!(out.db_commit, "abc1234def");
+    }
+
+    #[test]
+    fn a_different_installed_cargo_deny_version_is_flagged_unverified_but_still_succeeds() {
+        // record_v2's fixture attests "cargo-deny 0.20.2"; the mock reports a
+        // newer installed version, so the divergence should surface as
+        // unverified without failing the reproduction itself.
+        let rec = record_v2(
+            &lockfile_digest(LOCK.as_bytes()),
+            &lockfile_digest(DENY.as_bytes()),
+        );
+        let (repo, db) = scenario(&rec);
+        let runner = MockRunner::new(true).with_deny_version("cargo-deny 0.21.0");
+        let out = verify_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &repo.path().join("w"),
+            crate::diagnostics::Detail::Summary,
+        )
+        .unwrap();
+        assert!(
+            out.is_ok(),
+            "version divergence must not fail verify: {out:?}"
+        );
+        assert!(
+            out.unverified
+                .iter()
+                .any(|u| u.contains("cargo-deny 0.21.0") && u.contains("cargo-deny 0.20.2")),
+            "got {:?}",
+            out.unverified
+        );
     }
 
     #[test]
