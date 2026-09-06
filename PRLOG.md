@@ -16,6 +16,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - docs-schedule #101/#63/#36/#138/#136 for v0.2.0(pr [#156])
 - chore-adopt clippy::pedantic (group-warn)(pr [#157])
 - test-cover version divergence + dispatch parity(pr [#159])
+- test-cover prune dedupe + trim minor test waste(pr [#160])
 
 ### Fixed
 
@@ -402,6 +403,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#157]: https://github.com/jerus-org/jci-audit/pull/157
 [#158]: https://github.com/jerus-org/jci-audit/pull/158
 [#159]: https://github.com/jerus-org/jci-audit/pull/159
+[#160]: https://github.com/jerus-org/jci-audit/pull/160
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
