@@ -372,6 +372,58 @@ pub(crate) fn about_toml_paths_from_metadata(metadata_json: &str) -> Result<Vec<
     Ok(paths)
 }
 
+/// `package`'s own manifest path, from a workspace `cargo metadata --no-deps`
+/// JSON. The pure core of [`resolve_member_manifest_path`], split out so it's
+/// testable without a real cargo-metadata invocation — same shape as
+/// [`about_toml_paths_from_metadata`] above.
+pub(crate) fn member_manifest_path_from_metadata(
+    metadata_json: &str,
+    package: &str,
+) -> Result<PathBuf> {
+    let doc: serde_json::Value =
+        serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
+    let packages = doc
+        .get("packages")
+        .and_then(serde_json::Value::as_array)
+        .context("cargo metadata JSON has no 'packages' array")?;
+    packages
+        .iter()
+        .find(|pkg| pkg.get("name").and_then(serde_json::Value::as_str) == Some(package))
+        .and_then(|pkg| pkg.get("manifest_path").and_then(serde_json::Value::as_str))
+        .map(PathBuf::from)
+        .with_context(|| format!("package '{package}' not found in the workspace"))
+}
+
+/// Resolve `package`'s own manifest path from the workspace rooted at
+/// `workspace_root` — used by `release.rs`/`verify.rs` to scope the
+/// dependency digest to one crate (jerus-org/jci-audit#62). `--no-deps` is
+/// enough: locating a member's own manifest needs no dependency resolution,
+/// same rationale as [`find_about_toml_paths`]'s identical invocation shape.
+pub(crate) fn resolve_member_manifest_path<R: crate::check::CommandRunner>(
+    runner: &R,
+    workspace_root: &Path,
+    package: &str,
+) -> Result<PathBuf> {
+    let manifest = workspace_root.join("Cargo.toml");
+    let manifest_str = manifest.to_string_lossy();
+    let out = runner.run(
+        "cargo",
+        &[
+            "metadata",
+            "--manifest-path",
+            &manifest_str,
+            "--no-deps",
+            "--format-version",
+            "1",
+        ],
+        workspace_root,
+    )?;
+    if !out.success {
+        bail!("cargo metadata failed for '{manifest_str}': {}", out.stderr);
+    }
+    member_manifest_path_from_metadata(&out.stdout, package)
+}
+
 /// Every workspace member's `about.toml` under `workspace_root` — the single
 /// place [`sync_about_toml_at`] and [`about_toml_digest`] both walk from,
 /// rather than each re-implementing the `cargo metadata` call.
@@ -973,6 +1025,38 @@ accepted = ["MPL-2.0"]
         let runner = MockRunner::new(vec![ok(json)]);
         let paths = find_about_toml_paths(&runner, dir.path()).unwrap();
         assert_eq!(paths, vec![crate_dir.join("about.toml")]);
+    }
+
+    #[test]
+    fn member_manifest_path_from_metadata_finds_the_named_package() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("crates/a");
+        let b = dir.path().join("crates/b");
+        let json = workspace_metadata_json(&[
+            a.join("Cargo.toml").to_string_lossy().into_owned(),
+            b.join("Cargo.toml").to_string_lossy().into_owned(),
+        ]);
+        // workspace_metadata_json names entries "crate<index>".
+        let found = member_manifest_path_from_metadata(&json, "crate1").unwrap();
+        assert_eq!(found, b.join("Cargo.toml"));
+    }
+
+    #[test]
+    fn member_manifest_path_from_metadata_errors_naming_the_missing_package() {
+        let json = workspace_metadata_json(&[]);
+        let err = member_manifest_path_from_metadata(&json, "nope").unwrap_err();
+        assert!(err.to_string().contains("nope"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_member_manifest_path_runs_cargo_metadata_against_the_workspace_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let crate_dir = dir.path().join("crates/demo");
+        let json =
+            workspace_metadata_json(&[crate_dir.join("Cargo.toml").to_string_lossy().into_owned()]);
+        let runner = MockRunner::new(vec![ok(json)]);
+        let found = resolve_member_manifest_path(&runner, dir.path(), "crate0").unwrap();
+        assert_eq!(found, crate_dir.join("Cargo.toml"));
     }
 
     #[test]

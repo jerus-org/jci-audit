@@ -38,7 +38,7 @@ use crate::{
 };
 
 /// Schema version of the emitted record, so consumers can evolve with it.
-pub(crate) const RECORD_SCHEMA_VERSION: u64 = 5;
+pub(crate) const RECORD_SCHEMA_VERSION: u64 = 6;
 
 /// The cargo-deny checks the release gate enforces.
 pub(crate) const DENY_CHECKS: &[&str] = &["advisories", "bans", "licenses", "sources"];
@@ -105,6 +105,32 @@ pub(crate) fn lockfile_digest(bytes: &[u8]) -> String {
 /// dependency set the gate validated. Entries are sorted, so it does not depend
 /// on lockfile ordering.
 pub(crate) fn dependency_set_digest(lockfile_toml: &str) -> Result<String> {
+    dependency_set_digest_filtered(lockfile_toml, None)
+}
+
+/// [`dependency_set_digest`], scoped to only the `(name, version, source)`
+/// triples reachable from one crate's own manifest — the multi-crate-workspace
+/// analogue, so a release gate run with `--package <NAME>` records only what
+/// that crate ships rather than the whole workspace's graph
+/// (jerus-org/jci-audit#62). `metadata_json` is `cargo metadata
+/// --all-features` run against that crate's own manifest (see
+/// `license_scope::crate_metadata`), reusing the exact reachability rule
+/// already established for per-crate `about.toml` derivation.
+pub(crate) fn dependency_set_digest_for_package(
+    lockfile_toml: &str,
+    metadata_json: &str,
+) -> Result<String> {
+    let reachable = crate::license_scope::reachable_dependency_versions(metadata_json)?;
+    dependency_set_digest_filtered(lockfile_toml, Some(&reachable))
+}
+
+/// Shared core of [`dependency_set_digest`]/[`dependency_set_digest_for_package`]:
+/// `reachable` is `None` for the whole workspace, `Some` to keep only the
+/// given `(name, version, source)` triples.
+fn dependency_set_digest_filtered(
+    lockfile_toml: &str,
+    reachable: Option<&std::collections::BTreeSet<(String, String, Option<String>)>>,
+) -> Result<String> {
     let doc = lockfile_toml
         .parse::<DocumentMut>()
         .context("failed to parse Cargo.lock")?;
@@ -120,6 +146,19 @@ pub(crate) fn dependency_set_digest(lockfile_toml: &str) -> Result<String> {
                     let source = pkg.get("source")?.as_str()?;
                     let name = pkg.get("name")?.as_str()?;
                     let version = pkg.get("version")?.as_str()?;
+                    // Keyed on the full (name, version, source) triple, not
+                    // just name+version — see reachable_dependency_versions's
+                    // doc comment for why a same-name-version package from a
+                    // different source must not be conflated with this one.
+                    if let Some(reachable) = reachable
+                        && !reachable.contains(&(
+                            name.to_string(),
+                            version.to_string(),
+                            Some(source.to_string()),
+                        ))
+                    {
+                        return None;
+                    }
                     let checksum = pkg
                         .get("checksum")
                         .and_then(|c| c.as_str())
@@ -170,9 +209,15 @@ pub(crate) fn discover_db_checkout(root: &Path) -> Result<PathBuf> {
 }
 
 /// Path of the release record for `version`, relative to the repo root.
-pub(crate) fn record_path(root: &Path, version: &str) -> PathBuf {
-    root.join(".security")
-        .join(format!("release-{version}.json"))
+/// `package` gives it a crate-name-qualified filename instead, so multiple
+/// crates releasing under different versions in one pipeline run don't
+/// collide on the same path (jerus-org/jci-audit#62).
+pub(crate) fn record_path(root: &Path, version: &str, package: Option<&str>) -> PathBuf {
+    let filename = match package {
+        Some(package) => format!("{package}-release-{version}.json"),
+        None => format!("release-{version}.json"),
+    };
+    root.join(".security").join(filename)
 }
 
 /// Inputs to [`build_record`], named rather than positional so two
@@ -187,6 +232,9 @@ pub(crate) struct RecordInputs<'a> {
     pub(crate) deny_toml_sha256: &'a str,
     pub(crate) about_toml_sha256: Option<&'a str>,
     pub(crate) accepted_duplicates: &'a [crate::exceptions::SkipEntry],
+    /// The crate this release is scoped to (`--package`), or `None` for a
+    /// whole-workspace release — see [`record_path`] (jerus-org/jci-audit#62).
+    pub(crate) package: Option<&'a str>,
 }
 
 /// Build the release record.
@@ -227,6 +275,10 @@ pub(crate) fn build_record(inputs: &RecordInputs<'_>) -> Value {
         },
         "checks": { "deny": { "passed": true, "checks": DENY_CHECKS } },
         "accepted_warnings": accepted_warnings,
+        // Always present (null when workspace-wide), not omitted, so a
+        // reader never has to guess whether an absent key means
+        // "workspace-wide" or "record predates this field".
+        "package": inputs.package,
     })
 }
 
@@ -243,11 +295,40 @@ fn first_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_string()
 }
 
+/// Which `about.toml` paths should feed the release record's digest:
+/// every one found, or — when `package_manifest` names the crate being
+/// released — just that crate's own (matched by directory, since
+/// `AboutSyncResult` carries no crate name of its own). Pulled out of
+/// `release_with` so the scoping rule is directly unit-testable: a sibling
+/// crate's `about.toml` must never affect a `--package`-scoped release's
+/// digest, or `verify --package` on that release would report a false
+/// MISMATCH the moment the sibling's notices next change
+/// (jerus-org/jci-audit#62).
+fn about_toml_paths_for_package(
+    about_sync: &[crate::sync::AboutSyncResult],
+    package_manifest: Option<&Path>,
+) -> Vec<PathBuf> {
+    about_sync
+        .iter()
+        .filter(|r| {
+            package_manifest
+                .and_then(Path::parent)
+                .is_none_or(|dir| r.about_toml_path.parent() == Some(dir))
+        })
+        .map(|r| r.about_toml_path.clone())
+        .collect()
+}
+
 /// Run the release gate.
 ///
 /// `db_root` is cargo-deny's `db-path` (it clones/refreshes its checkout
 /// beneath it); `work_dir` holds the ephemeral derived config. The record is
 /// written only when the blocking gate passes — it attests a good release.
+/// `package` scopes the dependency digest and the record's own path to one
+/// crate's reachable graph instead of the whole workspace `Cargo.lock`, for
+/// this org's per-crate multi-crate release sequence (jerus-org/jci-audit#62)
+/// — the advisory policy gate itself (`deny.toml`, cargo-deny) stays
+/// workspace-wide either way, matching cargo-deny's own model.
 pub(crate) fn release_with<R: CommandRunner>(
     runner: &R,
     start: &Path,
@@ -255,6 +336,7 @@ pub(crate) fn release_with<R: CommandRunner>(
     db_root: &Path,
     work_dir: &Path,
     detail: crate::diagnostics::Detail,
+    package: Option<&str>,
 ) -> Result<ReleaseOutcome> {
     let (deny_path, _audit_path) = locate_paths(start)?;
     let root = deny_path
@@ -263,7 +345,20 @@ pub(crate) fn release_with<R: CommandRunner>(
     let lockfile = root.join("Cargo.lock");
     let lock_text = std::fs::read_to_string(&lockfile)
         .with_context(|| format!("no Cargo.lock found at '{}'", lockfile.display()))?;
-    let dependencies_sha256 = dependency_set_digest(&lock_text)?;
+    // Resolved once, reused below to also scope the about.toml digest to just
+    // this crate's own notices — not the whole workspace's (a sibling crate's
+    // unrelated about.toml change must not cause a false MISMATCH on a
+    // `verify --package` for this one).
+    let package_manifest = package
+        .map(|name| crate::sync::resolve_member_manifest_path(runner, &root, name))
+        .transpose()?;
+    let dependencies_sha256 = match &package_manifest {
+        Some(manifest_path) => {
+            let metadata_json = crate::license_scope::crate_metadata(runner, manifest_path)?;
+            dependency_set_digest_for_package(&lock_text, &metadata_json)?
+        }
+        None => dependency_set_digest(&lock_text)?,
+    };
 
     // License-policy checks, before the expensive advisory-db refresh below —
     // the same "catch it before the expensive part" pattern this org uses for
@@ -299,10 +394,9 @@ pub(crate) fn release_with<R: CommandRunner>(
             unresolved.join("\n")
         );
     }
-    let about_toml_paths: Vec<PathBuf> = about_sync
-        .iter()
-        .map(|r| r.about_toml_path.clone())
-        .collect();
+    // Scoped to just the released crate's own about.toml when --package is
+    // given — see the comment on `package_manifest` above.
+    let about_toml_paths = about_toml_paths_for_package(&about_sync, package_manifest.as_deref());
     let about_toml_sha256 = crate::sync::about_toml_digest_from_paths(&about_toml_paths, &root)?;
 
     // Derived config: only db-path is overridden, so the repo's deny.toml stays
@@ -394,8 +488,9 @@ pub(crate) fn release_with<R: CommandRunner>(
         deny_toml_sha256: &deny_toml_sha256,
         about_toml_sha256: about_toml_sha256.as_deref(),
         accepted_duplicates: &accepted_warnings.in_force,
+        package,
     });
-    let path = record_path(&root, version);
+    let path = record_path(&root, version, package);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create '{}'", parent.display()))?;
@@ -540,6 +635,147 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         );
     }
 
+    const LOCK_TWO_CRATES: &str = r#"
+version = 4
+
+[[package]]
+name = "crate-a"
+version = "0.1.0"
+dependencies = ["clap"]
+
+[[package]]
+name = "crate-b"
+version = "0.1.0"
+dependencies = ["serde"]
+
+[[package]]
+name = "clap"
+version = "4.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#;
+
+    const METADATA_FOR_CRATE_A: &str = r#"
+    {
+      "packages": [
+        { "name": "crate-a", "version": "0.1.0", "id": "id-a", "source": null, "license": null },
+        { "name": "clap", "version": "4.6.4", "id": "id-clap",
+          "source": "registry+https://github.com/rust-lang/crates.io-index", "license": "MIT" }
+      ],
+      "resolve": {
+        "root": "id-a",
+        "nodes": [
+          { "id": "id-a", "deps": [
+              { "name": "clap", "pkg": "id-clap", "dep_kinds": [ { "kind": null, "target": null } ] }
+          ] },
+          { "id": "id-clap", "deps": [] }
+        ]
+      }
+    }
+    "#;
+
+    #[test]
+    fn scoped_digest_matches_a_lockfile_containing_only_the_reachable_packages() {
+        const CLAP_ONLY: &str = r#"
+version = 4
+
+[[package]]
+name = "clap"
+version = "4.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
+"#;
+        let scoped =
+            dependency_set_digest_for_package(LOCK_TWO_CRATES, METADATA_FOR_CRATE_A).unwrap();
+        assert_eq!(scoped, dependency_set_digest(CLAP_ONLY).unwrap());
+    }
+
+    #[test]
+    fn scoped_digest_excludes_a_sibling_crates_dependencies() {
+        let scoped =
+            dependency_set_digest_for_package(LOCK_TWO_CRATES, METADATA_FOR_CRATE_A).unwrap();
+        let whole = dependency_set_digest(LOCK_TWO_CRATES).unwrap();
+        assert_ne!(
+            scoped, whole,
+            "scoping to crate-a must exclude serde (crate-b's own dependency)"
+        );
+    }
+
+    #[test]
+    fn about_toml_paths_for_package_keeps_every_crate_when_workspace_wide() {
+        let about_sync = vec![
+            crate::sync::AboutSyncResult {
+                about_toml_path: PathBuf::from("/repo/crates/crate-a/about.toml"),
+                outcome: SyncOutcome::InSync,
+            },
+            crate::sync::AboutSyncResult {
+                about_toml_path: PathBuf::from("/repo/crates/crate-b/about.toml"),
+                outcome: SyncOutcome::InSync,
+            },
+        ];
+        let paths = about_toml_paths_for_package(&about_sync, None);
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("/repo/crates/crate-a/about.toml"),
+                PathBuf::from("/repo/crates/crate-b/about.toml"),
+            ]
+        );
+    }
+
+    #[test]
+    fn about_toml_paths_for_package_excludes_a_siblings_about_toml() {
+        // THE property #62's about.toml scoping fix exists for: a
+        // --package-scoped release must not have its about.toml digest
+        // affected by a sibling crate's own notices.
+        let about_sync = vec![
+            crate::sync::AboutSyncResult {
+                about_toml_path: PathBuf::from("/repo/crates/crate-a/about.toml"),
+                outcome: SyncOutcome::InSync,
+            },
+            crate::sync::AboutSyncResult {
+                about_toml_path: PathBuf::from("/repo/crates/crate-b/about.toml"),
+                outcome: SyncOutcome::InSync,
+            },
+        ];
+        let paths = about_toml_paths_for_package(
+            &about_sync,
+            Some(Path::new("/repo/crates/crate-a/Cargo.toml")),
+        );
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("/repo/crates/crate-a/about.toml")]
+        );
+    }
+
+    #[test]
+    fn about_toml_paths_for_package_is_empty_when_the_crate_has_no_about_toml() {
+        let about_sync = vec![crate::sync::AboutSyncResult {
+            about_toml_path: PathBuf::from("/repo/crates/crate-b/about.toml"),
+            outcome: SyncOutcome::InSync,
+        }];
+        let paths = about_toml_paths_for_package(
+            &about_sync,
+            Some(Path::new("/repo/crates/crate-a/Cargo.toml")),
+        );
+        assert!(paths.is_empty(), "got {paths:?}");
+    }
+
+    #[test]
+    fn record_path_is_package_scoped_when_a_package_is_given() {
+        let p = record_path(Path::new("/repo"), "1.2.0", Some("crate-a"));
+        assert_eq!(
+            p,
+            PathBuf::from("/repo/.security/crate-a-release-1.2.0.json")
+        );
+    }
+
     #[test]
     fn discovers_the_single_nested_checkout() {
         let dir = tempfile::tempdir().unwrap();
@@ -575,6 +811,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             deny_toml_sha256: "p1",
             about_toml_sha256: Some("a1"),
             accepted_duplicates: &[],
+            package: None,
         };
         let a = build_record(&inputs());
         let b = build_record(&inputs());
@@ -612,6 +849,47 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
     }
 
     #[test]
+    fn record_carries_the_package_name_when_scoped_to_one_crate() {
+        let record = build_record(&RecordInputs {
+            version: "1.2.0",
+            db_commit: "abc123",
+            deny_version: "cargo-deny 0.20.2",
+            audit_version: "cargo-audit 0.22.0",
+            dependencies_sha256: "deps1",
+            deny_toml_sha256: "p1",
+            about_toml_sha256: Some("a1"),
+            accepted_duplicates: &[],
+            package: Some("crate-a"),
+        });
+        let rendered = render_record(&record).unwrap();
+        assert!(
+            rendered.contains("\"package\": \"crate-a\""),
+            "got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn record_omits_package_when_the_release_is_workspace_wide() {
+        let inputs = RecordInputs {
+            version: "1.2.0",
+            db_commit: "abc123",
+            deny_version: "cargo-deny 0.20.2",
+            audit_version: "cargo-audit 0.22.0",
+            dependencies_sha256: "deps1",
+            deny_toml_sha256: "p1",
+            about_toml_sha256: Some("a1"),
+            accepted_duplicates: &[],
+            package: None,
+        };
+        let rendered = render_record(&build_record(&inputs)).unwrap();
+        assert!(
+            rendered.contains("\"package\": null"),
+            "the key must still be present, not omitted, so a reader never has to guess \
+             whether an absent key means \"workspace-wide\" or \"record predates this field\":\n{rendered}"
+        );
+    }
+
+    #[test]
     fn record_carries_the_accepted_duplicate_exceptions() {
         let accepted = vec![
             crate::exceptions::SkipEntry {
@@ -634,10 +912,11 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             deny_toml_sha256: "p1",
             about_toml_sha256: Some("a1"),
             accepted_duplicates: &accepted,
+            package: None,
         });
         let rendered = render_record(&record).unwrap();
         assert!(
-            rendered.contains("\"schema_version\": 5"),
+            rendered.contains("\"schema_version\": 6"),
             "got:\n{rendered}"
         );
         assert!(rendered.contains("\"name\": \"syn\""), "got:\n{rendered}");
@@ -668,6 +947,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             deny_toml_sha256: "p1",
             about_toml_sha256: None,
             accepted_duplicates: &[],
+            package: None,
         });
         let rendered = render_record(&record).unwrap();
         assert!(
@@ -678,7 +958,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
 
     #[test]
     fn record_path_is_under_dot_security() {
-        let p = record_path(Path::new("/repo"), "1.2.0");
+        let p = record_path(Path::new("/repo"), "1.2.0", None);
         assert_eq!(p, PathBuf::from("/repo/.security/release-1.2.0.json"));
     }
 
@@ -865,6 +1145,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -886,6 +1167,73 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
         );
     }
 
+    /// `cargo metadata` output for a two-crate workspace where `crate-a`
+    /// (the one being released) depends only on `clap`; `crate-b` (a
+    /// sibling, not being released) depends only on `serde`. Serves both
+    /// the `--no-deps` manifest lookup and the `--all-features` reachability
+    /// call — the mock returns the same JSON for any `cargo metadata` call.
+    fn metadata_for_crate_a(crate_a_dir: &Path) -> String {
+        format!(
+            r#"{{"packages":[
+                {{"name":"crate-a","version":"0.1.0","id":"id-a","source":null,"license":null,"manifest_path":"{manifest}"}},
+                {{"name":"clap","version":"4.6.4","id":"id-clap",
+                  "source":"registry+https://github.com/rust-lang/crates.io-index","license":"MIT"}}
+            ],"resolve":{{"root":"id-a","nodes":[
+                {{"id":"id-a","deps":[
+                    {{"name":"clap","pkg":"id-clap","dep_kinds":[{{"kind":null,"target":null}}]}}
+                ]}},
+                {{"id":"id-clap","deps":[]}}
+            ]}}}}"#,
+            manifest = crate_a_dir.join("Cargo.toml").display()
+        )
+    }
+
+    #[test]
+    fn package_scoped_release_records_only_the_reachable_dependencies() {
+        let (repo, db) = scenario();
+        let crate_a_dir = repo.path().join("crates/crate-a");
+        std::fs::create_dir_all(&crate_a_dir).unwrap();
+        std::fs::write(repo.path().join("Cargo.lock"), LOCK_TWO_CRATES).unwrap();
+        let runner = MockRunner::new(true, clean_audit_json())
+            .with_metadata_json(metadata_for_crate_a(&crate_a_dir));
+        let work = repo.path().join("work");
+
+        let outcome = release_with(
+            &runner,
+            repo.path(),
+            "1.2.0",
+            db.path(),
+            &work,
+            crate::diagnostics::Detail::Summary,
+            Some("crate-a"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            outcome.record_path,
+            repo.path().join(".security/crate-a-release-1.2.0.json")
+        );
+        let written = std::fs::read_to_string(&outcome.record_path).unwrap();
+        assert!(
+            written.contains("\"package\": \"crate-a\""),
+            "got:\n{written}"
+        );
+
+        let scoped =
+            dependency_set_digest_for_package(LOCK_TWO_CRATES, &metadata_for_crate_a(&crate_a_dir))
+                .unwrap();
+        assert!(
+            written.contains(&format!("\"dependencies_sha256\": \"{scoped}\"")),
+            "got:\n{written}"
+        );
+        let whole = dependency_set_digest(LOCK_TWO_CRATES).unwrap();
+        assert!(
+            !written.contains(&format!("\"dependencies_sha256\": \"{whole}\"")),
+            "must exclude crate-b's own dependency (serde), not record the whole \
+             workspace's digest:\n{written}"
+        );
+    }
+
     #[test]
     fn deny_runs_with_the_derived_config_and_all_checks() {
         let (repo, db) = scenario();
@@ -898,6 +1246,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -954,6 +1303,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -979,6 +1329,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap_err();
         assert!(
@@ -1005,6 +1356,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -1028,6 +1380,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
         let first =
@@ -1039,6 +1392,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
         let second =
@@ -1062,6 +1416,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &repo.path().join("w"),
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("Cargo.lock"), "got: {err}");
@@ -1085,6 +1440,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
 
@@ -1120,6 +1476,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("out of sync"), "got: {err}");
@@ -1149,6 +1506,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap_err();
         assert!(
@@ -1176,6 +1534,7 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             db.path(),
             &work,
             crate::diagnostics::Detail::Summary,
+            None,
         )
         .unwrap();
         let written = std::fs::read_to_string(&outcome.record_path).unwrap();

@@ -62,6 +62,17 @@ pub(crate) fn scope_for_crate<R: CommandRunner>(
     allow: &BTreeSet<String>,
     exception_crates: &BTreeSet<String>,
 ) -> Result<CrateLicenseScope> {
+    let json = crate_metadata(runner, manifest_path)?;
+    scope_from_metadata(&json, allow, exception_crates)
+}
+
+/// Run `cargo metadata --all-features` scoped to one crate's own manifest,
+/// from that crate's own directory — the raw JSON, shared by
+/// [`scope_for_crate`] (license derivation) and `release.rs`/`verify.rs`'s
+/// per-package dependency-digest scoping ([`reachable_dependency_versions`],
+/// jerus-org/jci-audit#62), which each parse the same reachable graph for a
+/// different purpose.
+pub(crate) fn crate_metadata<R: CommandRunner>(runner: &R, manifest_path: &Path) -> Result<String> {
     let manifest = manifest_path.to_string_lossy();
     let crate_dir = manifest_path
         .parent()
@@ -81,7 +92,7 @@ pub(crate) fn scope_for_crate<R: CommandRunner>(
     if !out.success {
         bail!("cargo metadata failed for '{manifest}': {}", out.stderr);
     }
-    scope_from_metadata(&out.stdout, allow, exception_crates)
+    Ok(out.stdout)
 }
 
 /// Parse `cargo metadata --format-version 1` JSON and compute the license
@@ -145,6 +156,63 @@ pub(crate) fn scope_from_metadata(
         }
     }
     Ok(scope)
+}
+
+/// `(name, version, source)` triples reachable, via edges that ship, from
+/// the crate whose `cargo metadata` output this is — excluding the crate's
+/// own package. `source` is `None` for a path/workspace package, `Some` for
+/// a registry/git one (cargo metadata's own `source` field, matching
+/// `Cargo.lock`'s). Used to scope `release.rs`/`verify.rs`'s dependency
+/// digest to one crate's reachable graph instead of the whole workspace
+/// `Cargo.lock` (jerus-org/jci-audit#62), reusing the exact reachability
+/// rule [`scope_from_metadata`] already established for per-crate
+/// `about.toml` derivation — a dev-only dependency of the crate being
+/// released doesn't ship to its consumers, so it doesn't belong in that
+/// crate's own advisory exposure either. Keying on the full triple, not just
+/// `(name, version)`, matters because Cargo does allow two `[[package]]`
+/// entries with identical name and version from different sources (e.g. a
+/// git override alongside a registry entry of the same nominal version) —
+/// matching on name+version alone could silently pull the wrong entry's
+/// checksum into the digest.
+pub(crate) fn reachable_dependency_versions(
+    metadata_json: &str,
+) -> Result<BTreeSet<(String, String, Option<String>)>> {
+    let doc: Value =
+        serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
+
+    let packages = doc
+        .get("packages")
+        .and_then(Value::as_array)
+        .context("cargo metadata JSON has no 'packages' array")?;
+    let resolve = doc.get("resolve").context(
+        "cargo metadata JSON has no 'resolve' (run with --format-version 1, not --no-deps)",
+    )?;
+    let root = resolve
+        .get("root")
+        .and_then(Value::as_str)
+        .context("cargo metadata JSON has no 'resolve.root'")?;
+    let nodes = resolve
+        .get("nodes")
+        .and_then(Value::as_array)
+        .context("cargo metadata JSON has no 'resolve.nodes'")?;
+
+    let reachable = reachable_shipped_ids(root, nodes);
+    let id_to_pkg = index_by_id(packages);
+
+    Ok(reachable
+        .iter()
+        .filter(|id| id.as_str() != root)
+        .filter_map(|id| {
+            let pkg = id_to_pkg.get(id.as_str())?;
+            let name = pkg.get("name")?.as_str()?;
+            let version = pkg.get("version")?.as_str()?;
+            let source = pkg
+                .get("source")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            Some((name.to_string(), version.to_string(), source))
+        })
+        .collect())
 }
 
 /// Package ids reachable from `root` via edges that ship (excludes an edge
@@ -211,30 +279,35 @@ mod tests {
           "name": "demo-crate",
           "version": "0.0.6",
           "id": "path+file:///workspace/crates/demo-crate#0.0.6",
+          "source": null,
           "license": null
         },
         {
           "name": "anyhow",
           "version": "1.0.104",
           "id": "registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.104",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license": "MIT OR Apache-2.0"
         },
         {
           "name": "tempfile",
           "version": "3.27.0",
           "id": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.27.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license": "BSD-3-Clause"
         },
         {
           "name": "option-ext",
           "version": "0.2.0",
           "id": "registry+https://github.com/rust-lang/crates.io-index#option-ext@0.2.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license": "MPL-2.0"
         },
         {
           "name": "cc",
           "version": "1.0.0",
           "id": "registry+https://github.com/rust-lang/crates.io-index#cc@1.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license": "Zlib"
         }
       ],
@@ -391,6 +464,78 @@ mod tests {
                 stderr: String::new(),
             })
         }
+    }
+
+    #[test]
+    fn reachable_dependency_versions_excludes_root_and_dev_only_deps() {
+        // Same fixture as the license-scope tests: tempfile is dev-only and
+        // must be excluded; anyhow/option-ext/cc ship and must be included;
+        // the root crate itself must not appear in its own dependency set.
+        const REGISTRY: &str = "registry+https://github.com/rust-lang/crates.io-index";
+        let versions = reachable_dependency_versions(METADATA_JSON).unwrap();
+        assert_eq!(
+            versions,
+            [
+                (
+                    "anyhow".to_string(),
+                    "1.0.104".to_string(),
+                    Some(REGISTRY.to_string())
+                ),
+                (
+                    "cc".to_string(),
+                    "1.0.0".to_string(),
+                    Some(REGISTRY.to_string())
+                ),
+                (
+                    "option-ext".to_string(),
+                    "0.2.0".to_string(),
+                    Some(REGISTRY.to_string())
+                ),
+            ]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn reachable_dependency_versions_distinguishes_same_name_version_different_source() {
+        // Cargo does allow two [[package]] entries with identical name+version
+        // from different sources (e.g. a git override alongside a registry
+        // entry of the same nominal version) — matching by (name, version)
+        // alone would silently conflate them.
+        let json = r#"
+        {
+          "packages": [
+            { "name": "root", "version": "0.0.1", "id": "id-root", "source": null, "license": null },
+            { "name": "widget", "version": "1.0.0", "id": "id-registry",
+              "source": "registry+https://github.com/rust-lang/crates.io-index", "license": "MIT" },
+            { "name": "widget", "version": "1.0.0", "id": "id-git",
+              "source": "git+https://example.com/widget#abc123", "license": "MIT" }
+          ],
+          "resolve": {
+            "root": "id-root",
+            "nodes": [
+              { "id": "id-root", "deps": [
+                  { "name": "widget", "pkg": "id-registry", "dep_kinds": [ { "kind": null, "target": null } ] }
+              ] },
+              { "id": "id-registry", "deps": [] },
+              { "id": "id-git", "deps": [] }
+            ]
+          }
+        }
+        "#;
+        let versions = reachable_dependency_versions(json).unwrap();
+        assert_eq!(
+            versions,
+            [(
+                "widget".to_string(),
+                "1.0.0".to_string(),
+                Some("registry+https://github.com/rust-lang/crates.io-index".to_string())
+            )]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+            "must record the registry source actually reachable, not the git one: {versions:?}"
+        );
     }
 
     #[test]

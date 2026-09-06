@@ -15,6 +15,10 @@ parameters:
     type: string
     description: Advisory-db root; cargo-deny's checkout lives beneath it. Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
     default: ''
+  package:
+    type: string
+    description: The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved from the workspace's own `cargo metadata`, not a raw path. Scopes the dependency digest and the record's own path (`.security/<package>-release-<VERSION>.json`) to just this crate's reachable dependency graph, for this org's per-crate multi-crate release sequence (garden-level CLAUDE.md). The advisory policy gate (deny.toml, cargo-deny) stays workspace-wide either way. Omit for a single-crate workspace's whole-graph record (unchanged behaviour).
+    default: ''
   deny_warnings:
     type: boolean
     description: Fail if the tools report any warning
@@ -44,3 +48,4 @@ steps:
     environment:
       VERSION: << parameters.version >>
       ADVISORY_DB: << parameters.advisory_db >>
+      PACKAGE: << parameters.package >>

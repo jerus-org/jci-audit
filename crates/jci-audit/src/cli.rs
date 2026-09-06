@@ -93,6 +93,21 @@ enum Commands {
         #[arg(long, help_heading = "Security")]
         advisory_db: Option<std::path::PathBuf>,
 
+        /// The crate's package name (its `[package].name` in Cargo.toml,
+        /// e.g. "jci-audit") — cargo's own `-p`/`--package` convention.
+        /// Resolved from the workspace's own `cargo metadata`, not a raw
+        /// path.
+        ///
+        /// Scopes the dependency digest and the record's own path
+        /// (`.security/<package>-release-<VERSION>.json`) to just this
+        /// crate's reachable dependency graph, for this org's per-crate
+        /// multi-crate release sequence (garden-level CLAUDE.md). The
+        /// advisory policy gate (deny.toml, cargo-deny) stays
+        /// workspace-wide either way. Omit for a single-crate workspace's
+        /// whole-graph record (unchanged behaviour).
+        #[arg(short, long, help_heading = "Input")]
+        package: Option<String>,
+
         #[command(flatten)]
         output: ToolOutput,
     },
@@ -148,12 +163,22 @@ enum Commands {
 
         /// The crate's package name (its `[package].name` in Cargo.toml,
         /// e.g. "jci-audit") — cargo's own `-p`/`--package` convention.
-        /// Resolved against the release repo's workspace, for the stronger
-        /// Cargo.toml pubkey source.
+        /// Resolved from the workspace's own `cargo metadata`, not a raw
+        /// path. Must match whatever `release-prep --package` (if any) the
+        /// record was written under.
         ///
-        /// Optional: without it, only the release's own .pub asset is
-        /// checked. This source only runs when a package is given.
-        #[arg(short, long, help_heading = "Remote release")]
+        /// When a local record is found: re-scopes the dependency digest to
+        /// just this crate's reachable graph and looks for the record at
+        /// `.security/<package>-release-<VERSION>.json`, matching
+        /// `release-prep`'s own per-crate release sequence (garden-level
+        /// CLAUDE.md, jerus-org/jci-audit#62). Omit for a single-crate
+        /// workspace's whole-graph record — unchanged behaviour.
+        ///
+        /// On the remote-fetch fallback (no local record): resolved against
+        /// the release repo's workspace instead, for the stronger Cargo.toml
+        /// pubkey source. Optional there too — without it, only the
+        /// release's own `.pub` asset is checked.
+        #[arg(short, long, help_heading = "Input")]
         package: Option<String>,
 
         #[command(flatten)]
@@ -235,8 +260,15 @@ impl Cli {
             Commands::Release {
                 release_version,
                 advisory_db,
+                package,
                 output,
-            } => run_release(release_version, advisory_db.as_deref(), output, detail),
+            } => run_release(
+                release_version,
+                advisory_db.as_deref(),
+                package.as_deref(),
+                output,
+                detail,
+            ),
             Commands::Sync { check } => run_sync(*check),
             Commands::Prune { check } => run_prune(*check),
             Commands::Verify {
@@ -374,6 +406,7 @@ fn run_check(
 fn run_release(
     version: &str,
     advisory_db: Option<&std::path::Path>,
+    package: Option<&str>,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -396,8 +429,15 @@ fn run_release(
     let work = release::work_dir();
     tracing::info!(version, db = %db_root.display(), "release-prep");
 
-    let outcome =
-        release::release_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
+    let outcome = release::release_with(
+        &check::SystemRunner,
+        &cwd,
+        version,
+        &db_root,
+        &work,
+        detail,
+        package,
+    );
     let _ = std::fs::remove_dir_all(&work);
     let outcome = outcome?;
 
@@ -510,9 +550,14 @@ fn project_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
 }
 
 /// Where `verify` should look for a local record, if anywhere, given an
-/// already-resolved project `root` (see [`project_root`]).
-fn discover_local_record(root: &std::path::Path, version: &str) -> Option<std::path::PathBuf> {
-    let record_path = release::record_path(root, version);
+/// already-resolved project `root` (see [`project_root`]). `package` must
+/// match whatever `release-prep --package` (if any) wrote the record under.
+fn discover_local_record(
+    root: &std::path::Path,
+    version: &str,
+    package: Option<&str>,
+) -> Option<std::path::PathBuf> {
+    let record_path = release::record_path(root, version, package);
     record_path.exists().then_some(record_path)
 }
 
@@ -533,7 +578,7 @@ fn run_verify(
     let root = project_root(&cwd);
     let local_record = root
         .as_deref()
-        .and_then(|r| discover_local_record(r, version));
+        .and_then(|r| discover_local_record(r, version, package));
     if local_record.is_some() {
         // Tool::Cargo: verify_with's about.toml digest recomputation shells
         // out to `cargo metadata`, same as check/release-prep.
@@ -543,8 +588,15 @@ fn run_verify(
         let work = release::work_dir();
         tracing::info!(version, db = %db_root.display(), "verify");
 
-        let outcome =
-            verify::verify_with(&check::SystemRunner, &cwd, version, &db_root, &work, detail);
+        let outcome = verify::verify_with(
+            &check::SystemRunner,
+            &cwd,
+            version,
+            &db_root,
+            &work,
+            detail,
+            package,
+        );
         let _ = std::fs::remove_dir_all(&work);
         let outcome = outcome?;
 
@@ -751,7 +803,11 @@ fn resolve_publish_record_path(
     let root = deny_path
         .parent()
         .context("deny.toml has no parent directory")?;
-    Ok(release::record_path(root, version))
+    // `publish-record` has no `--package` of its own yet (jerus-org/jci-audit#62
+    // scoped that to release-prep/verify only) — always the unscoped path.
+    // An explicit --record-path override is how a per-crate record reaches
+    // this command today.
+    Ok(release::record_path(root, version, None))
 }
 
 /// The token is read from `GITHUB_TOKEN` only, never a CLI flag — same
@@ -854,7 +910,7 @@ mod tests {
         write(&repo.path().join("deny.toml"), "");
         write(&repo.path().join(".security/release-1.2.0.json"), "{}");
 
-        let found = discover_local_record(repo.path(), "1.2.0");
+        let found = discover_local_record(repo.path(), "1.2.0", None);
         assert_eq!(
             found,
             Some(repo.path().join(".security/release-1.2.0.json"))
@@ -865,7 +921,23 @@ mod tests {
     fn discover_local_record_is_none_when_record_is_missing() {
         let repo = tempfile::tempdir().unwrap();
         write(&repo.path().join("deny.toml"), "");
-        assert_eq!(discover_local_record(repo.path(), "9.9.9"), None);
+        assert_eq!(discover_local_record(repo.path(), "9.9.9", None), None);
+    }
+
+    #[test]
+    fn discover_local_record_finds_a_package_scoped_record() {
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        write(
+            &repo.path().join(".security/crate-a-release-1.2.0.json"),
+            "{}",
+        );
+        // The unscoped path must not be found — package-scoping is exact.
+        assert_eq!(discover_local_record(repo.path(), "1.2.0", None), None);
+        assert_eq!(
+            discover_local_record(repo.path(), "1.2.0", Some("crate-a")),
+            Some(repo.path().join(".security/crate-a-release-1.2.0.json"))
+        );
     }
 
     #[test]
@@ -987,6 +1059,26 @@ mod tests {
             !err.to_string().contains("1.2.0"),
             "--version must not be taken as a release version: {err}"
         );
+    }
+
+    /// cargo's own `-p`/`--package` convention (jerus-org/jci-audit#62).
+    #[test]
+    fn release_package_accepts_the_short_flag() {
+        let cli = Cli::try_parse_from(["jci-audit", "release-prep", "1.2.0", "-p", "crate-a"])
+            .expect("parses");
+        match cli.command {
+            Commands::Release { package, .. } => assert_eq!(package.as_deref(), Some("crate-a")),
+            other => panic!("expected Release, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn release_package_defaults_to_none() {
+        let cli = Cli::try_parse_from(["jci-audit", "release-prep", "1.2.0"]).expect("parses");
+        match cli.command {
+            Commands::Release { package, .. } => assert_eq!(package, None),
+            other => panic!("expected Release, got {other:?}"),
+        }
     }
 
     #[test]
