@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - ci-deny duplicates, gate on stale bans.skip(pr [#151])
 - docs-schedule #101/#63/#36/#138/#136 for v0.2.0(pr [#156])
+- chore-adopt clippy::pedantic (group-warn)(pr [#157])
 
 ### Fixed
 
@@ -393,6 +394,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#151]: https://github.com/jerus-org/jci-audit/pull/151
 [#155]: https://github.com/jerus-org/jci-audit/pull/155
 [#156]: https://github.com/jerus-org/jci-audit/pull/156
+[#157]: https://github.com/jerus-org/jci-audit/pull/157
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
