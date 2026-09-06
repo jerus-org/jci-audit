@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-09-03._
+_Last updated: 2026-09-06._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -16,7 +16,7 @@ into themes and horizons.
 
 ## Current status
 
-jci-audit is **pre-1.0, currently `0.1.5`** — published bin-only (no importable `[lib]` target,
+jci-audit is **pre-1.0, currently `0.1.9`** — published bin-only (no importable `[lib]` target,
 [#90](https://github.com/jerus-org/jci-audit/issues/90)) and, unlike every earlier version, both
 installable and verifiable. **`0.0.1`–`0.1.0` are yanked**: `0.0.1`–`0.0.7` for the
 accidentally-importable library (#90), and `0.1.0` because its release-security-record was
@@ -89,17 +89,18 @@ version tag itself, and still gate consumer migration.
   standardize each `deny.toml` on the shared template; retire ad-hoc `--ignore` CI flags. Deferred
   until the remaining preview gates above (jrussell.ie page merged, announcement drafted) are
   met — no repo should be told to adopt a tool with no docs or public credibility signal yet.
-  **Exception: `pcu`** — see the `v0.2.0` section below; it's blocked on a real capability gap,
-  not just on the general readiness gates.
+  **Exception: `pcu`** — see the `v0.2.0` section below; adoption there is blocked on real
+  capability gaps (#62, #101), not just on the general readiness gates.
 
-## Next: `v0.2.0` — per-crate release/verify
+## Next: `v0.2.0` — the initial pre-release
 
-Promoted off the backlog, 2026-09-03. `jci-audit` is already past `0.1.0` as a version number
-(however incidentally — see Current status above), and `pcu` — a real multi-crate workspace in
-this org — cannot adopt `jci-audit` as its release gate until this ships: `release-prep`/`verify`
-currently operate at the whole-workspace level, and `pcu` releases its crates individually, in
-dependency order (see the garden-level `CLAUDE.md`'s release sequence). This is a deliberate minor
-release, not folded into the routine patch releases Phase 0-2 bugfixes have been shipping as.
+Scope set 2026-09-06. `0.2.0` is a **pre-release milestone, not a feature release**: it's the point
+where the still-manual, still-workspace-scoped edges of the tool get closed off before any further
+consumer beyond jci-audit's own dogfooding is asked to adopt it. `jci-audit` is already past `0.1.0`
+as a version number (however incidentally — see Current status above), and `pcu` — a real
+multi-crate workspace in this org — cannot adopt `jci-audit` as its release gate until the
+per-crate item below ships. This is a deliberate minor release, not folded into the routine patch
+releases Phase 0-2 bugfixes have been shipping as.
 
 - **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
   Prerequisite, must land first. `cargo-about`/`cargo-audit`/`cargo-deny`/`rsign2` install
@@ -110,20 +111,33 @@ release, not folded into the routine patch releases Phase 0-2 bugfixes have been
   the dependency digest and advisory gate to one crate's reachable graph instead of the whole
   workspace `Cargo.lock`, and giving the release record a crate-name-qualified path so multiple
   crates can release under different versions in one pipeline run without colliding.
+- **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
+  Required for the initial published pre-release, not deferred to general consumer-migration
+  readiness as earlier drafts of this roadmap assumed: a tool with no onboarding command isn't
+  actually installable software for anyone outside this repo, pre-1.0 or not.
+- **[#63 — `license_scope`/`about.toml` ignore-build/ignore-transitive-dependencies.](https://github.com/jerus-org/jci-audit/issues/63)**
+  Honour those settings in the derivation instead of always including build dependencies.
+- **[#36 — run `licenses-check` in validation so notices cannot go stale.](https://github.com/jerus-org/jci-audit/issues/36)**
+  Partially blocked on #101: the "which container's `cargo-about` gets used" half needs #101's
+  wiring command, while #142 (above) covers the pinning half.
+- **[#138 — clippy::pedantic adoption.](https://github.com/jerus-org/jci-audit/issues/138)**
+  Design already settled (whole-group `warn` with individual `allow`s, in `[workspace.lints.clippy]`)
+  — see the issue for the inventory-first rollout plan. Not yet implemented.
+- **[#136 — invoke cargo-audit/cargo-deny/cargo-about via `cargo <sub>`.](https://github.com/jerus-org/jci-audit/issues/136)**
+  Now that the orb's executor image always carries a full Rust toolchain (`orb/Dockerfile` is
+  `FROM rust:*-slim`), the standalone-binary invocation form has no remaining justification over
+  `cargo <sub>` dispatch.
 
 ## Backlog (tracked as issues, not yet scheduled)
 
-- **[#63 — `license_scope` and `about.toml`'s `ignore-build-dependencies`/`ignore-transitive-dependencies`.](https://github.com/jerus-org/jci-audit/issues/63)**
-  Honour those settings in the derivation instead of always including build dependencies.
 - **[#49 — accept warnings at release time and record the acceptances.](https://github.com/jerus-org/jci-audit/issues/49)**
-- **[#36 — run `licenses-check` in validation so notices cannot go stale.](https://github.com/jerus-org/jci-audit/issues/36)**
+  ✅ Done — shipped as `[[bans.skip]]` support in `jci-audit-v0.1.6` (PR #143).
 - **[#31 — resolve the cargo-deny warnings (unmatched license allowances, duplicate syn).](https://github.com/jerus-org/jci-audit/issues/31)**
+  ✅ Done — both halves (`--deny-unused-licenses`, `multiple-versions = "deny"` +
+  `--deny-stale-exceptions`) dogfooded live on this repo's own CI and merged.
 - **[#100 — `about.toml` sync assumes a `crates/*/` layout instead of reading the workspace manifest.](https://github.com/jerus-org/jci-audit/issues/100)**
   ✅ Done — `find_about_toml_paths`/`about_toml_digest` now derive workspace members from
   `cargo metadata --no-deps`, not a hardcoded `crates/` walk. Shipped in `jci-audit-v0.1.4`.
-- **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
-  Today it's a manual copy-the-YAML step; `gen-circleci-orb init`/`update` already automates the
-  equivalent for its own consumers.
 - **[#80 — fold the `cargo-about` license-policy resolution check into `check`/`release-prep`.](https://github.com/jerus-org/jci-audit/issues/80)**
   ✅ Done — `check` now runs it too (previously only `release-prep` did), and this repo's own
   `.circleci/config.yml` dogfoods the published `jci-audit/check` orb job directly (self-contained,
