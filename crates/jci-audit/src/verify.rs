@@ -221,9 +221,9 @@ pub(crate) fn verify_with<R: CommandRunner>(
     // surfacing even though we cannot install the recorded version here.
     let mut unverified = unverified;
     if let Ok(recorded_tool) = field(&record, &["tools", "cargo_deny"]) {
-        // Deliberately standalone, matching how release.rs's own version
-        // probe records `recorded_tool` — see its comment (jerus-org/jci-audit#136).
-        let installed = runner.run("cargo-deny", &["--version"], &root)?;
+        // Same `cargo <sub>` dispatch release.rs's own probe uses to record
+        // `recorded_tool`, so the two are always directly comparable.
+        let installed = runner.run("cargo", &["deny", "--version"], &root)?;
         let installed = installed.stdout.lines().next().unwrap_or_default().trim();
         if !installed.is_empty() && installed != recorded_tool {
             unverified.push(format!(
@@ -454,7 +454,7 @@ mod tests {
             };
             let has = |needle: &str| args.contains(&needle);
             Ok(match (program, args.first().copied()) {
-                ("cargo-deny", Some("--version")) => ok("cargo-deny 0.20.2\n"),
+                ("cargo", Some("deny")) if has("--version") => ok("cargo-deny 0.20.2\n"),
                 // Model the behaviour that caused the bug: git refuses --unshallow
                 // on a repository that is already complete.
                 ("git", _) if has("--unshallow") && !self.shallow => ToolOutput {

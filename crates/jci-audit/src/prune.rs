@@ -140,10 +140,8 @@ pub(crate) fn prune_with<R: CommandRunner>(
 
     let args = audit_args(&lockfile);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    // `cargo <sub>` dispatch (jerus-org/jci-audit#136): `audit_args`'s leading
-    // "audit" is cargo's own subcommand selector here, not a redundant
-    // standalone-binary arg — see check.rs's module comment for why
-    // cargo-audit needs only the one token either way.
+    // See check.rs's module comment on AUDIT_ARGS for why `audit_args`'s
+    // leading "audit" needs no further change for `cargo <sub>` dispatch.
     let out = runner.run("cargo", &arg_refs, naked_cwd)?;
     // cargo-audit exits NON-ZERO whenever it reports anything, and a naked run
     // reports everything — so the exit status carries no failure signal here.

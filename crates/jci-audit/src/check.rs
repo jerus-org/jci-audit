@@ -106,11 +106,8 @@ impl CheckReport {
     }
 }
 
-// Tools are invoked via `cargo <sub>` dispatch (jerus-org/jci-audit#136) now
-// that the orb's executor image always carries a full Rust toolchain (built
-// `FROM rust:*-slim`) — there's no remaining reason to prefer the standalone
-// `cargo-<sub>` binary name, and preflight.rs's presence probe uses the same
-// dispatch form so the two can't drift apart.
+// Tools are invoked via `cargo <sub>` dispatch, matching preflight.rs's
+// presence probe.
 //
 // cargo-audit is the one asymmetry: `AUDIT_ARGS` already starts with `audit`
 // (needed for the *standalone* binary's own `cargo-audit audit` form), and
@@ -608,8 +605,7 @@ mod tests {
 
         let calls = runner.calls.borrow();
         assert_eq!(calls.len(), 3);
-        // `cargo <sub>` dispatch (jerus-org/jci-audit#136) — matches how
-        // preflight.rs probes them.
+        // `cargo <sub>` dispatch — matches how preflight.rs probes them.
         assert_eq!(
             calls[0],
             vec![

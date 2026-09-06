@@ -353,22 +353,15 @@ pub(crate) fn release_with<R: CommandRunner>(
         bail!("advisory-db commit came back empty; cannot lock the release");
     }
 
-    // Deliberately standalone, not `cargo <sub>` dispatch (jerus-org/jci-audit#136):
-    // these two strings are embedded verbatim in the release record's `tools`
-    // field. cargo-deny's dispatch and standalone `--version` output are
-    // byte-identical, but cargo-audit's are not (`cargo audit` dispatch
-    // reinserts an `audit` token before exec'ing the plugin, producing
-    // "cargo-audit-audit x.y.z" instead of "cargo-audit x.y.z" — verified
-    // directly). Keeping both standalone here avoids a confusing, tool-specific
-    // asymmetry in what gets recorded, and matches `verify`'s comparison of
-    // the recorded `cargo_deny` version, which must use the same form.
-    let deny_version = first_line(&runner.run("cargo-deny", &["--version"], &root)?.stdout);
-    let audit_version = first_line(&runner.run("cargo-audit", &["--version"], &root)?.stdout);
+    // Recorded verbatim in the release record's `tools` field, via the same
+    // `cargo <sub>` dispatch every other invocation here uses — so an auditor
+    // reproducing the release by running the exact command jci-audit ran gets
+    // a version string that matches the record byte for byte.
+    let deny_version = first_line(&runner.run("cargo", &["deny", "--version"], &root)?.stdout);
+    let audit_version = first_line(&runner.run("cargo", &["audit", "--version"], &root)?.stdout);
 
     // Currency check — informational only. PRs already gate on the live audit, so
-    // a fresh advisory here is a warning, not a release blocker. `audit` here is
-    // cargo's own dispatch selector, not a redundant standalone-binary arg (see
-    // check.rs's module comment on AUDIT_ARGS for why cargo-audit needs only one).
+    // a fresh advisory here is a warning, not a release blocker.
     let live = runner.run(
         "cargo",
         &[
@@ -757,9 +750,9 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             self.deny_stderr = stderr.to_string();
             self
         }
-        /// Calls dispatched as `cargo <sub>` (jerus-org/jci-audit#136) —
-        /// `cargo deny`/`cargo audit`/`cargo about`/`cargo metadata` now all
-        /// share the program name, so the subcommand is what distinguishes them.
+        /// Calls dispatched as `cargo <sub>`: `cargo deny`/`cargo audit`/
+        /// `cargo about`/`cargo metadata` share the program name, so the
+        /// subcommand is what distinguishes them.
         fn ran_cargo(&self, sub: &str) -> Vec<Vec<String>> {
             self.calls
                 .borrow()
@@ -780,32 +773,30 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
                 stdout: s.to_string(),
                 stderr: String::new(),
             };
-            Ok(match (program, args.first().copied()) {
-                ("git", _) => ok("abc1234def\n"),
-                // Version probes stay standalone (release.rs's deliberate
-                // exception — see the module comment near their call sites),
-                // so they're the only calls still literally "cargo-deny"/
-                // "cargo-audit" as the program name.
-                ("cargo-deny", Some("--version")) => ok("cargo-deny 0.20.2\n"),
-                ("cargo-audit", Some("--version")) => ok("cargo-audit 0.22.0\n"),
-                ("cargo", Some("metadata")) => ok(&self.metadata_json),
-                ("cargo", Some("audit")) => ok(&self.live_json),
-                ("cargo", Some("deny")) => ToolOutput {
-                    success: self.deny_ok,
-                    stdout: "advisories ok\n".to_string(),
-                    stderr: self.deny_stderr.clone(),
-                },
-                ("cargo", Some("about")) => ToolOutput {
-                    success: self.about_ok,
-                    stdout: String::new(),
-                    stderr: if self.about_ok {
-                        String::new()
-                    } else {
-                        "unresolved licence".to_string()
+            Ok(
+                match (program, args.first().copied(), args.get(1).copied()) {
+                    ("git", _, _) => ok("abc1234def\n"),
+                    ("cargo", Some("deny"), Some("--version")) => ok("cargo-deny 0.20.2\n"),
+                    ("cargo", Some("audit"), Some("--version")) => ok("cargo-audit 0.22.0\n"),
+                    ("cargo", Some("metadata"), _) => ok(&self.metadata_json),
+                    ("cargo", Some("audit"), _) => ok(&self.live_json),
+                    ("cargo", Some("deny"), _) => ToolOutput {
+                        success: self.deny_ok,
+                        stdout: "advisories ok\n".to_string(),
+                        stderr: self.deny_stderr.clone(),
                     },
+                    ("cargo", Some("about"), _) => ToolOutput {
+                        success: self.about_ok,
+                        stdout: String::new(),
+                        stderr: if self.about_ok {
+                            String::new()
+                        } else {
+                            "unresolved licence".to_string()
+                        },
+                    },
+                    _ => ok(""),
                 },
-                _ => ok(""),
-            })
+            )
         }
     }
 

@@ -9,19 +9,12 @@
 //! preflight first.
 //!
 //! `cargo-audit`/`cargo-deny`/`cargo-about` are invoked via `cargo <sub>`
-//! dispatch (jerus-org/jci-audit#136), matching the form the presence probe
-//! checks — now that the orb's executor image is built `FROM rust:*-slim`, a
-//! full toolchain is always present, so there's no remaining reason to prefer
-//! the standalone `cargo-<sub>` binary name. (A couple of call sites still
-//! invoke the standalone binary directly for its `--version` output — see
-//! `release.rs`/`verify.rs` — to keep the release record's recorded tool
-//! version stable and human-readable; that's an unrelated, deliberate
-//! exception, not a gap in this conversion.) The license-policy derivation
-//! additionally shells out to `cargo metadata`, a built-in cargo subcommand —
-//! [`Tool::Cargo`] preflights that separately, not because the environment
-//! might lack a Rust toolchain, but because `cargo` isn't `cargo
-//! binstall`-able like the other three, so its absence needs different
-//! install guidance (rustup, not binstall).
+//! dispatch, matching the form the presence probe checks below. The
+//! license-policy derivation additionally shells out to `cargo metadata`, a
+//! built-in cargo subcommand — [`Tool::Cargo`] preflights that separately,
+//! not because the environment might lack a Rust toolchain, but because
+//! `cargo` isn't `cargo binstall`-able like the other three, so its absence
+//! needs different install guidance (rustup, not binstall).
 
 use std::fmt::Write as _;
 use std::process::Command;
@@ -87,9 +80,9 @@ impl Tool {
         }
     }
 
-    /// The `cargo <sub>` form this tool is invoked in for its actual work
-    /// (jerus-org/jci-audit#136) — `None` for `cargo` itself and for `rsign`,
-    /// which isn't a cargo plugin at all.
+    /// The `cargo <sub>` form this tool is invoked in for its actual work —
+    /// `None` for `cargo` itself and for `rsign`, which isn't a cargo plugin
+    /// at all.
     fn cargo_subcommand(self) -> Option<&'static str> {
         match self {
             Tool::CargoAudit => Some("audit"),
