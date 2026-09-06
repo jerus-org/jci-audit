@@ -103,9 +103,10 @@ per-crate item below ships. This is a deliberate minor release, not folded into 
 releases Phase 0-2 bugfixes have been shipping as.
 
 - **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
-  Prerequisite, must land first. `cargo-about`/`cargo-audit`/`cargo-deny`/`rsign2` install
-  completely unpinned today — mirror `ci-container`'s `# renovate: datasource=crate ...` + explicit
-  `--version` pattern so a rebuild is traceable/auditable instead of silently floating to newest.
+  ✅ Done — `cargo-about`/`cargo-audit`/`cargo-deny`/`rsign2` now install at explicit
+  `# renovate: datasource=crate ...`-tracked versions, mirroring `ci-container`'s pattern; also
+  added the `docker:pinDigests`/`customManagers:dockerfileVersions` extends this repo's
+  `renovate.json` was missing, without which those comments would have stayed inert.
 - **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
   Add a `pcu release package <PACKAGE>`-equivalent selector to `release-prep`/`verify`, scoping
   the dependency digest and advisory gate to one crate's reachable graph instead of the whole
@@ -120,12 +121,10 @@ releases Phase 0-2 bugfixes have been shipping as.
   Partially blocked on #101: the "which container's `cargo-about` gets used" half needs #101's
   wiring command, while #142 (above) covers the pinning half.
 - **[#138 — clippy::pedantic adoption.](https://github.com/jerus-org/jci-audit/issues/138)**
-  Design already settled (whole-group `warn` with individual `allow`s, in `[workspace.lints.clippy]`)
-  — see the issue for the inventory-first rollout plan. Not yet implemented.
+  ✅ Done — whole-group `warn` (with `too_many_lines` allowed) in `[workspace.lints.clippy]`.
 - **[#136 — invoke cargo-audit/cargo-deny/cargo-about via `cargo <sub>`.](https://github.com/jerus-org/jci-audit/issues/136)**
-  Now that the orb's executor image always carries a full Rust toolchain (`orb/Dockerfile` is
-  `FROM rust:*-slim`), the standalone-binary invocation form has no remaining justification over
-  `cargo <sub>` dispatch.
+  ✅ Done — every invocation (and version probe) now dispatches through `cargo <sub>`, including
+  the one asymmetry discovered along the way (`cargo-audit`'s dispatch reinserts `audit` itself).
 
 ## Backlog (tracked as issues, not yet scheduled)
 
