@@ -1,6 +1,3 @@
-[lints]
-workspace = true
-
 [package]
 name = "jci-audit"
 version = "0.1.9"
@@ -87,3 +84,6 @@ bin-dir = "{ bin }{ binary-ext }"
 [package.metadata.binstall.signing]
 algorithm = "minisign"
 pubkey = "RWQn8B+hNgt8+wiqe1UqnUWKWdSn+hCOxWALd6fSdekoxwKYCuLBZr/C"
+
+[lints]
+workspace = true

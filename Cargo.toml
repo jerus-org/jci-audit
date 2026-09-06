@@ -2,20 +2,6 @@
 members = ["crates/jci-audit"]
 resolver = "3"
 
-[workspace.lints.clippy]
-# Whole-group at warn, not a curated per-lint allowlist: this is what makes a
-# toolchain bump's newly-added pedantic lints show up for review automatically
-# (jerus-org/jci-audit#138) — a fixed allowlist would never grow on its own.
-# CI already runs `-D warnings`, so every entry below is a lint reviewed and
-# deliberately allowed, not a placeholder.
-pedantic = { level = "warn", priority = -1 }
-# release_with/verify_with (release.rs/verify.rs) are long by design: a single
-# linear sequence of gate steps that must stay readable top-to-bottom and
-# testable as one unit (see check_with's identical shape) — splitting them
-# into sub-functions for a line-count target alone would scatter that
-# sequence without reducing its actual complexity.
-too_many_lines = "allow"
-
 [workspace.package]
 edition = "2024"
 authors = ["Jeremiah Russell <jrussell@jerus.ie>"]
@@ -83,3 +69,17 @@ reqwest = { version = "0.13.4", default-features = false, features = [
 # Testing
 tempfile = "3.27.0"
 trycmd = "1.2.1"
+
+[workspace.lints.clippy]
+# Whole-group at warn, not a curated per-lint allowlist: this is what makes a
+# toolchain bump's newly-added pedantic lints show up for review automatically
+# (jerus-org/jci-audit#138) — a fixed allowlist would never grow on its own.
+# CI already runs `-D warnings`, so every entry below is a lint reviewed and
+# deliberately allowed, not a placeholder.
+pedantic = { level = "warn", priority = -1 }
+# release_with/verify_with (release.rs/verify.rs) are long by design: a single
+# linear sequence of gate steps that must stay readable top-to-bottom and
+# testable as one unit (see check_with's identical shape) — splitting them
+# into sub-functions for a line-count target alone would scatter that
+# sequence without reducing its actual complexity.
+too_many_lines = "allow"
