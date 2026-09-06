@@ -22,6 +22,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: update dependency jci-audit to v0.1.9(pr [#154])
 - diagnostics.rs recognizes error-severity lints(pr [#155])
+- pin tool versions in orb/Dockerfile(pr [#161])
 
 ## [0.1.9] - 2026-09-05
 
@@ -404,6 +405,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#158]: https://github.com/jerus-org/jci-audit/pull/158
 [#159]: https://github.com/jerus-org/jci-audit/pull/159
 [#160]: https://github.com/jerus-org/jci-audit/pull/160
+[#161]: https://github.com/jerus-org/jci-audit/pull/161
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
