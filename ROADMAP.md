@@ -104,9 +104,9 @@ releases Phase 0-2 bugfixes have been shipping as.
 
 - **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
   ✅ Done — `cargo-about`/`cargo-audit`/`cargo-deny`/`rsign2` now install at explicit
-  `# renovate: datasource=crate ...`-tracked versions, mirroring `ci-container`'s pattern; also
-  added the `docker:pinDigests`/`customManagers:dockerfileVersions` extends this repo's
-  `renovate.json` was missing, without which those comments would have stayed inert.
+  `# renovate: datasource=crate ...`-tracked versions, mirroring `ci-container`'s pattern. Also
+  adds the `docker:pinDigests`/`customManagers:dockerfileVersions` extends that this repo's
+  `renovate.json` was missing — without them, those comments would have stayed inert.
 - **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
   Add a `pcu release package <PACKAGE>`-equivalent selector to `release-prep`/`verify`, scoping
   the dependency digest and advisory gate to one crate's reachable graph instead of the whole
