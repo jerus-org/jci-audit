@@ -270,6 +270,21 @@ error[duplicate]: found 2 duplicate entries for crate 'windows-sys'
     }
 
     #[test]
+    fn emit_returns_the_same_counts_regardless_of_detail_level() {
+        // emit() composes count_diagnostics/render_summary/diagnostic_lines
+        // purely for what it prints; its returned counts must match
+        // count_diagnostics directly, at every verbosity.
+        let expected = count_diagnostics(MIXED_STDERR);
+        for detail in [Detail::Summary, Detail::List, Detail::Full] {
+            assert_eq!(
+                emit("", MIXED_STDERR, detail),
+                expected,
+                "detail={detail:?}"
+            );
+        }
+    }
+
+    #[test]
     fn enforce_fails_on_deny_severity_diagnostics_too() {
         let counts =
             count_diagnostics("error[duplicate]: found 2 duplicate entries for crate 'x'\n");

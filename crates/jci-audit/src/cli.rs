@@ -816,6 +816,22 @@ mod tests {
     }
 
     #[test]
+    fn report_sync_outcome_flags_drift_and_only_drift() {
+        assert!(
+            !report_sync_outcome("p", &sync::SyncOutcome::InSync, "ignore(s)"),
+            "in-sync must not be reported as drift"
+        );
+        assert!(
+            !report_sync_outcome("p", &sync::SyncOutcome::Wrote(3), "ignore(s)"),
+            "a freshly-written file is not drift"
+        );
+        assert!(
+            report_sync_outcome("p", &sync::SyncOutcome::Drift, "ignore(s)"),
+            "drift must be reported as drift"
+        );
+    }
+
+    #[test]
     fn project_root_finds_it_from_a_subdirectory() {
         // A run from e.g. `crates/jci-audit/` must still find the root above it.
         let repo = tempfile::tempdir().unwrap();

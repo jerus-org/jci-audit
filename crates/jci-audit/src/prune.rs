@@ -223,6 +223,15 @@ mod tests {
            ]},"warnings":{}}"#
     }
 
+    fn duplicate_advisory_json() -> &'static str {
+        // The same advisory can appear more than once — here, once per
+        // affected package — and must still count as firing exactly once.
+        r#"{"vulnerabilities":{"count":2,"found":true,"list":[
+             {"advisory":{"id":"RUSTSEC-2023-0071"},"package":{"name":"rsa"}},
+             {"advisory":{"id":"RUSTSEC-2023-0071"},"package":{"name":"rsa-other"}}
+           ]},"warnings":{}}"#
+    }
+
     fn vuln_and_warning_json() -> &'static str {
         r#"{"vulnerabilities":{"count":1,"found":true,"list":[
              {"advisory":{"id":"RUSTSEC-2023-0071"},"package":{"name":"rsa"}}
@@ -263,6 +272,12 @@ mod tests {
             ids.contains(&"RUSTSEC-2024-0384".to_string()),
             "got {ids:?}"
         );
+    }
+
+    #[test]
+    fn parse_ids_dedupes_the_same_advisory_appearing_more_than_once() {
+        let ids = parse_firing_ids(duplicate_advisory_json()).unwrap();
+        assert_eq!(ids, vec!["RUSTSEC-2023-0071".to_string()]);
     }
 
     #[test]
@@ -340,8 +355,15 @@ mod tests {
     }
 
     #[test]
-    fn naked_run_dir_is_outside_any_repo() {
+    fn naked_run_dir_is_process_scoped_and_outside_any_repo() {
         let dir = naked_run_dir();
         assert!(dir.starts_with(std::env::temp_dir()));
+        // Process-scoped, per the doc comment, so concurrent runs cannot
+        // collide on the same naked-audit working directory.
+        assert!(
+            dir.to_string_lossy()
+                .contains(&std::process::id().to_string()),
+            "must be scoped to this process: {dir:?}"
+        );
     }
 }
