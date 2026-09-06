@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- invoke tools via cargo <sub> dispatch(pr [#158])
+
 ### Changed
 
 - ci-deny duplicates, gate on stale bans.skip(pr [#151])
@@ -395,6 +399,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#155]: https://github.com/jerus-org/jci-audit/pull/155
 [#156]: https://github.com/jerus-org/jci-audit/pull/156
 [#157]: https://github.com/jerus-org/jci-audit/pull/157
+[#158]: https://github.com/jerus-org/jci-audit/pull/158
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
