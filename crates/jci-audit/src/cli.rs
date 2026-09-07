@@ -248,10 +248,8 @@ enum Commands {
     /// it. See jerus-org/jci-audit#101 (PR 1: this job's own workflow) and
     /// #164 (follow-on: the release workflow's multi-job chain).
     ///
-    /// In CI, always pass `--check`: a pipeline job may only detect wiring
-    /// drift and report how to fix it, never rewrite the `CircleCI` config
-    /// that is currently running it. Write mode (the default) is for a
-    /// human to run locally and commit the result.
+    /// For a human to run locally and commit the result — never wired into
+    /// CI (there is no `--check`; see `check-ci-wiring` for that).
     #[command(name = "wire-ci")]
     WireCi {
         /// Path to the jci-audit.toml-shaped wiring spec to read (and, if
@@ -264,12 +262,25 @@ enum Commands {
         /// workspace root.
         #[arg(long, help_heading = "Input")]
         config: Option<std::path::PathBuf>,
-
-        /// Fail (non-zero) on drift — or if `[[ci.jobs]]` isn't configured
-        /// yet — instead of writing. Required in CI: a pipeline must never
-        /// rewrite the config that is currently running it.
-        #[arg(long, help_heading = "Output")]
-        check: bool,
+    },
+    /// Check that the `CircleCI` config matches `jci-audit.toml`'s `[ci]`
+    /// wiring spec, without writing.
+    ///
+    /// The CI-facing counterpart to `wire-ci`: fails (non-zero) on drift, or
+    /// if `[[ci.jobs]]` isn't configured yet, and never writes either file.
+    /// This is a separate subcommand rather than a `--check` flag on
+    /// `wire-ci` so the safety property review feedback on
+    /// jerus-org/jci-audit#163 asked for — a CI job must never rewrite the
+    /// `CircleCI` config that is currently running it — holds by
+    /// construction: `check-ci-wiring`'s CLI surface has no flag that could
+    /// make it write, so the orb job the generator produces for it can't be
+    /// wired into a workflow in a way that regresses to write mode.
+    #[command(name = "check-ci-wiring")]
+    CheckCiWiring {
+        /// Path to the jci-audit.toml-shaped wiring spec to read. Same
+        /// resolution rules as `wire-ci --config`.
+        #[arg(long, help_heading = "Input")]
+        config: Option<std::path::PathBuf>,
     },
 }
 
@@ -343,7 +354,8 @@ impl Cli {
                 *publish,
                 record_path.as_deref(),
             ),
-            Commands::WireCi { config, check } => run_wire_ci(config.as_deref(), *check),
+            Commands::WireCi { config } => run_wire_ci(config.as_deref(), false),
+            Commands::CheckCiWiring { config } => run_wire_ci(config.as_deref(), true),
         }
     }
 }
@@ -1202,6 +1214,49 @@ mod tests {
     fn parse_prune_and_init() {
         assert!(Cli::try_parse_from(["jci-audit", "prune"]).is_ok());
         assert!(Cli::try_parse_from(["jci-audit", "init", "--force"]).is_ok());
+    }
+
+    /// `wire-ci` has no `--check` — it can only ever apply. Keeping it a
+    /// safe-only *write* command (and excluding it from orb generation via
+    /// `[subcommand.wire-ci] interactive = true`) means the CI-facing verb is
+    /// `check-ci-wiring`, whose own CLI surface has no way to write at all —
+    /// jerus-org/jci-audit#163's review feedback wanted this guaranteed by
+    /// construction, not by a consumer remembering to pass a flag.
+    #[test]
+    fn wire_ci_has_no_check_flag() {
+        assert!(Cli::try_parse_from(["jci-audit", "wire-ci", "--check"]).is_err());
+    }
+
+    #[test]
+    fn parse_wire_ci_config_override() {
+        let cli = Cli::try_parse_from(["jci-audit", "wire-ci", "--config", "other.toml"])
+            .expect("parses");
+        match cli.command {
+            Commands::WireCi { config } => {
+                assert_eq!(config, Some(std::path::PathBuf::from("other.toml")));
+            }
+            other => panic!("expected WireCi, got {other:?}"),
+        }
+    }
+
+    /// `check-ci-wiring` is the CI-facing counterpart — it can only ever
+    /// check (no flag toggles that), so the orb job the generator produces
+    /// for it has no parameter that could regress it into a write.
+    #[test]
+    fn check_ci_wiring_has_no_check_flag() {
+        assert!(Cli::try_parse_from(["jci-audit", "check-ci-wiring", "--check"]).is_err());
+    }
+
+    #[test]
+    fn parse_check_ci_wiring_config_override() {
+        let cli = Cli::try_parse_from(["jci-audit", "check-ci-wiring", "--config", "other.toml"])
+            .expect("parses");
+        match cli.command {
+            Commands::CheckCiWiring { config } => {
+                assert_eq!(config, Some(std::path::PathBuf::from("other.toml")));
+            }
+            other => panic!("expected CheckCiWiring, got {other:?}"),
+        }
     }
 
     #[test]

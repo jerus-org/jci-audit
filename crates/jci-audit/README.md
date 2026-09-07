@@ -79,10 +79,14 @@ jci-audit init
 # .circleci/config.yml. jci-audit.toml's [ci] table is the required spec,
 # not CLI flags — first run scaffolds an example [[ci.jobs]] entry to
 # review and adapt by hand; every run after that applies whatever the file
-# currently says. Run locally and commit the result — in CI, always add
-# --check: a pipeline job may only detect wiring drift and report how to
-# fix it, never rewrite the CircleCI config that is currently running it.
-jci-audit wire-ci [--config jci-audit.toml] [--check]
+# currently says. Local/human only — run it and commit the result.
+jci-audit wire-ci [--config jci-audit.toml]
+
+# The CI-facing counterpart: fails (non-zero) on drift, or if [[ci.jobs]]
+# isn't configured yet, and never writes either file — there is no flag to
+# make it write, so a workflow wiring this job in can't regress to write
+# mode by mistake.
+jci-audit check-ci-wiring [--config jci-audit.toml]
 ```
 
 ## Contributing

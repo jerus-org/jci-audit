@@ -58,6 +58,15 @@ interactive = true
 # or documented for consumers — see docs/design.md §5.3-5.4.
 interactive = true
 
+[subcommand.wire-ci]
+# Apply-only, human/local: it writes jci-audit.toml and the CircleCI config
+# and has no --check flag at all. A CI job must never be able to rewrite the
+# config that is currently running it (jerus-org/jci-audit#163 review
+# feedback) — excluding this from orb generation entirely means the only
+# CI-facing verb is `check-ci-wiring`, whose CLI surface has no way to write
+# in the first place.
+interactive = true
+
 [record]
 enabled = true
 gpg_key_env = "BOT_GPG_KEY"

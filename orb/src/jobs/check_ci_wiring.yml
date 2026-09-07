@@ -1,4 +1,4 @@
-description: Run wire-ci command in a dedicated job.
+description: Run check-ci-wiring command in a dedicated job.
 executor: default
 parameters:
   verbose:
@@ -11,12 +11,8 @@ parameters:
     default: false
   config:
     type: string
-    description: Path to the jci-audit.toml-shaped wiring spec to read (and, if it has no `[[ci.jobs]]` entries yet, scaffold an example into). Defaults to `jci-audit.toml` relative to the nearest deny.toml above the current directory. An explicit value is used as given — `[ci].file` (the `CircleCI` config to patch) then resolves relative to ITS OWN parent directory, not the workspace root.
+    description: Path to the jci-audit.toml-shaped wiring spec to read. Same resolution rules as `wire-ci --config`
     default: ''
-  check:
-    type: boolean
-    description: 'Fail (non-zero) on drift — or if `[[ci.jobs]]` isn''t configured yet — instead of writing. Required in CI: a pipeline must never rewrite the config that is currently running it'
-    default: false
   attach_workspace:
     type: boolean
     description: Attach a workspace before running the command (use when the binary was built in a prior job).
@@ -37,8 +33,7 @@ steps:
         command: <<include(scripts/add-workspace-to-path.sh)>>
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
-- wire_ci:
+- check_ci_wiring:
     verbose: << parameters.verbose >>
     quiet: << parameters.quiet >>
     config: << parameters.config >>
-    check: << parameters.check >>

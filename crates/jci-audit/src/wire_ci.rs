@@ -1,5 +1,6 @@
 //! Wire the generated `jerus-org/jci-audit` orb job(s) into a consumer's
-//! `CircleCI` config — `jci-audit wire-ci`.
+//! `CircleCI` config — `jci-audit wire-ci` (apply, local-only) and
+//! `jci-audit check-ci-wiring` (verify, CI-facing).
 //!
 //! **`jci-audit.toml`'s `[ci]` table is the required, authoritative spec —
 //! not CLI flags.** `[ci].file` names the `CircleCI` config file to patch
@@ -36,9 +37,9 @@
 //!
 //! Detecting drift in a job's *specification* as the orb itself evolves
 //! (e.g. a newer `jci-audit/check` gaining a newly-required parameter) is
-//! also out of scope for this module — `--check` only detects drift between
-//! `jci-audit.toml`'s current content and the CI file, not whether that
-//! content itself is stale relative to a newer orb version.
+//! also out of scope for this module — `check-ci-wiring` only detects drift
+//! between `jci-audit.toml`'s current content and the CI file, not whether
+//! that content itself is stale relative to a newer orb version.
 //!
 //! The YAML file is patched with plain line/text-splicing (bounded by
 //! indentation), never a `serde_yaml` parse+reserialize — mirroring
@@ -57,19 +58,27 @@
 //! earlier jobs' now-uncommitted insertions, leaving the CI file
 //! byte-identical to what it was on disk.
 //!
-//! **In CI, always pass `--check`.** Review feedback on
+//! **`wire-ci` and `check-ci-wiring` are two separate subcommands, not one
+//! subcommand with a `--check` flag.** Review feedback on
 //! jerus-org/jci-audit#163 drew the same line `gen-circleci-orb`'s own
-//! `update` job draws: a pipeline job is only ever useful here to detect
-//! wiring drift and tell a human how to fix it — a CI run must never rewrite
-//! the very `CircleCI` config that is currently executing it. Write mode
-//! (the default, no `--check`) is for a human running `jci-audit wire-ci`
-//! locally to apply `jci-audit.toml`'s spec, then committing the result —
-//! never for a pipeline step. The orb job's `check` parameter cannot default
-//! to `true` yet without corrupting its own type (`gen-circleci-orb`'s
-//! `[subcommand.*.param.*]` default-override always renders as a quoted YAML
-//! string, breaking a `type: boolean` parameter's default — see
-//! jerus-org/gen-circleci-orb#347); until that lands, every `jci-audit/wire_ci`
-//! job wired into a workflow **must** set `check: true` explicitly.
+//! `generate` job draws for its `check_ci_wiring` switch (a hardcoded,
+//! non-parameterized `update --check` step, never a forwarded flag a
+//! consumer could get wrong): a pipeline job must only ever be able to
+//! detect wiring drift and tell a human how to fix it, never rewrite the
+//! very `CircleCI` config that is currently executing it. An earlier version
+//! of this module put that choice behind `wire-ci --check`, which asked
+//! every consumer's workflow to remember to set `check: true` — a
+//! documentation-enforced convention, not a guarantee. Splitting the verbs
+//! removes the unsafe option from `check-ci-wiring`'s CLI surface entirely:
+//! it has no flag that could make it write, so the orb job the generator
+//! produces for it can't be wired in a way that regresses to write mode —
+//! the same construction gen-circleci-orb's own hardcoded step achieves,
+//! reached here without needing a generator change (tracked upstream as a
+//! future generalization, jerus-org/gen-circleci-orb#350). `wire-ci` itself
+//! is excluded from orb generation altogether (`[subcommand.wire-ci]
+//! interactive = true` in `gen-circleci-orb.toml`) — it only ever runs
+//! locally, for a human to apply `jci-audit.toml`'s spec and commit the
+//! result.
 
 use std::path::Path;
 
@@ -231,9 +240,10 @@ pub(crate) enum WireCiOutcome {
         ci_file: WriteOutcome,
     },
     /// No `[[ci.jobs]]` entries existed — an example was scaffolded into
-    /// `jci-audit.toml` (or, under `--check`, nothing was written at all;
-    /// see [`wire_ci_at`]). The `CircleCI` config file was not touched
-    /// either way.
+    /// `jci-audit.toml`. Only reachable when `check` is `false`
+    /// (`wire-ci`): under `check-ci-wiring`, this same situation is an
+    /// `Err` instead — see [`wire_ci_at`]. The `CircleCI` config file is
+    /// never touched either way.
     Scaffolded,
 }
 
@@ -824,8 +834,8 @@ pub(crate) fn wire_ci_at(
     if spec.jobs.is_empty() {
         if check {
             bail!(
-                "'{}' has no [[ci.jobs]] entries — run `jci-audit wire-ci` (without --check) to \
-                 scaffold one, edit it to match your CI, then re-run",
+                "'{}' has no [[ci.jobs]] entries — run `jci-audit wire-ci` to scaffold one, edit \
+                 it to match your CI, then re-run",
                 config_path.display()
             );
         }
