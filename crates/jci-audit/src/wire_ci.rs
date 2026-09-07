@@ -203,27 +203,24 @@ pub(crate) enum WriteOutcome {
     Drift,
 }
 
-/// Whether `jci-audit.toml` already had jobs to apply, or had to be
-/// scaffolded with an example first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConfigStatus {
-    /// At least one `[[ci.jobs]]` entry existed; `ci_file` reports what was
-    /// (or would be) done to the `CircleCI` config file it targets.
-    Configured,
+/// [`wire_ci_at`]'s result: whether `jci-audit.toml` already had jobs to
+/// apply, or had to be scaffolded with an example first — a single enum
+/// rather than a status-plus-optional-payload struct, so a resolved
+/// `ci_file` outcome existing is only representable together with
+/// `Configured`, not something a caller has to `.expect()` at runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum WireCiOutcome {
+    /// At least one `[[ci.jobs]]` entry existed: the resolved `CircleCI`
+    /// config path, and what was (or would be) done to it.
+    Configured {
+        ci_file_path: std::path::PathBuf,
+        ci_file: WriteOutcome,
+    },
     /// No `[[ci.jobs]]` entries existed — an example was scaffolded into
     /// `jci-audit.toml` (or, under `--check`, nothing was written at all;
-    /// see [`wire_ci_at`]). The `CircleCI` config file was not touched either
-    /// way, so there is nothing to report for it.
+    /// see [`wire_ci_at`]). The `CircleCI` config file was not touched
+    /// either way.
     Scaffolded,
-}
-
-/// [`wire_ci_at`]'s result: whether `jci-audit.toml` needed scaffolding, and
-/// — only when it didn't — the resolved `CircleCI` config path and its own
-/// outcome.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct WireCiOutcome {
-    pub(crate) config_status: ConfigStatus,
-    pub(crate) ci_file: Option<(std::path::PathBuf, WriteOutcome)>,
 }
 
 // ---------------------------------------------------------------------
@@ -247,9 +244,12 @@ fn indent_of(line: &str) -> usize {
 }
 
 /// Locate a top-level (0-indent) section header line (e.g. `"orbs:"`) and
-/// return the index immediately after its last member — the insertion point
-/// for a new entry — or `None` if the header itself isn't present.
-fn find_section_end(lines: &[String], header: &str) -> Option<usize> {
+/// the index immediately after its last member — the insertion point for a
+/// new entry — or `None` if the header itself isn't present. Also the
+/// header's own line index, so a caller can bound a scan to just that
+/// section's body (e.g. the orb-pin idempotency check below, which must
+/// never match an unrelated same-named key elsewhere in the file).
+fn find_section_bounds(lines: &[String], header: &str) -> Option<(usize, usize)> {
     let start = lines.iter().position(|l| l.trim_end() == header)?;
     let mut end = start + 1;
     while end < lines.len() {
@@ -263,7 +263,14 @@ fn find_section_end(lines: &[String], header: &str) -> Option<usize> {
         }
         end += 1;
     }
-    Some(end)
+    Some((start, end))
+}
+
+/// Locate a top-level (0-indent) section header line (e.g. `"orbs:"`) and
+/// return the index immediately after its last member — the insertion point
+/// for a new entry — or `None` if the header itself isn't present.
+fn find_section_end(lines: &[String], header: &str) -> Option<usize> {
+    find_section_bounds(lines, header).map(|(_, end)| end)
 }
 
 /// The line index of the named workflow's own `jobs:` key line, or `None` if
@@ -624,16 +631,31 @@ fn wire_one_job(lines: &mut Vec<String>, job: &JobSpec) -> Result<()> {
     let workflow = job.workflow.as_deref().context("no workflow configured")?;
     let orb_job = job.orb_job.as_deref().context("no orb_job configured")?;
 
+    // Deduped once, up front: append_requires's Block-form idempotency check
+    // reads a position captured before any mutation, so two identical
+    // targets in one job's own required_by list would both see "not present
+    // yet" and each insert their own duplicate line — a literal duplicate
+    // string in a hand-edited jci-audit.toml is a realistic mistake, not a
+    // contrived input.
+    let required_by = dedupe_preserving_order(&job.required_by);
+
     // Fail fast, zero mutation: prove every required_by target is safe to
     // touch before changing anything.
     let entries = list_workflow_job_entries(lines, workflow)?;
-    validate_required_by_targets(lines, &entries, &job.required_by)?;
+    validate_required_by_targets(lines, &entries, &required_by)?;
 
     // orbs: pin (presence-only idempotency — no version-bump resync, see the
     // module doc's deferred-concerns note).
     let orb_name = orb_job.split('/').next().unwrap_or(orb_job);
     let pin_key = format!("  {orb_name}:");
-    let already_pinned = lines.iter().any(|l| l.trim_end().starts_with(&pin_key));
+    // Scoped to the orbs: section's own body — an unrelated same-named key
+    // elsewhere in the file (e.g. a workflow that happens to be named after
+    // the orb) must never be mistaken for an existing pin.
+    let already_pinned = find_section_bounds(lines, "orbs:").is_some_and(|(start, end)| {
+        lines[start + 1..end]
+            .iter()
+            .any(|l| l.trim_end().starts_with(&pin_key))
+    });
     if !already_pinned {
         // No fallback to orb_job here: that would silently pin
         // "jci-audit: jci-audit/check" — a job path, not a version — which
@@ -673,9 +695,9 @@ fn wire_one_job(lines: &mut Vec<String>, job: &JobSpec) -> Result<()> {
     // file) can shift everything below it by one line. Recomputing fresh
     // here, rather than reusing the pre-mutation positions from the
     // validation pass above, stays correct either way.
-    if !job.required_by.is_empty() {
+    if !required_by.is_empty() {
         let entries_final = list_workflow_job_entries(lines, workflow)?;
-        let mut shapes = validate_required_by_targets(lines, &entries_final, &job.required_by)?;
+        let mut shapes = validate_required_by_targets(lines, &entries_final, &required_by)?;
         shapes.sort_by_key(|shape| std::cmp::Reverse(shape_position(shape)));
         for shape in &shapes {
             append_requires(lines, shape, &new_name);
@@ -685,12 +707,36 @@ fn wire_one_job(lines: &mut Vec<String>, job: &JobSpec) -> Result<()> {
     Ok(())
 }
 
+/// `items` with exact duplicates removed, keeping each item's first
+/// occurrence. `required_by` lists are always short, so a plain `Vec` scan
+/// is simpler than a set here.
+fn dedupe_preserving_order(items: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(items.len());
+    for item in items {
+        if !out.contains(item) {
+            out.push(item.clone());
+        }
+    }
+    out
+}
+
 /// The pure whole-function core: patch `content` (a `CircleCI`-config-shaped
 /// string) to match every job in `jobs`, in order, in one shared line
 /// buffer. Nothing reaches the caller unless every job succeeds — a later
 /// job's failure discards the whole buffer, including any earlier jobs'
 /// now-uncommitted insertions.
 fn wire_jobs_into(content: &str, jobs: &[JobSpec]) -> Result<String> {
+    // `str::lines()` treats a "\r\n" pair as one line terminator and strips
+    // both bytes, so a CRLF file's line endings must be restored explicitly
+    // on rejoin — joining with a bare "\n" would silently convert the whole
+    // file (not just the lines actually touched) to LF, and `decide`'s
+    // byte-for-byte comparison would then report permanent drift even when
+    // the wiring itself is already correct.
+    let newline = if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
     let trailing_newline = content.ends_with('\n');
     let mut lines: Vec<String> = content.lines().map(str::to_string).collect();
 
@@ -698,9 +744,9 @@ fn wire_jobs_into(content: &str, jobs: &[JobSpec]) -> Result<String> {
         wire_one_job(&mut lines, job).with_context(|| format!("ci.jobs[{index}]"))?;
     }
 
-    let mut out = lines.join("\n");
+    let mut out = lines.join(newline);
     if trailing_newline {
-        out.push('\n');
+        out.push_str(newline);
     }
     Ok(out)
 }
@@ -739,9 +785,9 @@ pub(crate) fn wire_ci_at(
     } else {
         String::new()
     };
-    let ci_file = read_ci_file(&existing_config_text)?;
+    let spec = read_ci_file(&existing_config_text)?;
 
-    if ci_file.jobs.is_empty() {
+    if spec.jobs.is_empty() {
         if check {
             bail!(
                 "'{}' has no [[ci.jobs]] entries — run `jci-audit wire-ci` (without --check) to \
@@ -751,13 +797,10 @@ pub(crate) fn wire_ci_at(
         }
         let scaffolded = write_scaffold(&existing_config_text)?;
         fs_atomic::write_atomically(&config_path, &scaffolded)?;
-        return Ok(WireCiOutcome {
-            config_status: ConfigStatus::Scaffolded,
-            ci_file: None,
-        });
+        return Ok(WireCiOutcome::Scaffolded);
     }
 
-    let ci_file_path = spec_dir.join(ci_file.file.as_deref().unwrap_or(".circleci/config.yml"));
+    let ci_file_path = spec_dir.join(spec.file.as_deref().unwrap_or(".circleci/config.yml"));
     if !ci_file_path.is_file() {
         bail!(
             "'{}' not found — run from a repo with .circleci/config.yml, or set [ci].file in \
@@ -768,12 +811,12 @@ pub(crate) fn wire_ci_at(
     }
     let existing_ci_text = std::fs::read_to_string(&ci_file_path)
         .with_context(|| format!("failed to read '{}'", ci_file_path.display()))?;
-    let desired_ci_text = wire_jobs_into(&existing_ci_text, &ci_file.jobs)?;
-    let outcome = decide(&ci_file_path, &existing_ci_text, &desired_ci_text, check)?;
+    let desired_ci_text = wire_jobs_into(&existing_ci_text, &spec.jobs)?;
+    let ci_file = decide(&ci_file_path, &existing_ci_text, &desired_ci_text, check)?;
 
-    Ok(WireCiOutcome {
-        config_status: ConfigStatus::Configured,
-        ci_file: Some((ci_file_path, outcome)),
+    Ok(WireCiOutcome::Configured {
+        ci_file_path,
+        ci_file,
     })
 }
 
@@ -1258,6 +1301,30 @@ workflows:
     }
 
     #[test]
+    fn wire_jobs_into_does_not_mistake_a_same_named_workflow_for_an_existing_pin() {
+        // A workflow literally named after the orb must not be mistaken for
+        // an orbs: pin — the idempotency check has to stay scoped to the
+        // orbs: section's own body.
+        let content = "\
+version: 2.1
+orbs:
+  toolkit: jerus-org/circleci-toolkit@7.4.0
+workflows:
+  jci-audit:
+    jobs:
+      - toolkit/common_tests
+  validation:
+    jobs:
+      - toolkit/common_tests
+";
+        let out = wire_jobs_into(content, &[base_job()]).unwrap();
+        assert!(
+            out.contains("  jci-audit: jerus-org/jci-audit@1.0"),
+            "the real orb pin must still be inserted: {out}"
+        );
+    }
+
+    #[test]
     fn wire_jobs_into_skips_pin_when_already_present_but_still_inserts_job() {
         let content = "\
 version: 2.1
@@ -1367,6 +1434,24 @@ workflows:
     }
 
     #[test]
+    fn wire_jobs_into_required_by_duplicate_target_appends_only_once() {
+        // append_requires's Block-form idempotency check reads a position
+        // captured before any mutation — two identical entries in one job's
+        // own required_by list must not each insert their own duplicate
+        // line.
+        let mut job = base_job();
+        job.required_by = vec!["deploy".to_string(), "deploy".to_string()];
+        let out = wire_jobs_into(CONFIG_WITH_REQUIRES_BLOCK, &[job]).unwrap();
+        // The appended block item, at its own 12-space indent — distinct
+        // from the new job entry's own 6-space "- jci-audit/check" line.
+        assert_eq!(
+            out.matches("            - jci-audit/check").count(),
+            1,
+            "got: {out}"
+        );
+    }
+
+    #[test]
     fn wire_jobs_into_required_by_is_idempotent() {
         let mut job = base_job();
         job.required_by = vec!["deploy".to_string()];
@@ -1403,6 +1488,18 @@ workflows:
 
         let out = wire_jobs_into(CONFIG_BASE, &[base_job()]).unwrap();
         assert!(out.ends_with('\n'));
+    }
+
+    #[test]
+    fn wire_jobs_into_preserves_crlf_line_endings() {
+        let crlf = CONFIG_BASE.replace('\n', "\r\n");
+        let out = wire_jobs_into(&crlf, &[base_job()]).unwrap();
+        assert!(out.contains("\r\n"), "expected CRLF endings preserved");
+        assert!(
+            !out.replace("\r\n", "").contains('\n'),
+            "no bare LF should remain: {out:?}"
+        );
+        assert!(out.contains(MANAGED_BEGIN));
     }
 
     #[test]
@@ -1457,8 +1554,7 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         let (toml_path, config_path) = write_workspace(dir.path(), CONFIG_BASE);
 
         let outcome = wire_ci_at(dir.path(), None, false).unwrap();
-        assert_eq!(outcome.config_status, ConfigStatus::Scaffolded);
-        assert_eq!(outcome.ci_file, None);
+        assert_eq!(outcome, WireCiOutcome::Scaffolded);
 
         assert!(toml_path.is_file());
         let scaffolded = read_ci_file(&std::fs::read_to_string(&toml_path).unwrap()).unwrap();
@@ -1486,10 +1582,13 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         std::fs::write(&toml_path, CONFIGURED_JOB_TOML).unwrap();
 
         let outcome = wire_ci_at(dir.path(), None, false).unwrap();
-        assert_eq!(outcome.config_status, ConfigStatus::Configured);
-        let (path, write_outcome) = outcome.ci_file.unwrap();
-        assert_eq!(path, config_path);
-        assert_eq!(write_outcome, WriteOutcome::Wrote);
+        assert_eq!(
+            outcome,
+            WireCiOutcome::Configured {
+                ci_file_path: config_path.clone(),
+                ci_file: WriteOutcome::Wrote,
+            }
+        );
 
         let ci_text = std::fs::read_to_string(&config_path).unwrap();
         assert!(ci_text.contains(MANAGED_BEGIN));
@@ -1510,8 +1609,10 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         let ci_after_first = std::fs::read_to_string(&config_path).unwrap();
 
         let outcome = wire_ci_at(dir.path(), None, false).unwrap();
-        let (_, write_outcome) = outcome.ci_file.unwrap();
-        assert_eq!(write_outcome, WriteOutcome::InSync);
+        let WireCiOutcome::Configured { ci_file, .. } = outcome else {
+            panic!("expected Configured, got {outcome:?}");
+        };
+        assert_eq!(ci_file, WriteOutcome::InSync);
         assert_eq!(
             std::fs::read_to_string(&config_path).unwrap(),
             ci_after_first
@@ -1530,8 +1631,10 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         let toml_before = std::fs::read_to_string(&toml_path).unwrap();
 
         let outcome = wire_ci_at(dir.path(), None, true).unwrap();
-        let (_, write_outcome) = outcome.ci_file.unwrap();
-        assert_eq!(write_outcome, WriteOutcome::Drift);
+        let WireCiOutcome::Configured { ci_file, .. } = outcome else {
+            panic!("expected Configured, got {outcome:?}");
+        };
+        assert_eq!(ci_file, WriteOutcome::Drift);
         assert_eq!(std::fs::read_to_string(&config_path).unwrap(), CONFIG_BASE);
         assert_eq!(std::fs::read_to_string(&toml_path).unwrap(), toml_before);
     }
@@ -1583,9 +1686,15 @@ required_by = [\"deploy\"]
         .unwrap();
 
         let outcome = wire_ci_at(dir.path(), Some(&spec_path), false).unwrap();
-        let (path, write_outcome) = outcome.ci_file.unwrap();
-        assert_eq!(path, dir.path().join(".circleci-config.yml"));
-        assert_eq!(write_outcome, WriteOutcome::Wrote);
+        let WireCiOutcome::Configured {
+            ci_file_path,
+            ci_file,
+        } = outcome
+        else {
+            panic!("expected Configured, got {outcome:?}");
+        };
+        assert_eq!(ci_file_path, dir.path().join(".circleci-config.yml"));
+        assert_eq!(ci_file, WriteOutcome::Wrote);
     }
 
     #[test]

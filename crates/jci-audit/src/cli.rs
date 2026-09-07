@@ -569,21 +569,19 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
     let cwd = std::env::current_dir()?;
     tracing::info!(check, "wire-ci");
 
-    let outcome = wire_ci::wire_ci_at(&cwd, config, check)?;
-
-    match outcome.config_status {
-        wire_ci::ConfigStatus::Scaffolded => {
+    match wire_ci::wire_ci_at(&cwd, config, check)? {
+        wire_ci::WireCiOutcome::Scaffolded => {
             println!(
                 "no [[ci.jobs]] entries found — scaffolded an example into jci-audit.toml; \
                  review and adapt it, then re-run `jci-audit wire-ci` to apply it"
             );
             Ok(())
         }
-        wire_ci::ConfigStatus::Configured => {
-            let (path, write_outcome) = outcome
-                .ci_file
-                .expect("Configured always carries a ci_file outcome");
-            if report_wire_ci_outcome(&path.display().to_string(), write_outcome) {
+        wire_ci::WireCiOutcome::Configured {
+            ci_file_path,
+            ci_file,
+        } => {
+            if report_wire_ci_outcome(&ci_file_path.display().to_string(), ci_file) {
                 bail!("out of sync — run `jci-audit wire-ci` to apply");
             }
             Ok(())

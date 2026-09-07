@@ -42,6 +42,21 @@ pub(crate) fn write_temp_path(path: &Path) -> PathBuf {
 /// Guarantees are strongest on Unix: elsewhere the mode carries only as far as
 /// the platform models it, and the directory sync is skipped.
 pub(crate) fn write_atomically(path: &Path, content: &str) -> Result<()> {
+    // A symlink whose target no longer exists can't be resolved by
+    // canonicalize either, so the "path doesn't exist yet" fallback below
+    // would silently rename onto the link's own path — replacing the link
+    // itself with a plain file, the opposite of "through a symlink, not
+    // over it," rather than surfacing the broken link as the actual
+    // problem.
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
+        && std::fs::canonicalize(path).is_err()
+    {
+        anyhow::bail!(
+            "{} is a symlink to a path that no longer exists; refusing to replace it",
+            path.display()
+        );
+    }
+
     // Through a symlink, not over it: renaming onto the link's own path would
     // replace it and strand the file it pointed at.
     let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -242,5 +257,25 @@ mod tests {
             "the symlink must survive the write"
         );
         assert_eq!(std::fs::read_to_string(&real).unwrap(), "new");
+    }
+
+    /// A dangling symlink can't be canonicalized either — without an
+    /// explicit check, the "path doesn't exist yet" fallback would rename
+    /// onto the link's own path, silently replacing the broken link with a
+    /// plain file instead of surfacing the real problem.
+    #[cfg(unix)]
+    #[test]
+    fn a_broken_symlink_is_refused_rather_than_silently_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("gone.yml");
+        let link = dir.path().join("link.yml");
+        std::os::unix::fs::symlink(&missing, &link).unwrap();
+
+        let err = write_atomically(&link, "new").unwrap_err().to_string();
+        assert!(err.contains("no longer exists"), "got: {err}");
+        assert!(
+            std::fs::symlink_metadata(&link).unwrap().is_symlink(),
+            "the broken symlink must survive, not be replaced by a plain file"
+        );
     }
 }
