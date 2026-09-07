@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - invoke tools via cargo <sub> dispatch(pr [#158])
 - per-crate --package for release/verify(pr [#162])
+- wire-ci command to wire the orb into a consumer's CI (#101)(pr [#163])
 
 ### Changed
 
@@ -408,6 +409,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#160]: https://github.com/jerus-org/jci-audit/pull/160
 [#161]: https://github.com/jerus-org/jci-audit/pull/161
 [#162]: https://github.com/jerus-org/jci-audit/pull/162
+[#163]: https://github.com/jerus-org/jci-audit/pull/163
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
