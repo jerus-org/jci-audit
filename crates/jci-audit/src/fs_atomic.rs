@@ -196,7 +196,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("thing.yml");
         std::fs::write(&path, "old").unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        // 0o400, not 0o444: no bits for "others" (SonarQube rust:S2612) —
+        // `Permissions::readonly()` only checks that no write bit is set
+        // anywhere, so owner-read-only alone already exercises the same
+        // refusal path this test is proving.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).unwrap();
 
         let err = write_atomically(&path, "new").unwrap_err().to_string();
         assert!(err.contains("read-only"), "got: {err}");
