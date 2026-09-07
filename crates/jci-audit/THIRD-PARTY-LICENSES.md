@@ -13,7 +13,7 @@ from the dependency graph with [`cargo-about`](https://github.com/EmbarkStudios/
 
 ## Overview
 
-- **Apache License 2.0** — 186 crate(s)
+- **Apache License 2.0** — 187 crate(s)
 - **MIT License** — 45 crate(s)
 - **ISC License** — 21 crate(s)
 - **Unicode License v3** — 19 crate(s)
@@ -3814,6 +3814,7 @@ Used by:
 - typed-builder-macro 0.18.2
 - typed-builder 0.18.2
 - url 2.5.8
+- uuid 1.26.0
 - wasi 0.11.1+wasi-snapshot-preview1
 - wasm-bindgen-futures 0.4.77
 - wasm-bindgen-macro-support 0.2.127
@@ -4459,7 +4460,7 @@ limitations under the License.
 
 Used by:
 
-- jci-audit 0.1.9
+- jci-audit 0.1.10
 
 ```text
                               Apache License

@@ -5,9 +5,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-09-07
+
+Summary: Added[4], Changed[2], Chore[2], Documentation[1], Fixed[7], Testing[2]
+
+### Added
+
+ - feat: split wire-ci into check-ci-wiring
+ - feat: add wire-ci command (#101, PR 1 of 2)
+ - feat: per-crate --package for release/verify
+ - feat: invoke tools via cargo <sub> dispatch
+
+### Fixed
+
+ - fix: address /code-review findings on wire-ci
+ - fix: avoid world-readable test permission mode
+ - fix: address code-review findings on wire-ci
+ - fix: scope about.toml digest + dep source match
+ - fix: dispatch version probes too, trim comments
+ - fix: match error severity in unused-license parse
+ - fix: recognize error severity in diagnostics
+
+### Changed
+
+ - refactor: reduce cognitive complexity in wire_ci
+ - refactor: make jci-audit.toml the wire-ci spec
+
 ## [0.1.9] - 2026-09-05
 
-Summary: Fixed[2]
+Summary: Chore[1], Fixed[2]
 
 ### Fixed
 
@@ -226,7 +252,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/jerus-org/jci-audit/compare/v0.1.5...v0.1.6
