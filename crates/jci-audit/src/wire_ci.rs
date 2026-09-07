@@ -56,6 +56,20 @@
 //! validation failing discards the whole in-memory buffer, including any
 //! earlier jobs' now-uncommitted insertions, leaving the CI file
 //! byte-identical to what it was on disk.
+//!
+//! **In CI, always pass `--check`.** Review feedback on
+//! jerus-org/jci-audit#163 drew the same line `gen-circleci-orb`'s own
+//! `update` job draws: a pipeline job is only ever useful here to detect
+//! wiring drift and tell a human how to fix it — a CI run must never rewrite
+//! the very `CircleCI` config that is currently executing it. Write mode
+//! (the default, no `--check`) is for a human running `jci-audit wire-ci`
+//! locally to apply `jci-audit.toml`'s spec, then committing the result —
+//! never for a pipeline step. The orb job's `check` parameter cannot default
+//! to `true` yet without corrupting its own type (`gen-circleci-orb`'s
+//! `[subcommand.*.param.*]` default-override always renders as a quoted YAML
+//! string, breaking a `type: boolean` parameter's default — see
+//! jerus-org/gen-circleci-orb#347); until that lands, every `jci-audit/wire_ci`
+//! job wired into a workflow **must** set `check: true` explicitly.
 
 use std::path::Path;
 

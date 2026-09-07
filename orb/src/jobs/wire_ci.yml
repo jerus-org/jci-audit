@@ -15,7 +15,7 @@ parameters:
     default: ''
   check:
     type: boolean
-    description: Fail (non-zero) on drift — or if `[[ci.jobs]]` isn't configured yet — instead of writing. For CI
+    description: 'Fail (non-zero) on drift — or if `[[ci.jobs]]` isn''t configured yet — instead of writing. Required in CI: a pipeline must never rewrite the config that is currently running it'
     default: false
   attach_workspace:
     type: boolean

@@ -247,6 +247,11 @@ enum Commands {
     /// `jci-audit.toml` — review and adapt it by hand, then re-run to apply
     /// it. See jerus-org/jci-audit#101 (PR 1: this job's own workflow) and
     /// #164 (follow-on: the release workflow's multi-job chain).
+    ///
+    /// In CI, always pass `--check`: a pipeline job may only detect wiring
+    /// drift and report how to fix it, never rewrite the `CircleCI` config
+    /// that is currently running it. Write mode (the default) is for a
+    /// human to run locally and commit the result.
     #[command(name = "wire-ci")]
     WireCi {
         /// Path to the jci-audit.toml-shaped wiring spec to read (and, if
@@ -261,7 +266,8 @@ enum Commands {
         config: Option<std::path::PathBuf>,
 
         /// Fail (non-zero) on drift — or if `[[ci.jobs]]` isn't configured
-        /// yet — instead of writing. For CI.
+        /// yet — instead of writing. Required in CI: a pipeline must never
+        /// rewrite the config that is currently running it.
         #[arg(long, help_heading = "Output")]
         check: bool,
     },
