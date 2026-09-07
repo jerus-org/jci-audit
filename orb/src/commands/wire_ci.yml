@@ -1,0 +1,92 @@
+description: Wire the generated jerus-org/jci-audit orb job into a consumer's `CircleCI` config. Wires ONE orb job into ONE named workflow (jerus-org/jci-audit#101, PR 1 of 2 — release-workflow wiring for `release_prep`/`publish_record` is out of scope here, tracked as a follow-on issue). Every flag below is an optional override layered onto jci-audit.toml's own `[ci]` table, which is the persistent record of what should be wired — omit them all to resync from whatever is already configured there. The merged result is written back to jci-audit.toml as part of the same run.
+parameters:
+  verbose:
+    type: boolean
+    description: Increase logging verbosity
+    default: false
+  quiet:
+    type: boolean
+    description: Decrease logging verbosity
+    default: false
+  config:
+    type: string
+    description: Path to the `CircleCI` config file to patch. Defaults to `.circleci/config.yml` relative to the nearest deny.toml above the current directory — the same discovery convention `publish-record --record-path`'s own default uses — rather than the current directory itself, so this command behaves the same whether run from the workspace root or a crate subdirectory. An explicit value here is used as given.
+    default: ''
+  orb_job:
+    type: string
+    description: The orb job to wire in, e.g. "jci-audit/check"
+    default: ''
+  orb_version:
+    type: string
+    description: The orb version pin, e.g. "jerus-org/jci-audit@1.0". Only applied when the orb isn't already pinned — re-running with a bumped version does not resync an existing pin
+    default: ''
+  workflow:
+    type: string
+    description: The workflow to wire the job into, e.g. "validation". Must already exist in the target config file — this command wires into an existing workflow, it does not scaffold one
+    default: ''
+  job_name:
+    type: string
+    description: Optional `name:` param for the new job entry
+    default: ''
+  requires:
+    type: string
+    description: Jobs this new job's own `requires:` should list. Repeatable; any use replaces the configured list outright, it never merges with it
+    default: ''
+  clear_requires:
+    type: boolean
+    description: Clear the configured `requires:` list instead of leaving it unchanged (a bare `--requires` cannot express "clear the list" on its own — a repeatable flag given zero times just means "not given")
+    default: false
+  required_by:
+    type: string
+    description: 'Existing jobs in the same workflow whose own `requires:` should gain this new job. Matched by effective name: a target''s own `name:` override if it declares one, else its bare job/orb-job string — exact, case-sensitive. Each target must already have a `requires:` key in a plain inline (`requires: [a, b]`) or block list form; jci-audit never invents one on a job it doesn''t own — add it by hand first. Repeatable; any use replaces the configured list outright'
+    default: ''
+  clear_required_by:
+    type: boolean
+    description: Clear the configured `required_by:` list instead of leaving it unchanged (see `--clear-requires`)
+    default: false
+  check:
+    type: boolean
+    description: Fail (non-zero) on drift instead of writing either file. For CI
+    default: false
+steps:
+- when:
+    condition: << parameters.verbose >>
+    steps:
+    - run:
+        name: Set VERBOSE flag
+        command: echo 'export VERBOSE=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.quiet >>
+    steps:
+    - run:
+        name: Set QUIET flag
+        command: echo 'export QUIET=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.clear_requires >>
+    steps:
+    - run:
+        name: Set CLEAR_REQUIRES flag
+        command: echo 'export CLEAR_REQUIRES=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.clear_required_by >>
+    steps:
+    - run:
+        name: Set CLEAR_REQUIRED_BY flag
+        command: echo 'export CLEAR_REQUIRED_BY=true' >> "$BASH_ENV"
+- when:
+    condition: << parameters.check >>
+    steps:
+    - run:
+        name: Set CHECK flag
+        command: echo 'export CHECK=true' >> "$BASH_ENV"
+- run:
+    name: Wire the generated jerus-org/jci-audit orb job into a consumer's `CircleCI` config.
+    command: <<include(scripts/wire_ci.sh)>>
+    environment:
+      CONFIG: << parameters.config >>
+      ORB_JOB: << parameters.orb_job >>
+      ORB_VERSION: << parameters.orb_version >>
+      WORKFLOW: << parameters.workflow >>
+      JOB_NAME: << parameters.job_name >>
+      REQUIRES: << parameters.requires >>
+      REQUIRED_BY: << parameters.required_by >>
