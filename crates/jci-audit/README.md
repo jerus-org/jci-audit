@@ -75,12 +75,12 @@ jci-audit verify 1.2.0
 # Scaffold a standard deny.toml + derived .cargo/audit.toml
 jci-audit init
 
-# Wire the jerus-org/jci-audit orb's check job into an existing workflow in
-# .circleci/config.yml. Flags are optional overrides layered onto
-# jci-audit.toml's own [ci] table (the persistent record of what's wired);
-# omit them all to resync from what's already configured there.
-jci-audit wire-ci --workflow validation --orb-job jci-audit/check \
-  --orb-version jerus-org/jci-audit@1.0 [--check]
+# Wire the jerus-org/jci-audit orb's job(s) into an existing workflow in
+# .circleci/config.yml. jci-audit.toml's [ci] table is the required spec,
+# not CLI flags — first run scaffolds an example [[ci.jobs]] entry to
+# review and adapt by hand; every run after that applies whatever the file
+# currently says.
+jci-audit wire-ci [--config jci-audit.toml] [--check]
 ```
 
 ## Contributing
