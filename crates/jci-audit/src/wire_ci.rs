@@ -333,6 +333,25 @@ struct JobEntry {
     end: usize,
 }
 
+/// The line index immediately after one job entry's own block: scanning
+/// forward from `start + 1`, bounded by `jobs_end` — a blank line doesn't
+/// end the entry, any line back at (or above) `JOB_ENTRY_INDENT` does.
+fn find_job_entry_end(lines: &[String], start: usize, jobs_end: usize) -> usize {
+    let mut end = start + 1;
+    while end < jobs_end {
+        let line = &lines[end];
+        if line.trim().is_empty() {
+            end += 1;
+            continue;
+        }
+        if indent_of(line) <= JOB_ENTRY_INDENT {
+            break;
+        }
+        end += 1;
+    }
+    end
+}
+
 /// Walk the named workflow's `jobs:` list, bounded by indentation, and return
 /// each entry's own line range.
 fn list_workflow_job_entries(lines: &[String], workflow: &str) -> Result<Vec<JobEntry>> {
@@ -348,22 +367,9 @@ fn list_workflow_job_entries(lines: &[String], workflow: &str) -> Result<Vec<Job
             i += 1;
             continue;
         }
-        let indent = indent_of(line);
-        if indent == JOB_ENTRY_INDENT && line.trim_start().starts_with("- ") {
-            let start = i;
-            let mut end = i + 1;
-            while end < jobs_end {
-                let l = &lines[end];
-                if l.trim().is_empty() {
-                    end += 1;
-                    continue;
-                }
-                if indent_of(l) <= JOB_ENTRY_INDENT {
-                    break;
-                }
-                end += 1;
-            }
-            entries.push(JobEntry { start, end });
+        if indent_of(line) == JOB_ENTRY_INDENT && line.trim_start().starts_with("- ") {
+            let end = find_job_entry_end(lines, i, jobs_end);
+            entries.push(JobEntry { start: i, end });
             i = end;
         } else {
             i += 1;
@@ -481,60 +487,74 @@ fn find_requires_shape(lines: &[String], entry: &JobEntry) -> RequiresShape {
         };
         let rest = rest.trim();
 
-        if rest.is_empty() {
-            // Block form: a bare "requires:" key followed immediately (no
-            // interleaved blank/comment lines) by "- item" lines at
-            // indent + 2.
-            let item_indent = indent + 2;
-            let mut last_item_idx = None;
-            let mut j = i + 1;
-            while j < entry.end {
-                let l = &lines[j];
-                if l.trim().is_empty() {
-                    break;
-                }
-                if indent_of(l) == item_indent && l.trim_start().starts_with("- ") {
-                    last_item_idx = Some(j);
-                    j += 1;
-                } else {
-                    break;
-                }
-            }
-            return match last_item_idx {
-                Some(last) => RequiresShape::Block {
-                    header_idx: i,
-                    item_indent,
-                    last_item_idx: last,
-                },
-                None => RequiresShape::Unrecognized,
-            };
-        }
-
-        // Inline form: "requires: [a, b]", no trailing comment.
-        if rest.contains('#') {
-            return RequiresShape::Unrecognized;
-        }
-        let Some(inner) = rest.strip_prefix('[').and_then(|s| s.strip_suffix(']')) else {
-            return RequiresShape::Unrecognized;
-        };
-        let mut items = Vec::new();
-        for raw in inner.split(',') {
-            let raw = raw.trim();
-            if raw.is_empty() {
-                continue;
-            }
-            if raw.contains(['[', ']', '{', '}']) {
-                return RequiresShape::Unrecognized;
-            }
-            items.push(unquote(raw));
-        }
-        return RequiresShape::Inline {
-            line_idx: i,
-            indent,
-            items,
+        return if rest.is_empty() {
+            classify_requires_block(lines, i, indent, entry.end)
+        } else {
+            classify_requires_inline(i, indent, rest)
         };
     }
     RequiresShape::Absent
+}
+
+/// Block form: a bare `requires:` key at `header_idx` (own indent
+/// `header_indent`), followed immediately — no interleaved blank/comment
+/// lines — by one or more `- item` lines at `header_indent + 2`.
+fn classify_requires_block(
+    lines: &[String],
+    header_idx: usize,
+    header_indent: usize,
+    entry_end: usize,
+) -> RequiresShape {
+    let item_indent = header_indent + 2;
+    let mut last_item_idx = None;
+    let mut j = header_idx + 1;
+    while j < entry_end {
+        let l = &lines[j];
+        if l.trim().is_empty() {
+            break;
+        }
+        if indent_of(l) == item_indent && l.trim_start().starts_with("- ") {
+            last_item_idx = Some(j);
+            j += 1;
+        } else {
+            break;
+        }
+    }
+    match last_item_idx {
+        Some(last_item_idx) => RequiresShape::Block {
+            header_idx,
+            item_indent,
+            last_item_idx,
+        },
+        None => RequiresShape::Unrecognized,
+    }
+}
+
+/// Inline form: `requires: [a, b]` — no trailing comment, no item
+/// containing a nested bracket/brace.
+fn classify_requires_inline(line_idx: usize, indent: usize, rest: &str) -> RequiresShape {
+    if rest.contains('#') {
+        return RequiresShape::Unrecognized;
+    }
+    let Some(inner) = rest.strip_prefix('[').and_then(|s| s.strip_suffix(']')) else {
+        return RequiresShape::Unrecognized;
+    };
+    let mut items = Vec::new();
+    for raw in inner.split(',') {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        if raw.contains(['[', ']', '{', '}']) {
+            return RequiresShape::Unrecognized;
+        }
+        items.push(unquote(raw));
+    }
+    RequiresShape::Inline {
+        line_idx,
+        indent,
+        items,
+    }
 }
 
 /// Append `new_req` to an existing `requires:` list in place. Idempotent: a
