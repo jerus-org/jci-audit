@@ -1,0 +1,40 @@
+```
+$ jci-audit wire-ci -h
+Wire the generated jerus-org/jci-audit orb job(s) into a consumer's `CircleCI` config
+
+Usage: jci-audit wire-ci [OPTIONS]
+
+Options:
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+Input:
+      --config <CONFIG>  Path to the jci-audit.toml-shaped wiring spec to read (and, if it has no `[[ci.jobs]]` entries yet, scaffold an example into)
+
+$ jci-audit wire-ci --help
+Wire the generated jerus-org/jci-audit orb job(s) into a consumer's `CircleCI` config.
+
+`jci-audit.toml`'s own `[ci]` table is the required, authoritative spec — not CLI flags: `[ci].file` names the `CircleCI` config to patch (default `.circleci/config.yml`), and each `[[ci.jobs]]` entry describes one job to wire into one workflow (`workflow`, `orb_job`, `orb_version`, `job_name`, `requires`, `required_by`). On a repo with no `[[ci.jobs]]` entries yet, this scaffolds one example into `jci-audit.toml` — review and adapt it by hand, then re-run to apply it. See jerus-org/jci-audit#101 (PR 1: this job's own workflow) and #164 (follow-on: the release workflow's multi-job chain).
+
+For a human to run locally and commit the result — never wired into CI (there is no `--check`; see `check-ci-wiring` for that).
+
+Usage: jci-audit wire-ci [OPTIONS]
+
+Options:
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Input:
+      --config <CONFIG>
+          Path to the jci-audit.toml-shaped wiring spec to read (and, if it has no `[[ci.jobs]]` entries yet, scaffold an example into).
+          
+          Defaults to `jci-audit.toml` relative to the nearest deny.toml above the current directory. An explicit value is used as given — `[ci].file` (the `CircleCI` config to patch) then resolves relative to ITS OWN parent directory, not the workspace root.
+
+```

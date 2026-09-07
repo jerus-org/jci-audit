@@ -1,0 +1,36 @@
+```
+$ jci-audit check-ci-wiring -h
+Check that the `CircleCI` config matches `jci-audit.toml`'s `[ci]` wiring spec, without writing
+
+Usage: jci-audit check-ci-wiring [OPTIONS]
+
+Options:
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+Input:
+      --config <CONFIG>  Path to the jci-audit.toml-shaped wiring spec to read. Same resolution rules as `wire-ci --config`
+
+$ jci-audit check-ci-wiring --help
+Check that the `CircleCI` config matches `jci-audit.toml`'s `[ci]` wiring spec, without writing.
+
+The CI-facing counterpart to `wire-ci`: fails (non-zero) on drift, or if `[[ci.jobs]]` isn't configured yet, and never writes either file. This is a separate subcommand rather than a `--check` flag on `wire-ci` so the safety property review feedback on jerus-org/jci-audit#163 asked for — a CI job must never rewrite the `CircleCI` config that is currently running it — holds by construction: `check-ci-wiring`'s CLI surface has no flag that could make it write, so the orb job the generator produces for it can't be wired into a workflow in a way that regresses to write mode.
+
+Usage: jci-audit check-ci-wiring [OPTIONS]
+
+Options:
+  -v, --verbose...
+          Increase logging verbosity
+
+  -q, --quiet...
+          Decrease logging verbosity
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Input:
+      --config <CONFIG>
+          Path to the jci-audit.toml-shaped wiring spec to read. Same resolution rules as `wire-ci --config`
+
+```

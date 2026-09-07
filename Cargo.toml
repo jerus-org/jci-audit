@@ -38,6 +38,10 @@ serde_json = "1.0.151"
 # Hashing — records which Cargo.lock a release was validated against
 sha2 = "0.11.0"
 
+# Unique staging-file suffixes for wire-ci's atomic writes (fs_atomic) —
+# pinned to the same version gen-circleci-orb's own fs_atomic uses.
+uuid = { version = "1.26.0", features = ["v4"] }
+
 # SPDX license expression parsing/evaluation for the about.toml derivation
 # (license_scope) — the same crate cargo-deny itself uses internally, rather
 # than reimplementing expression evaluation by hand.

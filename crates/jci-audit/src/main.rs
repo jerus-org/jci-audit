@@ -27,6 +27,7 @@ mod check;
 mod cli;
 mod diagnostics;
 mod exceptions;
+mod fs_atomic;
 mod init;
 mod license_scope;
 mod preflight;
@@ -36,6 +37,7 @@ mod release;
 mod remote;
 mod sync;
 mod verify;
+mod wire_ci;
 
 use anyhow::Result;
 use clap::Parser;

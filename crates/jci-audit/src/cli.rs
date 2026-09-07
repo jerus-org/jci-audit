@@ -5,7 +5,9 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
 use crate::preflight::{self, Tool};
-use crate::{check, diagnostics, init, prune, publish_record, release, remote, sync, verify};
+use crate::{
+    check, diagnostics, init, prune, publish_record, release, remote, sync, verify, wire_ci,
+};
 
 /// Context-aware Rust security gate over cargo-audit and cargo-deny.
 #[derive(Debug, Parser)]
@@ -233,6 +235,53 @@ enum Commands {
         #[arg(long, value_name = "PATH", help_heading = "Record")]
         record_path: Option<std::path::PathBuf>,
     },
+    /// Wire the generated jerus-org/jci-audit orb job(s) into a consumer's
+    /// `CircleCI` config.
+    ///
+    /// `jci-audit.toml`'s own `[ci]` table is the required, authoritative
+    /// spec — not CLI flags: `[ci].file` names the `CircleCI` config to patch
+    /// (default `.circleci/config.yml`), and each `[[ci.jobs]]` entry
+    /// describes one job to wire into one workflow (`workflow`, `orb_job`,
+    /// `orb_version`, `job_name`, `requires`, `required_by`). On a repo with
+    /// no `[[ci.jobs]]` entries yet, this scaffolds one example into
+    /// `jci-audit.toml` — review and adapt it by hand, then re-run to apply
+    /// it. See jerus-org/jci-audit#101 (PR 1: this job's own workflow) and
+    /// #164 (follow-on: the release workflow's multi-job chain).
+    ///
+    /// For a human to run locally and commit the result — never wired into
+    /// CI (there is no `--check`; see `check-ci-wiring` for that).
+    #[command(name = "wire-ci")]
+    WireCi {
+        /// Path to the jci-audit.toml-shaped wiring spec to read (and, if
+        /// it has no `[[ci.jobs]]` entries yet, scaffold an example into).
+        ///
+        /// Defaults to `jci-audit.toml` relative to the nearest deny.toml
+        /// above the current directory. An explicit value is used as
+        /// given — `[ci].file` (the `CircleCI` config to patch) then
+        /// resolves relative to ITS OWN parent directory, not the
+        /// workspace root.
+        #[arg(long, help_heading = "Input")]
+        config: Option<std::path::PathBuf>,
+    },
+    /// Check that the `CircleCI` config matches `jci-audit.toml`'s `[ci]`
+    /// wiring spec, without writing.
+    ///
+    /// The CI-facing counterpart to `wire-ci`: fails (non-zero) on drift, or
+    /// if `[[ci.jobs]]` isn't configured yet, and never writes either file.
+    /// This is a separate subcommand rather than a `--check` flag on
+    /// `wire-ci` so the safety property review feedback on
+    /// jerus-org/jci-audit#163 asked for — a CI job must never rewrite the
+    /// `CircleCI` config that is currently running it — holds by
+    /// construction: `check-ci-wiring`'s CLI surface has no flag that could
+    /// make it write, so the orb job the generator produces for it can't be
+    /// wired into a workflow in a way that regresses to write mode.
+    #[command(name = "check-ci-wiring")]
+    CheckCiWiring {
+        /// Path to the jci-audit.toml-shaped wiring spec to read. Same
+        /// resolution rules as `wire-ci --config`.
+        #[arg(long, help_heading = "Input")]
+        config: Option<std::path::PathBuf>,
+    },
 }
 
 impl Cli {
@@ -305,6 +354,8 @@ impl Cli {
                 *publish,
                 record_path.as_deref(),
             ),
+            Commands::WireCi { config } => run_wire_ci(config.as_deref(), false),
+            Commands::CheckCiWiring { config } => run_wire_ci(config.as_deref(), true),
         }
     }
 }
@@ -505,6 +556,55 @@ fn run_sync(check: bool) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Print one wired file's outcome and report whether it drifted. Mirrors
+/// `report_sync_outcome`'s shape.
+fn report_wire_ci_outcome(path: &str, outcome: wire_ci::WriteOutcome) -> bool {
+    match outcome {
+        wire_ci::WriteOutcome::InSync => {
+            println!("{path} is in sync");
+            false
+        }
+        wire_ci::WriteOutcome::Wrote => {
+            println!("wrote {path}");
+            false
+        }
+        wire_ci::WriteOutcome::Drift => {
+            eprintln!("{path} is out of sync");
+            true
+        }
+    }
+}
+
+/// Shells out to nothing — no `preflight::ensure_available` call, unlike
+/// every other subcommand here. Path resolution (the spec file itself, and
+/// `[ci].file` relative to it) lives in `wire_ci::wire_ci_at` — there is
+/// only one path to resolve here now, unlike the two independent ones
+/// before jerus-org/jci-audit#163's design was reworked around a
+/// config-file-is-authoritative model.
+fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    tracing::info!(check, "wire-ci");
+
+    match wire_ci::wire_ci_at(&cwd, config, check)? {
+        wire_ci::WireCiOutcome::Scaffolded => {
+            println!(
+                "no [[ci.jobs]] entries found — scaffolded an example into jci-audit.toml; \
+                 review and adapt it, then re-run `jci-audit wire-ci` to apply it"
+            );
+            Ok(())
+        }
+        wire_ci::WireCiOutcome::Configured {
+            ci_file_path,
+            ci_file,
+        } => {
+            if report_wire_ci_outcome(&ci_file_path.display().to_string(), ci_file) {
+                bail!("out of sync — run `jci-audit wire-ci` to apply");
+            }
+            Ok(())
+        }
+    }
 }
 
 fn run_prune(check: bool) -> Result<()> {
@@ -1114,6 +1214,49 @@ mod tests {
     fn parse_prune_and_init() {
         assert!(Cli::try_parse_from(["jci-audit", "prune"]).is_ok());
         assert!(Cli::try_parse_from(["jci-audit", "init", "--force"]).is_ok());
+    }
+
+    /// `wire-ci` has no `--check` — it can only ever apply. Keeping it a
+    /// safe-only *write* command (and excluding it from orb generation via
+    /// `[subcommand.wire-ci] interactive = true`) means the CI-facing verb is
+    /// `check-ci-wiring`, whose own CLI surface has no way to write at all —
+    /// jerus-org/jci-audit#163's review feedback wanted this guaranteed by
+    /// construction, not by a consumer remembering to pass a flag.
+    #[test]
+    fn wire_ci_has_no_check_flag() {
+        assert!(Cli::try_parse_from(["jci-audit", "wire-ci", "--check"]).is_err());
+    }
+
+    #[test]
+    fn parse_wire_ci_config_override() {
+        let cli = Cli::try_parse_from(["jci-audit", "wire-ci", "--config", "other.toml"])
+            .expect("parses");
+        match cli.command {
+            Commands::WireCi { config } => {
+                assert_eq!(config, Some(std::path::PathBuf::from("other.toml")));
+            }
+            other => panic!("expected WireCi, got {other:?}"),
+        }
+    }
+
+    /// `check-ci-wiring` is the CI-facing counterpart — it can only ever
+    /// check (no flag toggles that), so the orb job the generator produces
+    /// for it has no parameter that could regress it into a write.
+    #[test]
+    fn check_ci_wiring_has_no_check_flag() {
+        assert!(Cli::try_parse_from(["jci-audit", "check-ci-wiring", "--check"]).is_err());
+    }
+
+    #[test]
+    fn parse_check_ci_wiring_config_override() {
+        let cli = Cli::try_parse_from(["jci-audit", "check-ci-wiring", "--config", "other.toml"])
+            .expect("parses");
+        match cli.command {
+            Commands::CheckCiWiring { config } => {
+                assert_eq!(config, Some(std::path::PathBuf::from("other.toml")));
+            }
+            other => panic!("expected CheckCiWiring, got {other:?}"),
+        }
     }
 
     #[test]
