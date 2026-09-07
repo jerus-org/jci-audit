@@ -248,8 +248,15 @@ enum Commands {
     #[command(name = "wire-ci")]
     WireCi {
         /// Path to the `CircleCI` config file to patch.
-        #[arg(long, default_value = ".circleci/config.yml", help_heading = "Input")]
-        config: std::path::PathBuf,
+        ///
+        /// Defaults to `.circleci/config.yml` relative to the nearest
+        /// deny.toml above the current directory — the same discovery
+        /// convention `publish-record --record-path`'s own default uses —
+        /// rather than the current directory itself, so this command
+        /// behaves the same whether run from the workspace root or a
+        /// crate subdirectory. An explicit value here is used as given.
+        #[arg(long, help_heading = "Input")]
+        config: Option<std::path::PathBuf>,
 
         /// The orb job to wire in, e.g. "jci-audit/check".
         #[arg(long, help_heading = "Input")]
@@ -274,7 +281,7 @@ enum Commands {
         /// Jobs this new job's own `requires:` should list. Repeatable; any
         /// use replaces the configured list outright, it never merges with
         /// it.
-        #[arg(long, help_heading = "Placement")]
+        #[arg(long, help_heading = "Placement", conflicts_with = "clear_requires")]
         requires: Vec<String>,
 
         /// Clear the configured `requires:` list instead of leaving it
@@ -292,7 +299,7 @@ enum Commands {
         /// list form; jci-audit never invents one on a job it doesn't own —
         /// add it by hand first. Repeatable; any use replaces the configured
         /// list outright.
-        #[arg(long, help_heading = "Placement")]
+        #[arg(long, help_heading = "Placement", conflicts_with = "clear_required_by")]
         required_by: Vec<String>,
 
         /// Clear the configured `required_by:` list instead of leaving it
@@ -396,7 +403,7 @@ impl Cli {
                     requires: list_override(requires, *clear_requires),
                     required_by: list_override(required_by, *clear_required_by),
                 };
-                run_wire_ci(config, &overrides, *check)
+                run_wire_ci(config.as_deref(), &overrides, *check)
             }
         }
     }
@@ -634,20 +641,41 @@ fn report_wire_ci_outcome(path: &str, outcome: wire_ci::WriteOutcome) -> bool {
     }
 }
 
+/// `--config`'s default, resolved relative to the discovered workspace root
+/// (the same directory as `deny.toml`/`jci-audit.toml`) rather than the
+/// current directory — mirrors `resolve_publish_record_path`'s identical
+/// "explicit override used as given, otherwise root-relative" shape, so
+/// `wire-ci` behaves the same whether run from the workspace root or a
+/// crate subdirectory.
+fn resolve_wire_ci_config_path(
+    start: &std::path::Path,
+    config_override: Option<&std::path::Path>,
+) -> Result<std::path::PathBuf> {
+    if let Some(p) = config_override {
+        return Ok(p.to_path_buf());
+    }
+    let (deny_path, _) = sync::locate_paths(start)?;
+    let root = deny_path
+        .parent()
+        .context("deny.toml has no parent directory")?;
+    Ok(root.join(".circleci/config.yml"))
+}
+
 /// Shells out to nothing — no `preflight::ensure_available` call, unlike
 /// every other subcommand here.
 fn run_wire_ci(
-    config: &std::path::Path,
+    config: Option<&std::path::Path>,
     overrides: &wire_ci::WireCiOverrides,
     check: bool,
 ) -> Result<()> {
     let cwd = std::env::current_dir()?;
-    tracing::info!(check, config = %config.display(), "wire-ci");
+    let config_path = resolve_wire_ci_config_path(&cwd, config)?;
+    tracing::info!(check, config = %config_path.display(), "wire-ci");
 
-    let outcome = wire_ci::wire_ci_at(&cwd, config, overrides, check)?;
+    let outcome = wire_ci::wire_ci_at(&cwd, &config_path, overrides, check)?;
 
     let mut drifted = report_wire_ci_outcome("jci-audit.toml", outcome.config_record);
-    drifted |= report_wire_ci_outcome(&config.display().to_string(), outcome.ci_file);
+    drifted |= report_wire_ci_outcome(&config_path.display().to_string(), outcome.ci_file);
 
     if drifted {
         bail!("one or more files are out of sync — run `jci-audit wire-ci` to apply");
@@ -1115,6 +1143,34 @@ mod tests {
     fn resolve_publish_record_path_errors_with_no_override_and_no_deny_toml() {
         let bare = tempfile::tempdir().unwrap();
         assert!(resolve_publish_record_path(bare.path(), "1.2.0", None).is_err());
+    }
+
+    #[test]
+    fn resolve_wire_ci_config_path_prefers_the_explicit_override() {
+        let bare = tempfile::tempdir().unwrap();
+        let override_path = std::path::Path::new("/tmp/workspace/.circleci/config.yml");
+        let resolved = resolve_wire_ci_config_path(bare.path(), Some(override_path)).unwrap();
+        assert_eq!(resolved, override_path);
+    }
+
+    #[test]
+    fn resolve_wire_ci_config_path_falls_back_to_deny_toml_relative_discovery() {
+        // Running from a crate subdirectory must resolve the default
+        // .circleci/config.yml against the workspace root, not the
+        // subdirectory itself.
+        let repo = tempfile::tempdir().unwrap();
+        write(&repo.path().join("deny.toml"), "");
+        let subdir = repo.path().join("crates/jci-audit");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let resolved = resolve_wire_ci_config_path(&subdir, None).unwrap();
+        assert_eq!(resolved, repo.path().join(".circleci/config.yml"));
+    }
+
+    #[test]
+    fn resolve_wire_ci_config_path_errors_with_no_override_and_no_deny_toml() {
+        let bare = tempfile::tempdir().unwrap();
+        assert!(resolve_wire_ci_config_path(bare.path(), None).is_err());
     }
 
     #[test]

@@ -249,8 +249,16 @@ fn find_section_end(lines: &[String], header: &str) -> Option<usize> {
 /// The line index of the named workflow's own `jobs:` key line, or `None` if
 /// the workflow (or its `jobs:` key) isn't found.
 fn find_workflow_jobs_line(lines: &[String], workflow: &str) -> Option<usize> {
+    // Scoped to after the top-level `workflows:` key, not searched anywhere
+    // in the file — a top-level reusable `jobs:` template can share a name
+    // with a workflow, and must never be mistaken for it.
+    let workflows_start = lines.iter().position(|l| l.trim_end() == "workflows:")?;
     let header = format!("  {workflow}:");
-    let start = lines.iter().position(|l| l.trim_end() == header)?;
+    let start = lines[workflows_start + 1..]
+        .iter()
+        .position(|l| l.trim_end() == header)?
+        + workflows_start
+        + 1;
     let mut i = start + 1;
     while i < lines.len() {
         let line = &lines[i];
@@ -341,7 +349,14 @@ fn list_workflow_job_entries(lines: &[String], workflow: &str) -> Result<Vec<Job
 /// string — the matching rule for `--requires`/`--required-by`/idempotency.
 /// Exact, case-sensitive.
 fn effective_name(lines: &[String], entry: &JobEntry) -> String {
+    // Only the job's own direct param level — a nested step further down
+    // (e.g. `steps: - run: name: "Run tests"`) has its own unrelated
+    // `name:` at a deeper indent and must not be mistaken for the job's
+    // identity.
     for line in &lines[entry.start..entry.end] {
+        if indent_of(line) != JOB_PARAM_INDENT {
+            continue;
+        }
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("name:") {
             return unquote(rest.trim());
@@ -612,7 +627,14 @@ fn wire_job_into(content: &str, config: &CiConfig) -> Result<String> {
     let pin_key = format!("  {orb_name}:");
     let already_pinned = lines.iter().any(|l| l.trim_end().starts_with(&pin_key));
     if !already_pinned {
-        let version = config.orb_version.as_deref().unwrap_or(orb_job);
+        // No fallback to orb_job here: that would silently pin
+        // "jci-audit: jci-audit/check" — a job path, not a version — which
+        // is invalid CircleCI YAML and (since the pin is then presence-only
+        // idempotent) would never self-correct on a later run.
+        let version = config.orb_version.as_deref().context(
+            "no orb version configured — run with --orb-version (e.g. \
+             jerus-org/jci-audit@1.0) to pin it",
+        )?;
         let pin_line = format!("  {orb_name}: {version}");
         let Some(end) = find_section_end(&lines, "orbs:") else {
             bail!("no top-level 'orbs:' section found in the CI config file");
@@ -985,6 +1007,36 @@ workflows:
     }
 
     #[test]
+    fn find_workflow_jobs_line_ignores_a_same_named_job_template_before_workflows() {
+        // A top-level reusable job template can share a name with a
+        // workflow — the search must not match it before reaching the
+        // actual `workflows:` section.
+        let content = "\
+version: 2.1
+jobs:
+  validation:
+    steps:
+      - checkout
+workflows:
+  validation:
+    jobs:
+      - toolkit/common_tests
+";
+        let lines = lines_of(content);
+        let jobs_line = find_workflow_jobs_line(&lines, "validation").unwrap();
+        assert_eq!(lines[jobs_line].trim(), "jobs:");
+        assert_eq!(lines[jobs_line - 1].trim_end(), "  validation:");
+        // the correct "  validation:" is the SECOND one, under workflows:
+        assert!(
+            jobs_line
+                > lines
+                    .iter()
+                    .position(|l| l.trim_end() == "workflows:")
+                    .unwrap()
+        );
+    }
+
+    #[test]
     fn find_workflow_jobs_end_stops_at_next_workflow() {
         let lines = lines_of(CONFIG_BASE);
         let end = find_workflow_jobs_end(&lines, "validation").unwrap();
@@ -1020,6 +1072,22 @@ workflows:
         let lines = lines_of(content);
         let entries = list_workflow_job_entries(&lines, "validation").unwrap();
         assert_eq!(effective_name(&lines, &entries[0]), "audit");
+    }
+
+    #[test]
+    fn effective_name_ignores_a_nested_steps_own_name_field() {
+        let content = "\
+workflows:
+  validation:
+    jobs:
+      - build-and-test:
+          steps:
+            - run:
+                name: \"Run tests\"
+";
+        let lines = lines_of(content);
+        let entries = list_workflow_job_entries(&lines, "validation").unwrap();
+        assert_eq!(effective_name(&lines, &entries[0]), "build-and-test");
     }
 
     // -- find_requires_shape ---------------------------------------------
@@ -1215,6 +1283,15 @@ workflows:
     }
 
     #[test]
+    fn wire_job_into_errs_instead_of_pinning_an_invalid_placeholder_version() {
+        let mut config = base_config();
+        config.orb_version = None;
+        let err = wire_job_into(CONFIG_BASE, &config).unwrap_err().to_string();
+        assert!(err.contains("no orb version configured"), "got: {err}");
+        assert!(!CONFIG_BASE.contains("jci-audit"));
+    }
+
+    #[test]
     fn wire_job_into_aggregates_all_required_by_failures() {
         let mut config = base_config();
         config.required_by = vec![
@@ -1332,6 +1409,7 @@ workflows:
         let overrides = WireCiOverrides {
             workflow: Some("validation".to_string()),
             orb_job: Some("jci-audit/check".to_string()),
+            orb_version: Some("jerus-org/jci-audit@1.0".to_string()),
             ..Default::default()
         };
         wire_ci_at(dir.path(), &config_path, &overrides, false).unwrap();
@@ -1359,6 +1437,7 @@ workflows:
         let overrides = WireCiOverrides {
             workflow: Some("validation".to_string()),
             orb_job: Some("jci-audit/check".to_string()),
+            orb_version: Some("jerus-org/jci-audit@1.0".to_string()),
             ..Default::default()
         };
         wire_ci_at(dir.path(), &config_path, &overrides, false).unwrap();
@@ -1380,6 +1459,7 @@ workflows:
         let overrides = WireCiOverrides {
             workflow: Some("validation".to_string()),
             orb_job: Some("jci-audit/check".to_string()),
+            orb_version: Some("jerus-org/jci-audit@1.0".to_string()),
             ..Default::default()
         };
         wire_ci_at(dir.path(), &config_path, &overrides, false).unwrap();
