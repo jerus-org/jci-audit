@@ -1,0 +1,28 @@
+```
+$ jci-audit wire-ci -h
+Wire the generated jerus-org/jci-audit orb job into a consumer's `CircleCI` config
+
+Usage: jci-audit wire-ci [OPTIONS]
+
+Options:
+  -v, --verbose...  Increase logging verbosity
+  -q, --quiet...    Decrease logging verbosity
+  -h, --help        Print help (see more with '--help')
+
+Input:
+      --config <CONFIG>            Path to the `CircleCI` config file to patch [default: .circleci/config.yml]
+      --orb-job <ORB_JOB>          The orb job to wire in, e.g. "jci-audit/check"
+      --orb-version <ORB_VERSION>  The orb version pin, e.g. "jerus-org/jci-audit@1.0". Only applied when the orb isn't already pinned — re-running with a bumped version does not resync an existing pin
+      --workflow <WORKFLOW>        The workflow to wire the job into, e.g. "validation". Must already exist in the target config file — this command wires into an existing workflow, it does not scaffold one
+      --job-name <JOB_NAME>        Optional `name:` param for the new job entry
+
+Placement:
+      --requires <REQUIRES>        Jobs this new job's own `requires:` should list. Repeatable; any use replaces the configured list outright, it never merges with it
+      --clear-requires             Clear the configured `requires:` list instead of leaving it unchanged (a bare `--requires` cannot express "clear the list" on its own — a repeatable flag given zero times just means "not given")
+      --required-by <REQUIRED_BY>  Existing jobs in the same workflow whose own `requires:` should gain this new job. Matched by effective name: a target's own `name:` override if it declares one, else its bare job/orb-job string — exact, case-sensitive. Each target must already have a `requires:` key in a plain inline (`requires: [a, b]`) or block list form; jci-audit never invents one on a job it doesn't own — add it by hand first. Repeatable; any use replaces the configured list outright
+      --clear-required-by          Clear the configured `required_by:` list instead of leaving it unchanged (see `--clear-requires`)
+
+Output:
+      --check  Fail (non-zero) on drift instead of writing either file. For CI
+
+```

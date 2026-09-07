@@ -185,8 +185,10 @@ pub(crate) fn extract_license_policy(deny_toml: &str) -> Result<LicensePolicy> {
 /// `render_audit_toml` produces for `.cargo/audit.toml`, by hand-formatting a
 /// string there since that file is rendered from scratch; here the array is
 /// inserted into an existing document via `toml_edit`, so the formatting has
-/// to be set on the `Array`/`Value` decor directly instead).
-fn multiline_array<I: IntoIterator<Item = String>>(items: I) -> Array {
+/// to be set on the `Array`/`Value` decor directly instead). `pub(crate)`
+/// since [`crate::wire_ci`]'s `jci-audit.toml` writer reuses it for the
+/// `[ci]` table's own list fields.
+pub(crate) fn multiline_array<I: IntoIterator<Item = String>>(items: I) -> Array {
     let mut arr = Array::new();
     for item in items {
         let mut v = Value::from(item);

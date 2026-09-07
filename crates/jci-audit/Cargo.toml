@@ -59,9 +59,17 @@ pcu-release-assets.workspace = true
 tokio.workspace = true
 reqwest.workspace = true
 
-# NOTE: config, serde, thiserror are declared in the workspace dependency
-# catalog and switched on when a phase needs them — `config` is reserved for
-# a future `jci-audit.toml` config file, not yet built.
+# Unique staging-file suffixes for wire-ci's atomic writes to jci-audit.toml
+# and the consumer's .circleci/config.yml (fs_atomic).
+uuid.workspace = true
+
+# NOTE: serde, thiserror are declared in the workspace dependency catalog and
+# switched on when a phase needs them. jci-audit.toml (wire-ci, #101) is read
+# and written via toml_edit::DocumentMut instead of the `config` crate +
+# serde — matching every other config-parsing module in this codebase
+# (sync.rs, release.rs), which manually traverse toml_edit rather than
+# deserialize into a struct, so drift/comments/formatting in the rest of the
+# file survive a targeted write untouched.
 
 [dev-dependencies]
 tempfile.workspace = true

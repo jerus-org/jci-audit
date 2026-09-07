@@ -5,7 +5,9 @@ use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
 use crate::preflight::{self, Tool};
-use crate::{check, diagnostics, init, prune, publish_record, release, remote, sync, verify};
+use crate::{
+    check, diagnostics, init, prune, publish_record, release, remote, sync, verify, wire_ci,
+};
 
 /// Context-aware Rust security gate over cargo-audit and cargo-deny.
 #[derive(Debug, Parser)]
@@ -233,6 +235,75 @@ enum Commands {
         #[arg(long, value_name = "PATH", help_heading = "Record")]
         record_path: Option<std::path::PathBuf>,
     },
+    /// Wire the generated jerus-org/jci-audit orb job into a consumer's
+    /// `CircleCI` config.
+    ///
+    /// Wires ONE orb job into ONE named workflow (jerus-org/jci-audit#101,
+    /// PR 1 of 2 — release-workflow wiring for `release_prep`/`publish_record`
+    /// is out of scope here, tracked as a follow-on issue). Every flag below
+    /// is an optional override layered onto jci-audit.toml's own `[ci]` table,
+    /// which is the persistent record of what should be wired — omit them
+    /// all to resync from whatever is already configured there. The merged
+    /// result is written back to jci-audit.toml as part of the same run.
+    #[command(name = "wire-ci")]
+    WireCi {
+        /// Path to the `CircleCI` config file to patch.
+        #[arg(long, default_value = ".circleci/config.yml", help_heading = "Input")]
+        config: std::path::PathBuf,
+
+        /// The orb job to wire in, e.g. "jci-audit/check".
+        #[arg(long, help_heading = "Input")]
+        orb_job: Option<String>,
+
+        /// The orb version pin, e.g. "jerus-org/jci-audit@1.0". Only applied
+        /// when the orb isn't already pinned — re-running with a bumped
+        /// version does not resync an existing pin.
+        #[arg(long, help_heading = "Input")]
+        orb_version: Option<String>,
+
+        /// The workflow to wire the job into, e.g. "validation". Must
+        /// already exist in the target config file — this command wires
+        /// into an existing workflow, it does not scaffold one.
+        #[arg(long, help_heading = "Input")]
+        workflow: Option<String>,
+
+        /// Optional `name:` param for the new job entry.
+        #[arg(long, help_heading = "Input")]
+        job_name: Option<String>,
+
+        /// Jobs this new job's own `requires:` should list. Repeatable; any
+        /// use replaces the configured list outright, it never merges with
+        /// it.
+        #[arg(long, help_heading = "Placement")]
+        requires: Vec<String>,
+
+        /// Clear the configured `requires:` list instead of leaving it
+        /// unchanged (a bare `--requires` cannot express "clear the list" on
+        /// its own — a repeatable flag given zero times just means "not
+        /// given").
+        #[arg(long, help_heading = "Placement")]
+        clear_requires: bool,
+
+        /// Existing jobs in the same workflow whose own `requires:` should
+        /// gain this new job. Matched by effective name: a target's own
+        /// `name:` override if it declares one, else its bare job/orb-job
+        /// string — exact, case-sensitive. Each target must already have a
+        /// `requires:` key in a plain inline (`requires: [a, b]`) or block
+        /// list form; jci-audit never invents one on a job it doesn't own —
+        /// add it by hand first. Repeatable; any use replaces the configured
+        /// list outright.
+        #[arg(long, help_heading = "Placement")]
+        required_by: Vec<String>,
+
+        /// Clear the configured `required_by:` list instead of leaving it
+        /// unchanged (see `--clear-requires`).
+        #[arg(long, help_heading = "Placement")]
+        clear_required_by: bool,
+
+        /// Fail (non-zero) on drift instead of writing either file. For CI.
+        #[arg(long, help_heading = "Output")]
+        check: bool,
+    },
 }
 
 impl Cli {
@@ -305,7 +376,44 @@ impl Cli {
                 *publish,
                 record_path.as_deref(),
             ),
+            Commands::WireCi {
+                config,
+                orb_job,
+                orb_version,
+                workflow,
+                job_name,
+                requires,
+                clear_requires,
+                required_by,
+                clear_required_by,
+                check,
+            } => {
+                let overrides = wire_ci::WireCiOverrides {
+                    workflow: workflow.clone(),
+                    orb_job: orb_job.clone(),
+                    orb_version: orb_version.clone(),
+                    job_name: job_name.clone(),
+                    requires: list_override(requires, *clear_requires),
+                    required_by: list_override(required_by, *clear_required_by),
+                };
+                run_wire_ci(config, &overrides, *check)
+            }
         }
+    }
+}
+
+/// A repeatable `Vec<String>` flag paired with its own `--clear-*` boolean
+/// cannot express "not given" vs. "given, replace with empty" any other way
+/// — clap represents zero occurrences of a repeatable flag identically to a
+/// flag given with no values, so the explicit clear flag is the only
+/// unambiguous way to request an empty list.
+fn list_override(values: &[String], clear: bool) -> Option<Vec<String>> {
+    if clear {
+        Some(Vec::new())
+    } else if values.is_empty() {
+        None
+    } else {
+        Some(values.to_vec())
     }
 }
 
@@ -503,6 +611,46 @@ fn run_sync(check: bool) -> Result<()> {
         bail!(
             "one or more files are out of sync with deny.toml — run `jci-audit sync` to regenerate"
         );
+    }
+    Ok(())
+}
+
+/// Print one wired file's outcome and report whether it drifted. Mirrors
+/// `report_sync_outcome`'s shape.
+fn report_wire_ci_outcome(path: &str, outcome: wire_ci::WriteOutcome) -> bool {
+    match outcome {
+        wire_ci::WriteOutcome::InSync => {
+            println!("{path} is in sync");
+            false
+        }
+        wire_ci::WriteOutcome::Wrote => {
+            println!("wrote {path}");
+            false
+        }
+        wire_ci::WriteOutcome::Drift => {
+            eprintln!("{path} is out of sync");
+            true
+        }
+    }
+}
+
+/// Shells out to nothing — no `preflight::ensure_available` call, unlike
+/// every other subcommand here.
+fn run_wire_ci(
+    config: &std::path::Path,
+    overrides: &wire_ci::WireCiOverrides,
+    check: bool,
+) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    tracing::info!(check, config = %config.display(), "wire-ci");
+
+    let outcome = wire_ci::wire_ci_at(&cwd, config, overrides, check)?;
+
+    let mut drifted = report_wire_ci_outcome("jci-audit.toml", outcome.config_record);
+    drifted |= report_wire_ci_outcome(&config.display().to_string(), outcome.ci_file);
+
+    if drifted {
+        bail!("one or more files are out of sync — run `jci-audit wire-ci` to apply");
     }
     Ok(())
 }
