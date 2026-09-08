@@ -24,7 +24,7 @@ Output:
 $ jci-audit release-prep --help
 Release gate: reproducible, pinned-advisory-db validation.
 
-Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; see jerus-org/jci-audit#75 for how it is distributed from there.
+Locks `cargo-deny` to the pinned commit and runs it offline; `cargo-audit` runs live as a non-blocking currency check. Writes the record locally to `.security/release-<VERSION>.json`; `publish-record` signs it and attaches it to the release.
 
 Usage: jci-audit release-prep [OPTIONS] <VERSION>
 

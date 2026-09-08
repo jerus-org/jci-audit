@@ -81,8 +81,8 @@ enum Commands {
     ///
     /// Locks `cargo-deny` to the pinned commit and runs it offline;
     /// `cargo-audit` runs live as a non-blocking currency check. Writes the
-    /// record locally to `.security/release-<VERSION>.json`; see
-    /// jerus-org/jci-audit#75 for how it is distributed from there.
+    /// record locally to `.security/release-<VERSION>.json`; `publish-record`
+    /// signs it and attaches it to the release.
     #[command(name = "release-prep")]
     Release {
         /// The release version being validated (e.g. "1.2.0").
@@ -172,9 +172,9 @@ enum Commands {
         /// When a local record is found: re-scopes the dependency digest to
         /// just this crate's reachable graph and looks for the record at
         /// `.security/<package>-release-<VERSION>.json`, matching
-        /// `release-prep`'s own per-crate release sequence (garden-level
-        /// CLAUDE.md, jerus-org/jci-audit#62). Omit for a single-crate
-        /// workspace's whole-graph record — unchanged behaviour.
+        /// `release-prep`'s own per-crate release sequence. Omit for a
+        /// single-crate workspace's whole-graph record — unchanged
+        /// behaviour.
         ///
         /// On the remote-fetch fallback (no local record): resolved against
         /// the release repo's workspace instead, for the stronger Cargo.toml
@@ -201,7 +201,7 @@ enum Commands {
     /// own. Generates a one-use minisign keypair, signs the local record
     /// `release-prep` already wrote, uploads the record/.sig/.pub to the
     /// named release, and (with --publish) un-drafts it. The private key
-    /// never leaves this one process. See jerus-org/jci-audit#75.
+    /// never leaves this one process.
     #[command(name = "publish-record")]
     PublishRecord {
         /// The release version whose record to publish (e.g. "1.2.0").
@@ -246,8 +246,7 @@ enum Commands {
     /// any of the orb job's own custom parameters). On a repo with
     /// no `[[ci.jobs]]` entries yet, this scaffolds one example into
     /// `jci-audit.toml` — review and adapt it by hand, then re-run to apply
-    /// it. See jerus-org/jci-audit#101 (PR 1: this job's own workflow) and
-    /// #164 (follow-on: the release workflow's multi-job chain).
+    /// it.
     ///
     /// For a human to run locally and commit the result — never wired into
     /// CI (there is no `--check`; see `check-ci-wiring` for that).
@@ -270,8 +269,7 @@ enum Commands {
     /// The CI-facing counterpart to `wire-ci`: fails (non-zero) on drift, or
     /// if `[[ci.jobs]]` isn't configured yet, and never writes either file.
     /// This is a separate subcommand rather than a `--check` flag on
-    /// `wire-ci` so the safety property review feedback on
-    /// jerus-org/jci-audit#163 asked for — a CI job must never rewrite the
+    /// `wire-ci` because a CI job must never be able to rewrite the
     /// `CircleCI` config that is currently running it — holds by
     /// construction: `check-ci-wiring`'s CLI surface has no flag that could
     /// make it write, so the orb job the generator produces for it can't be
