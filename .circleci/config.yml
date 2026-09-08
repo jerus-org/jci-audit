@@ -13,7 +13,7 @@ orbs:
   # Self-contained: jci-audit/check runs the published binary in its own
   # public image (orb/Dockerfile) — no dependency on the private toolkit's
   # executors or container.
-  jci-audit: jerus-org/jci-audit@0.1.10
+  jci-audit: jerus-org/jci-audit@0.1.11
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.10
@@ -79,10 +79,11 @@ workflows:
       # multiple-versions is "deny" (jerus-org/jci-audit#31 follow-up): it
       # forces `[[bans.skip]]` to stay trimmed to genuinely in-force
       # exceptions, the same way deny_unused_licenses forces the allow list.
+      # >>> jci-audit wire-ci (managed — edits overwritten by re-running 'jci-audit wire-ci')
       - jci-audit/check:
           deny_unused_licenses: true
           deny_stale_exceptions: true
-
+      # <<< jci-audit wire-ci
       - toolkit/security:
           name: security with sonarcloud
           # jci-audit/check above already covers cargo-audit unfiltered; this
