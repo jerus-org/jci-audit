@@ -242,7 +242,8 @@ enum Commands {
     /// spec — not CLI flags: `[ci].file` names the `CircleCI` config to patch
     /// (default `.circleci/config.yml`), and each `[[ci.jobs]]` entry
     /// describes one job to wire into one workflow (`workflow`, `orb_job`,
-    /// `orb_version`, `job_name`, `requires`, `required_by`). On a repo with
+    /// `orb_version`, `job_name`, `requires`, `required_by`, `params` for
+    /// any of the orb job's own custom parameters). On a repo with
     /// no `[[ci.jobs]]` entries yet, this scaffolds one example into
     /// `jci-audit.toml` — review and adapt it by hand, then re-run to apply
     /// it. See jerus-org/jci-audit#101 (PR 1: this job's own workflow) and
