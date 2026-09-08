@@ -587,7 +587,10 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
     tracing::info!(check, "wire-ci");
 
     match wire_ci::wire_ci_at(&cwd, config, check)? {
-        wire_ci::WireCiOutcome::Scaffolded => {
+        wire_ci::WireCiOutcome::Scaffolded { notes } => {
+            for note in &notes {
+                println!("{note}");
+            }
             println!(
                 "no [[ci.jobs]] entries found — scaffolded an example into jci-audit.toml; \
                  review and adapt it, then re-run `jci-audit wire-ci` to apply it"
@@ -595,10 +598,24 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
             Ok(())
         }
         wire_ci::WireCiOutcome::Configured {
+            toml_path,
+            toml,
             ci_file_path,
             ci_file,
+            notes,
         } => {
-            if report_wire_ci_outcome(&ci_file_path.display().to_string(), ci_file) {
+            // Printed before the outcome lines, in both check and write
+            // mode: under --check this is the "effect of alignment" a
+            // customer needs before deciding whether to amend jci-audit.toml
+            // first (jerus-org/jci-audit#171); under write mode it's the
+            // audit trail for what just happened.
+            for note in &notes {
+                println!("{note}");
+            }
+            let toml_out_of_sync = report_wire_ci_outcome(&toml_path.display().to_string(), toml);
+            let ci_out_of_sync =
+                report_wire_ci_outcome(&ci_file_path.display().to_string(), ci_file);
+            if toml_out_of_sync || ci_out_of_sync {
                 bail!("out of sync — run `jci-audit wire-ci` to apply");
             }
             Ok(())
