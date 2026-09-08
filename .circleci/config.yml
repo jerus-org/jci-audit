@@ -105,6 +105,10 @@ workflows:
               ignore:
                 - /pull\/[0-9]+/
                 - main
+
+      # >>> jci-audit wire-ci (managed — edits overwritten by re-running 'jci-audit wire-ci')
+      - jci-audit/check_ci_wiring
+      # <<< jci-audit wire-ci
       # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
