@@ -71,7 +71,7 @@ Input:
   -p, --package <PACKAGE>
           The crate's package name (its `[package].name` in Cargo.toml, e.g. "jci-audit") — cargo's own `-p`/`--package` convention. Resolved from the workspace's own `cargo metadata`, not a raw path. Must match whatever `release-prep --package` (if any) the record was written under.
           
-          When a local record is found: re-scopes the dependency digest to just this crate's reachable graph and looks for the record at `.security/<package>-release-<VERSION>.json`, matching `release-prep`'s own per-crate release sequence (garden-level CLAUDE.md, jerus-org/jci-audit#62). Omit for a single-crate workspace's whole-graph record — unchanged behaviour.
+          When a local record is found: re-scopes the dependency digest to just this crate's reachable graph and looks for the record at `.security/<package>-release-<VERSION>.json`, matching `release-prep`'s own per-crate release sequence. Omit for a single-crate workspace's whole-graph record — unchanged behaviour.
           
           On the remote-fetch fallback (no local record): resolved against the release repo's workspace instead, for the stronger Cargo.toml pubkey source. Optional there too — without it, only the release's own `.pub` asset is checked.
 

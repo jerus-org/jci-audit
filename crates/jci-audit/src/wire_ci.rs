@@ -6,15 +6,31 @@
 //! not CLI flags.** `[ci].file` names the `CircleCI` config file to patch
 //! (default `.circleci/config.yml`, resolved relative to `jci-audit.toml`'s
 //! own directory), and each `[[ci.jobs]]` entry describes one job to wire
-//! into one workflow (`workflow`, `orb_job`, `orb_version`, `job_name`,
-//! `requires`, `required_by` — the same fields PR 1 of
-//! jerus-org/jci-audit#101 started with, now array elements instead of a
-//! single flat table). This mirrors `gen-circleci-orb.toml`'s own `[ci]`
+//! into one workflow — see [`JobSpec`] for the full field list, including
+//! `params` for the orb job's own extra parameters (e.g. `jci-audit/check`'s
+//! `deny_unused_licenses`). This mirrors `gen-circleci-orb.toml`'s own `[ci]`
 //! table role for that tool's wiring of a repo's CI, and stays fully
 //! independent of it: a `wire-ci` consumer need not use gen-circleci-orb at
 //! all. `--config` only says WHICH file to read as this spec (default
 //! `jci-audit.toml` at the discovered workspace root) — it carries no
 //! per-job settings itself.
+//!
+//! A `[ci.jobs.params]` table (or an inline `params = {...}`) belongs to
+//! whichever `[[ci.jobs]]` entry it's written directly under — ordinary TOML
+//! table nesting, so with two jobs only the first gets `deny_unused_licenses`:
+//!
+//! ```toml
+//! [[ci.jobs]]
+//! workflow = "validation"
+//! orb_job = "jci-audit/check"
+//!
+//! [ci.jobs.params]
+//! deny_unused_licenses = "true"
+//!
+//! [[ci.jobs]]
+//! workflow = "validation"
+//! orb_job = "jci-audit/check_ci_wiring"
+//! ```
 //!
 //! **Why array-of-tables, not CLI flags for each field**: an early version of
 //! this module took `--workflow`/`--orb-job`/`--requires`/etc. as CLI
@@ -83,7 +99,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, Value};
+use toml_edit::{ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 
 use crate::{fs_atomic, sync};
 
@@ -100,7 +116,11 @@ pub(crate) const MANAGED_END: &str = "# <<< jci-audit wire-ci";
 // jci-audit.toml's [ci] table
 // ---------------------------------------------------------------------
 
-/// One `[[ci.jobs]]` entry's shape. `Default` means an entry with nothing
+/// One `[[ci.jobs]]` entry's shape. `params` holds the orb job's own extra
+/// parameters (`[ci.jobs.params]` nested under that same entry, or an
+/// inline `params = {...}` — e.g. `jci-audit/check`'s
+/// `deny_unused_licenses`/`deny_stale_exceptions`); see [`scalar_to_string`]
+/// for exactly how a value renders. `Default` means an entry with nothing
 /// set — not itself a valid job (see [`wire_one_job`]'s required-field
 /// checks), but a legitimate empty starting point for a hand-edited scaffold.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -111,6 +131,7 @@ pub(crate) struct JobSpec {
     pub(crate) job_name: Option<String>,
     pub(crate) requires: Vec<String>,
     pub(crate) required_by: Vec<String>,
+    pub(crate) params: Vec<(String, String)>,
 }
 
 /// `jci-audit.toml`'s `[ci]` table as a whole: which `CircleCI` config file to
@@ -124,9 +145,15 @@ pub(crate) struct CiFile {
 }
 
 /// Read `jci-audit.toml`'s `[ci]` table: `[ci].file` plus every
-/// `[[ci.jobs]]` entry, in order. Neither the file, the `[ci]` table, nor
-/// any `[[ci.jobs]]` entries existing is `Ok(CiFile::default())`, not an
-/// error.
+/// `[[ci.jobs]]` entry, in order. A `[ci.jobs.params]` header (or an inline
+/// `params = {...}`) belongs to whichever `[[ci.jobs]]` entry it's written
+/// directly under — ordinary TOML table nesting, not something this
+/// function resolves itself: each array element already carries its own
+/// `params` key by the time `toml_edit` hands it to the loop below. Neither
+/// the file, the `[ci]` table, nor any `[[ci.jobs]]` entries existing is
+/// `Ok(CiFile::default())`, not an error. Errors if any `[ci.jobs.params]`
+/// value isn't a string/boolean/integer, or reuses a key (`name`,
+/// `requires`) the job's own dedicated fields already own.
 pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
     if jci_audit_toml.trim().is_empty() {
         return Ok(CiFile::default());
@@ -146,7 +173,7 @@ pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
 
     let mut jobs = Vec::new();
     if let Some(array) = ci.get("jobs").and_then(Item::as_array_of_tables) {
-        for table in array {
+        for (index, table) in array.iter().enumerate() {
             let str_field = |key: &str| {
                 table
                     .get(key)
@@ -154,6 +181,19 @@ pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
                     .map(str::to_string)
                     .filter(|s| !s.is_empty())
             };
+            let params = key_value_pairs(table.get("params"))
+                .with_context(|| format!("ci.jobs[{index}]"))?;
+            // `name`/`requires` already have dedicated top-level fields —
+            // TOML itself rejects a literal duplicate key within one table,
+            // so this only ever needs to guard the reserved names.
+            for (key, _) in &params {
+                if matches!(key.as_str(), "name" | "requires") {
+                    bail!(
+                        "ci.jobs[{index}].params.{key}: reserved key — 'name' and \
+                         'requires' are set via the job's own top-level fields, not params"
+                    );
+                }
+            }
             jobs.push(JobSpec {
                 workflow: str_field("workflow"),
                 orb_job: str_field("orb_job"),
@@ -161,6 +201,7 @@ pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
                 job_name: str_field("job_name"),
                 requires: string_list(table.get("requires")),
                 required_by: string_list(table.get("required_by")),
+                params,
             });
         }
     }
@@ -173,6 +214,61 @@ fn string_list(item: Option<&Item>) -> Vec<String> {
         .into_iter()
         .flat_map(|arr| arr.iter().filter_map(Value::as_str).map(str::to_string))
         .collect()
+}
+
+/// `[ci.jobs.params]`, in declaration order. `as_table_like` (not
+/// `as_table`) so a standalone `[ci.jobs.params]` header and an inline
+/// `params = { a = "1" }` both read identically — a hand-authored
+/// `jci-audit.toml` may reasonably use either.
+fn key_value_pairs(item: Option<&Item>) -> Result<Vec<(String, String)>> {
+    let Some(item) = item else {
+        return Ok(Vec::new());
+    };
+    // `params` present but the wrong shape (e.g. a bare string typo instead
+    // of a table) must fail loudly — treating it the same as "absent" would
+    // silently wire the job with none of its params, the exact "vanished
+    // with no indication why" failure this module elsewhere fails loudly to
+    // avoid.
+    let table = item.as_table_like().with_context(
+        || "ci.jobs.params: not a table — use `[ci.jobs.params]` or `params = { ... }`",
+    )?;
+    table
+        .iter()
+        .map(|(key, value)| {
+            let rendered = value
+                .as_value()
+                .and_then(scalar_to_string)
+                .with_context(|| {
+                    format!(
+                        "ci.jobs.params.{key}: unsupported value — use a string, boolean, or \
+                         integer"
+                    )
+                })?;
+            Ok((key.to_string(), rendered))
+        })
+        .collect()
+}
+
+/// A string, boolean, or integer TOML value rendered as it should appear on
+/// the right of a `key: value` YAML line — a boolean or integer renders
+/// unquoted (`true`, `3`), a string renders verbatim with NO quoting or
+/// escaping added: its own content is exactly what ends up after the colon.
+/// This is deliberate, not an oversight — it's what lets a boolean/integer
+/// TOML value render as the bare YAML scalar it names, and lets a caller who
+/// wants a literal quoted string (or one that would otherwise be
+/// misinterpreted — a value containing `: `, or itself a YAML-reserved word
+/// like `yes`/`null`) embed the quote characters themselves in
+/// `jci-audit.toml`, e.g. `param = "\"a: b\""` renders `param: "a: b"`. Only
+/// a value type with no sensible single-line YAML rendering at all (array,
+/// table, float, datetime) is rejected: a param that silently vanished from
+/// the rendered job with no indication why is worse than a loud parse error.
+fn scalar_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => Some(s.value().clone()),
+        Value::Boolean(b) => Some(b.value().to_string()),
+        Value::Integer(i) => Some(i.value().to_string()),
+        _ => None,
+    }
 }
 
 /// Insert one example `[[ci.jobs]]` entry (this repo's own dogfooded
@@ -210,6 +306,12 @@ pub(crate) fn write_scaffold(jci_audit_toml: &str) -> Result<String> {
     job["job_name"] = toml_edit::value("");
     job["requires"] = Item::Value(Value::Array(sync::multiline_array(std::iter::empty())));
     job["required_by"] = Item::Value(Value::Array(sync::multiline_array(std::iter::empty())));
+    // A real, working example: jci-audit/check's own two flags — shows the
+    // shape without requiring the reader to invent a plausible one.
+    let mut params = InlineTable::new();
+    params.insert("deny_unused_licenses", "true".into());
+    params.insert("deny_stale_exceptions", "true".into());
+    job["params"] = Item::Value(Value::InlineTable(params));
 
     let mut jobs = ArrayOfTables::new();
     jobs.push(job);
@@ -441,7 +543,8 @@ fn new_job_effective_name(job: &JobSpec) -> String {
         .map_or_else(|| job.orb_job.clone().unwrap_or_default(), str::to_string)
 }
 
-/// The marker-wrapped lines for the new job entry. `requires:` is always
+/// The marker-wrapped lines for the new job entry: `name:`, then `params`
+/// (in declaration order), then `requires:` last. `requires:` is always
 /// rendered inline (`requires: [a, b]`) when non-empty — this tool never
 /// emits the block-list form itself, only recognises it on existing jobs.
 fn render_new_job_block(job: &JobSpec) -> Vec<String> {
@@ -452,12 +555,15 @@ fn render_new_job_block(job: &JobSpec) -> Vec<String> {
     let mut lines = vec![format!("{entry_indent}{MANAGED_BEGIN}")];
 
     let job_name = job.job_name.as_deref().filter(|n| !n.is_empty());
-    let has_params = job_name.is_some() || !job.requires.is_empty();
+    let has_params = job_name.is_some() || !job.requires.is_empty() || !job.params.is_empty();
 
     if has_params {
         lines.push(format!("{entry_indent}- {orb_job}:"));
         if let Some(name) = job_name {
             lines.push(format!("{param_indent}name: {name}"));
+        }
+        for (key, value) in &job.params {
+            lines.push(format!("{param_indent}{key}: {value}"));
         }
         if !job.requires.is_empty() {
             lines.push(format!(
@@ -918,6 +1024,7 @@ mod tests {
             job_name: Some("audit".to_string()),
             requires: vec!["toolkit/common_tests".to_string()],
             required_by: vec!["deploy".to_string()],
+            params: vec![("deny_unused_licenses".to_string(), "true".to_string())],
         }
     }
 
@@ -947,10 +1054,105 @@ orb_version = "jerus-org/jci-audit@1.0"
 job_name = "audit"
 requires = ["toolkit/common_tests"]
 required_by = ["deploy"]
+
+[ci.jobs.params]
+deny_unused_licenses = "true"
 "#;
         let got = read_ci_file(toml).unwrap();
         assert_eq!(got.file.as_deref(), Some(".circleci/config.yml"));
         assert_eq!(got.jobs, vec![full_job()]);
+    }
+
+    /// A hand-authored `jci-audit.toml` may reasonably use the inline-table
+    /// form instead of a standalone `[ci.jobs.params]` header — both must
+    /// read identically.
+    #[test]
+    fn read_ci_file_reads_inline_table_params() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+params = { deny_unused_licenses = "true", deny_stale_exceptions = "true" }
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(
+            got.jobs[0].params,
+            vec![
+                ("deny_unused_licenses".to_string(), "true".to_string()),
+                ("deny_stale_exceptions".to_string(), "true".to_string()),
+            ]
+        );
+    }
+
+    /// A boolean or integer is the natural way to write most orb params
+    /// (`deny_unused_licenses`'s real type is boolean) — coerced to its
+    /// unquoted string form rather than forcing every value through a TOML
+    /// string just to satisfy the schema.
+    #[test]
+    fn read_ci_file_coerces_boolean_and_integer_param_values() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+params = { deny_unused_licenses = true, max_attempts = 3 }
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(
+            got.jobs[0].params,
+            vec![
+                ("deny_unused_licenses".to_string(), "true".to_string()),
+                ("max_attempts".to_string(), "3".to_string()),
+            ]
+        );
+    }
+
+    /// A value type with no sensible single-line YAML rendering (array,
+    /// table, float, datetime) must fail loudly — a param that silently
+    /// vanished from the rendered job with no indication why is worse than
+    /// a parse error naming exactly which key is unsupported.
+    #[test]
+    fn read_ci_file_errs_on_unsupported_param_value_type() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+params = { targets = ["a", "b"] }
+"#;
+        let err = format!("{:?}", read_ci_file(toml).unwrap_err());
+        assert!(err.contains("params.targets"), "got: {err}");
+        assert!(err.contains("unsupported value"), "got: {err}");
+    }
+
+    /// A `params` key present but not table-shaped (a typo — a bare string
+    /// instead of `{ ... }`) must fail loudly rather than be treated the
+    /// same as "no params at all", which would silently wire the job with
+    /// none of them.
+    #[test]
+    fn read_ci_file_errs_when_params_is_not_a_table() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+params = "deny_unused_licenses"
+"#;
+        let err = format!("{:?}", read_ci_file(toml).unwrap_err());
+        assert!(err.contains("ci.jobs.params"), "got: {err}");
+        assert!(err.contains("not a table"), "got: {err}");
+    }
+
+    /// `name`/`requires` already have dedicated top-level fields —
+    /// redeclaring either inside `params` would render two conflicting
+    /// `name:`/`requires:` lines in the same job entry.
+    #[test]
+    fn read_ci_file_errs_when_params_reuses_a_reserved_key() {
+        for key in ["name", "requires"] {
+            let toml = format!(
+                "[[ci.jobs]]\nworkflow = \"validation\"\norb_job = \"jci-audit/check\"\n\n\
+                 [ci.jobs.params]\n{key} = \"x\"\n"
+            );
+            let err = format!("{:?}", read_ci_file(&toml).unwrap_err());
+            assert!(err.contains("reserved key"), "key {key}, got: {err}");
+        }
     }
 
     #[test]
@@ -962,6 +1164,7 @@ required_by = ["deploy"]
         assert_eq!(got.jobs[0].orb_job.as_deref(), Some("jci-audit/check"));
         assert!(got.jobs[0].requires.is_empty());
         assert!(got.jobs[0].required_by.is_empty());
+        assert!(got.jobs[0].params.is_empty());
     }
 
     #[test]
@@ -1002,6 +1205,15 @@ orb_job = "jci-audit/publish_record"
         // Left unset: jci-audit/* falls back to the running binary's own
         // crate version (resolve_orb_version) — nothing to hand-maintain.
         assert_eq!(got.jobs[0].orb_version.as_deref(), None);
+        // A real, working example of jci-audit/check's own two params,
+        // round-tripping through the inline-table form write_scaffold uses.
+        assert_eq!(
+            got.jobs[0].params,
+            vec![
+                ("deny_unused_licenses".to_string(), "true".to_string()),
+                ("deny_stale_exceptions".to_string(), "true".to_string()),
+            ]
+        );
     }
 
     #[test]
@@ -1098,6 +1310,7 @@ workflows:
             job_name: None,
             requires: Vec::new(),
             required_by: Vec::new(),
+            params: Vec::new(),
         }
     }
 
@@ -1356,6 +1569,48 @@ workflows:
         );
     }
 
+    #[test]
+    fn render_new_job_block_with_params_only() {
+        let mut job = base_job();
+        job.params = vec![
+            ("deny_unused_licenses".to_string(), "true".to_string()),
+            ("deny_stale_exceptions".to_string(), "true".to_string()),
+        ];
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          deny_unused_licenses: true".to_string(),
+                "          deny_stale_exceptions: true".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
+    /// Params sit between `name:` and `requires:` — config values before
+    /// dependency wiring.
+    #[test]
+    fn render_new_job_block_with_name_params_and_requires() {
+        let mut job = base_job();
+        job.job_name = Some("audit".to_string());
+        job.params = vec![("deny_unused_licenses".to_string(), "true".to_string())];
+        job.requires = vec!["toolkit/common_tests".to_string()];
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          name: audit".to_string(),
+                "          deny_unused_licenses: true".to_string(),
+                "          requires: [toolkit/common_tests]".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
     // -- wire_jobs_into / wire_one_job ---------------------------------------
 
     #[test]
@@ -1364,6 +1619,19 @@ workflows:
         assert!(out.contains("  jci-audit: jerus-org/jci-audit@1.0"));
         assert!(out.contains(MANAGED_BEGIN));
         assert!(out.contains("      - jci-audit/check"));
+    }
+
+    #[test]
+    fn wire_jobs_into_inserts_a_brand_new_job_with_its_own_params() {
+        let mut job = base_job();
+        job.params = vec![
+            ("deny_unused_licenses".to_string(), "true".to_string()),
+            ("deny_stale_exceptions".to_string(), "true".to_string()),
+        ];
+        let out = wire_jobs_into(CONFIG_BASE, &[job]).unwrap();
+        assert!(out.contains("      - jci-audit/check:"));
+        assert!(out.contains("          deny_unused_licenses: true"));
+        assert!(out.contains("          deny_stale_exceptions: true"));
     }
 
     #[test]
@@ -1600,6 +1868,7 @@ workflows:
             job_name: None,
             requires: Vec::new(),
             required_by: Vec::new(),
+            params: Vec::new(),
         };
         release_job.orb_version = Some("jerus-org/jci-audit@1.0".to_string());
 
