@@ -19,7 +19,7 @@ use std::{path::Path, process::Command};
 
 use anyhow::{Context, Result};
 
-use crate::sync;
+use crate::{sync, wire_ci};
 
 /// The captured result of running one external tool. Modelled instead of
 /// `std::process::Output` so orchestration is testable without constructing a
@@ -215,7 +215,7 @@ pub(crate) fn check_with<R: CommandRunner>(
                         "  {}",
                         crate::diagnostics::action_tag(format!(
                             "{} is out of sync with deny.toml",
-                            result.about_toml_path.display()
+                            wire_ci::display_path(&result.about_toml_path, cwd)
                         ))
                     );
                 }
