@@ -5,9 +5,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-09-08
+
+Summary: Added[3], Documentation[2]
+
+### Added
+
+ - feat: adopt and resync existing orb jobs
+ - feat: arbitrary per-job orb parameters
+ - feat: self-referencing jci-audit orb version
+
 ## [0.1.10] - 2026-09-07
 
-Summary: Added[4], Changed[2], Chore[2], Documentation[1], Fixed[7], Testing[2]
+Summary: Added[4], Changed[2], Chore[3], Documentation[1], Fixed[7], Testing[2]
 
 ### Added
 
@@ -252,7 +262,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/jerus-org/jci-audit/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/jerus-org/jci-audit/compare/v0.1.6...v0.1.7
