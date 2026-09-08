@@ -6,18 +6,31 @@
 //! not CLI flags.** `[ci].file` names the `CircleCI` config file to patch
 //! (default `.circleci/config.yml`, resolved relative to `jci-audit.toml`'s
 //! own directory), and each `[[ci.jobs]]` entry describes one job to wire
-//! into one workflow (`workflow`, `orb_job`, `orb_version`, `job_name`,
-//! `requires`, `required_by` — the same fields PR 1 of
-//! jerus-org/jci-audit#101 started with, now array elements instead of a
-//! single flat table — plus `params` for the orb job's own custom
-//! parameters, e.g. `jci-audit/check`'s `deny_unused_licenses`; see
-//! [`JobSpec::params`]'s own doc comment). This mirrors
-//! `gen-circleci-orb.toml`'s own `[ci]`
+//! into one workflow — see [`JobSpec`] for the full field list, including
+//! `params` for the orb job's own extra parameters (e.g. `jci-audit/check`'s
+//! `deny_unused_licenses`). This mirrors `gen-circleci-orb.toml`'s own `[ci]`
 //! table role for that tool's wiring of a repo's CI, and stays fully
 //! independent of it: a `wire-ci` consumer need not use gen-circleci-orb at
 //! all. `--config` only says WHICH file to read as this spec (default
 //! `jci-audit.toml` at the discovered workspace root) — it carries no
 //! per-job settings itself.
+//!
+//! A `[ci.jobs.params]` table (or an inline `params = {...}`) belongs to
+//! whichever `[[ci.jobs]]` entry it's written directly under — ordinary TOML
+//! table nesting, so with two jobs only the first gets `deny_unused_licenses`:
+//!
+//! ```toml
+//! [[ci.jobs]]
+//! workflow = "validation"
+//! orb_job = "jci-audit/check"
+//!
+//! [ci.jobs.params]
+//! deny_unused_licenses = "true"
+//!
+//! [[ci.jobs]]
+//! workflow = "validation"
+//! orb_job = "jci-audit/check_ci_wiring"
+//! ```
 //!
 //! **Why array-of-tables, not CLI flags for each field**: an early version of
 //! this module took `--workflow`/`--orb-job`/`--requires`/etc. as CLI
@@ -103,7 +116,11 @@ pub(crate) const MANAGED_END: &str = "# <<< jci-audit wire-ci";
 // jci-audit.toml's [ci] table
 // ---------------------------------------------------------------------
 
-/// One `[[ci.jobs]]` entry's shape. `Default` means an entry with nothing
+/// One `[[ci.jobs]]` entry's shape. `params` holds the orb job's own extra
+/// parameters (`[ci.jobs.params]` nested under that same entry, or an
+/// inline `params = {...}` — e.g. `jci-audit/check`'s
+/// `deny_unused_licenses`/`deny_stale_exceptions`); see [`scalar_to_string`]
+/// for exactly how a value renders. `Default` means an entry with nothing
 /// set — not itself a valid job (see [`wire_one_job`]'s required-field
 /// checks), but a legitimate empty starting point for a hand-edited scaffold.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -114,14 +131,6 @@ pub(crate) struct JobSpec {
     pub(crate) job_name: Option<String>,
     pub(crate) requires: Vec<String>,
     pub(crate) required_by: Vec<String>,
-    /// Arbitrary extra orb-job parameters (`[ci.jobs.params]`), in
-    /// declaration order — e.g. `jci-audit/check`'s own
-    /// `deny_unused_licenses`/`deny_stale_exceptions`. Rendered verbatim as
-    /// `key: value` YAML lines: a value of `"true"` becomes an unquoted
-    /// `true`, so this doubles as the escape hatch for a quoted string or a
-    /// pipeline-variable reference when one is ever needed, with no new
-    /// schema. `Vec`, not a map — order must survive into the rendered
-    /// entry, same as `requires`/`required_by`.
     pub(crate) params: Vec<(String, String)>,
 }
 
@@ -136,11 +145,15 @@ pub(crate) struct CiFile {
 }
 
 /// Read `jci-audit.toml`'s `[ci]` table: `[ci].file` plus every
-/// `[[ci.jobs]]` entry, in order. Neither the file, the `[ci]` table, nor
-/// any `[[ci.jobs]]` entries existing is `Ok(CiFile::default())`, not an
-/// error. Errors if any `[ci.jobs.params]` value isn't a string/boolean/
-/// integer, or reuses a key (`name`, `requires`) the job's own dedicated
-/// fields already own.
+/// `[[ci.jobs]]` entry, in order. A `[ci.jobs.params]` header (or an inline
+/// `params = {...}`) belongs to whichever `[[ci.jobs]]` entry it's written
+/// directly under — ordinary TOML table nesting, not something this
+/// function resolves itself: each array element already carries its own
+/// `params` key by the time `toml_edit` hands it to the loop below. Neither
+/// the file, the `[ci]` table, nor any `[[ci.jobs]]` entries existing is
+/// `Ok(CiFile::default())`, not an error. Errors if any `[ci.jobs.params]`
+/// value isn't a string/boolean/integer, or reuses a key (`name`,
+/// `requires`) the job's own dedicated fields already own.
 pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
     if jci_audit_toml.trim().is_empty() {
         return Ok(CiFile::default());
