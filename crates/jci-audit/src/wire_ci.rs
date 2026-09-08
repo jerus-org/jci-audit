@@ -1481,6 +1481,20 @@ fn wire_jobs_into_with_notes(
 // Top-level entry point
 // ---------------------------------------------------------------------
 
+/// `path`, shown relative to `start` when it's actually under it — a CI
+/// job's cwd (or a local run from a different directory) would otherwise
+/// show a meaningless, container-internal absolute path like
+/// `/home/circleci/project/jci-audit.toml` in every message (jerus-org/
+/// jci-audit#174). Falls back to the absolute path unchanged when it isn't
+/// under `start` at all (an explicit `--config` pointing elsewhere).
+pub(crate) fn display_path(path: &Path, start: &Path) -> String {
+    match path.strip_prefix(start) {
+        Ok(rel) if rel.as_os_str().is_empty() => ".".to_string(),
+        Ok(rel) => rel.display().to_string(),
+        Err(_) => path.display().to_string(),
+    }
+}
+
 /// Locate `jci-audit.toml` (an explicit `config_override`, used as given —
 /// mirrors `resolve_publish_record_path`'s "override short-circuits before
 /// any discovery" precedent — or `jci-audit.toml` at the workspace root
@@ -1514,21 +1528,21 @@ pub(crate) fn wire_ci_at(
 
     let existing_toml_text = if config_path.is_file() {
         std::fs::read_to_string(&config_path)
-            .with_context(|| format!("failed to read '{}'", config_path.display()))?
+            .with_context(|| format!("failed to read '{}'", display_path(&config_path, start)))?
     } else {
         String::new()
     };
     let spec = read_ci_file(&existing_toml_text)?;
 
     let ci_file_path = spec_dir.join(spec.file.as_deref().unwrap_or(".circleci/config.yml"));
-    let existing_ci_text = if ci_file_path.is_file() {
-        Some(
-            std::fs::read_to_string(&ci_file_path)
-                .with_context(|| format!("failed to read '{}'", ci_file_path.display()))?,
-        )
-    } else {
-        None
-    };
+    let existing_ci_text =
+        if ci_file_path.is_file() {
+            Some(std::fs::read_to_string(&ci_file_path).with_context(|| {
+                format!("failed to read '{}'", display_path(&ci_file_path, start))
+            })?)
+        } else {
+            None
+        };
 
     let (discovered, mut notes) = match &existing_ci_text {
         Some(text) => {
@@ -1543,7 +1557,7 @@ pub(crate) fn wire_ci_at(
             let mut message = format!(
                 "'{}' has no [[ci.jobs]] entries — run `jci-audit wire-ci` to scaffold one, edit \
                  it to match your CI, then re-run",
-                config_path.display()
+                display_path(&config_path, start)
             );
             if !notes.is_empty() {
                 message.push_str("\n\nAlso found in the CircleCI config but not captured:\n");
@@ -1560,8 +1574,8 @@ pub(crate) fn wire_ci_at(
         bail!(
             "'{}' not found — run from a repo with .circleci/config.yml, or set [ci].file in \
              '{}'",
-            ci_file_path.display(),
-            config_path.display()
+            display_path(&ci_file_path, start),
+            display_path(&config_path, start)
         );
     };
 
@@ -1613,6 +1627,38 @@ fn decide(path: &Path, existing: &str, desired: &str, check: bool) -> Result<Wri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_path_strips_the_start_prefix() {
+        let start = Path::new("/home/circleci/project");
+        let path = Path::new("/home/circleci/project/jci-audit.toml");
+        assert_eq!(display_path(path, start), "jci-audit.toml");
+    }
+
+    #[test]
+    fn display_path_strips_a_nested_prefix() {
+        let start = Path::new("/home/circleci/project");
+        let path = Path::new("/home/circleci/project/.circleci/config.yml");
+        assert_eq!(display_path(path, start), ".circleci/config.yml");
+    }
+
+    #[test]
+    fn display_path_falls_back_to_the_full_path_when_not_under_start() {
+        let start = Path::new("/home/circleci/project");
+        let path = Path::new("/somewhere/else/jci-audit.toml");
+        assert_eq!(display_path(path, start), "/somewhere/else/jci-audit.toml");
+    }
+
+    /// A bare empty string is a more confusing message than the input was
+    /// to begin with — show "." (the shell convention for "here") instead,
+    /// even though no caller of this function can currently trigger it
+    /// (`read_ci_file` already normalizes an empty `[ci].file` to `None`
+    /// before it ever reaches path-joining).
+    #[test]
+    fn display_path_shows_dot_when_path_equals_start() {
+        let start = Path::new("/home/circleci/project");
+        assert_eq!(display_path(start, start), ".");
+    }
 
     // -- JobSpec / CiFile / jci-audit.toml -------------------------------
 

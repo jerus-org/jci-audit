@@ -493,7 +493,10 @@ fn run_release(
 
     println!("release gate passed (cargo-deny against the local advisory-db copy)");
     println!("  advisory-db commit: {}", outcome.db_commit);
-    println!("  record: {}", outcome.record_path.display());
+    println!(
+        "  record: {}",
+        wire_ci::display_path(&outcome.record_path, &cwd)
+    );
     if outcome.live_findings.is_empty() {
         println!("  live audit (currency, non-blocking): no findings");
     } else {
@@ -545,7 +548,11 @@ fn run_sync(check: bool) -> Result<()> {
 
     let about_results = sync::sync_about_toml_at(&check::SystemRunner, &cwd, check)?;
     for result in &about_results {
-        let path = result.about_toml_path.display().to_string();
+        // cargo metadata returns absolute manifest paths — relativized here
+        // for the same reason wire_ci::display_path exists (jerus-org/jci-audit#174):
+        // an absolute, container-internal path in a CI log is meaningless
+        // to the person reading it.
+        let path = wire_ci::display_path(&result.about_toml_path, &cwd);
         drifted |= report_sync_outcome(&path, &result.outcome, "accepted licence(s)");
     }
 
@@ -612,9 +619,10 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
             for note in &notes {
                 println!("{note}");
             }
-            let toml_out_of_sync = report_wire_ci_outcome(&toml_path.display().to_string(), toml);
+            let toml_out_of_sync =
+                report_wire_ci_outcome(&wire_ci::display_path(&toml_path, &cwd), toml);
             let ci_out_of_sync =
-                report_wire_ci_outcome(&ci_file_path.display().to_string(), ci_file);
+                report_wire_ci_outcome(&wire_ci::display_path(&ci_file_path, &cwd), ci_file);
             if toml_out_of_sync || ci_out_of_sync {
                 bail!("out of sync — run `jci-audit wire-ci` to apply");
             }
