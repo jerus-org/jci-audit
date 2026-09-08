@@ -202,7 +202,11 @@ pub(crate) fn write_scaffold(jci_audit_toml: &str) -> Result<String> {
     let mut job = Table::new();
     job["workflow"] = toml_edit::value("validation");
     job["orb_job"] = toml_edit::value("jci-audit/check");
-    job["orb_version"] = toml_edit::value("jerus-org/jci-audit@1.0");
+    // Left empty: a job namespaced under jci-audit/ falls back to the
+    // running binary's own crate version when this is unset (see
+    // resolve_orb_version) — set this only to pin a different orb, or a
+    // specific jci-audit version other than the one that wrote this file.
+    job["orb_version"] = toml_edit::value("");
     job["job_name"] = toml_edit::value("");
     job["requires"] = Item::Value(Value::Array(sync::multiline_array(std::iter::empty())));
     job["required_by"] = Item::Value(Value::Array(sync::multiline_array(std::iter::empty())));
@@ -667,6 +671,32 @@ fn validate_required_by_targets(
     Ok(results)
 }
 
+/// Version to write when the `orbs:` key doesn't exist yet — an explicit
+/// `declared` value always wins (needed for any orb other than jci-audit's
+/// own, and still available as a manual override for it). Omitting it on one
+/// of jci-audit's own jobs falls back to the running binary's own crate
+/// version: this repo's Renovate-tracked pin needs *some* value the moment
+/// the job it's wiring in is added, and jci-audit's own release always
+/// carries that job by construction — there's no reason to also hand-type
+/// and then maintain a duplicate of it in `jci-audit.toml`, where it would go
+/// stale the instant Renovate bumps the real pin (jerus-org/jci-audit#167).
+/// No fallback like this exists for another orb (nothing here knows what
+/// version of, say, `other-org/tool` is correct), so that case still errors
+/// rather than silently pinning something wrong that — since the pin is
+/// presence-only idempotent — would never self-correct on a later run.
+fn resolve_orb_version(orb_name: &str, declared: Option<&str>) -> Result<String> {
+    if let Some(version) = declared {
+        return Ok(version.to_string());
+    }
+    if orb_name == "jci-audit" {
+        return Ok(format!("jerus-org/jci-audit@{}", env!("CARGO_PKG_VERSION")));
+    }
+    bail!(
+        "no orb version configured for '{orb_name}' — set orb_version (e.g. \
+         \"jerus-org/{orb_name}@1.0\") on this job in jci-audit.toml"
+    );
+}
+
 /// Patch one job's own entry into `lines` in place. Order: validate this
 /// job's own `required_by` targets first (bail with zero mutation to `lines`
 /// on any failure); skip-or-insert the `orbs:` pin; skip-or-insert the job
@@ -701,14 +731,7 @@ fn wire_one_job(lines: &mut Vec<String>, job: &JobSpec) -> Result<()> {
             .any(|l| l.trim_end().starts_with(&pin_key))
     });
     if !already_pinned {
-        // No fallback to orb_job here: that would silently pin
-        // "jci-audit: jci-audit/check" — a job path, not a version — which
-        // is invalid `CircleCI` YAML and (since the pin is then presence-only
-        // idempotent) would never self-correct on a later run.
-        let version = job.orb_version.as_deref().context(
-            "no orb version configured — set orb_version (e.g. \
-             \"jerus-org/jci-audit@1.0\") on this job in jci-audit.toml",
-        )?;
+        let version = resolve_orb_version(orb_name, job.orb_version.as_deref())?;
         let pin_line = format!("  {orb_name}: {version}");
         let Some(end) = find_section_end(lines, "orbs:") else {
             bail!("no top-level 'orbs:' section found in the CI config file");
@@ -976,10 +999,9 @@ orb_job = "jci-audit/publish_record"
         assert_eq!(got.jobs.len(), 1);
         assert_eq!(got.jobs[0].workflow.as_deref(), Some("validation"));
         assert_eq!(got.jobs[0].orb_job.as_deref(), Some("jci-audit/check"));
-        assert_eq!(
-            got.jobs[0].orb_version.as_deref(),
-            Some("jerus-org/jci-audit@1.0")
-        );
+        // Left unset: jci-audit/* falls back to the running binary's own
+        // crate version (resolve_orb_version) — nothing to hand-maintain.
+        assert_eq!(got.jobs[0].orb_version.as_deref(), None);
     }
 
     #[test]
@@ -1410,13 +1432,36 @@ workflows:
         assert!(wire_jobs_into(content, &[base_job()]).is_err());
     }
 
+    /// Wiring one of jci-audit's own orb jobs with no `orb_version` declared
+    /// doesn't need a placeholder in `jci-audit.toml` at all — the running
+    /// binary's own crate version is a correct, always-current answer, and
+    /// never goes stale the way a hand-typed value would once Renovate bumps
+    /// the pin (jerus-org/jci-audit#167).
     #[test]
-    fn wire_jobs_into_errs_instead_of_pinning_an_invalid_placeholder_version() {
+    fn wire_jobs_into_pins_jci_audit_using_its_own_crate_version_when_orb_version_omitted() {
         let mut job = base_job();
+        job.orb_version = None;
+        let out = wire_jobs_into(CONFIG_BASE, &[job]).unwrap();
+        assert!(
+            out.contains(&format!(
+                "  jci-audit: jerus-org/jci-audit@{}",
+                env!("CARGO_PKG_VERSION")
+            )),
+            "got: {out}"
+        );
+    }
+
+    /// Any other orb has no self-reference to fall back to — omitting
+    /// `orb_version` there must still fail loudly rather than silently pin
+    /// something jci-audit's own version has no relation to.
+    #[test]
+    fn wire_jobs_into_errs_when_orb_version_missing_for_a_non_self_referential_orb() {
+        let mut job = base_job();
+        job.orb_job = Some("other-org/tool".to_string());
         job.orb_version = None;
         let err = format!("{:?}", wire_jobs_into(CONFIG_BASE, &[job]).unwrap_err());
         assert!(err.contains("no orb version configured"), "got: {err}");
-        assert!(!CONFIG_BASE.contains("jci-audit"));
+        assert!(!CONFIG_BASE.contains("other-org"));
     }
 
     #[test]

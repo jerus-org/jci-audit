@@ -4,7 +4,7 @@ file = ".circleci/config.yml"
 [[ci.jobs]]
 workflow = "validation"
 orb_job = "jci-audit/check_ci_wiring"
-orb_version = "jerus-org/jci-audit@0.1.10"
+orb_version = ""
 job_name = ""
 requires = []
 required_by = []
