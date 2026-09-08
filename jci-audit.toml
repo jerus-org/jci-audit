@@ -8,3 +8,12 @@ orb_version = ""
 job_name = ""
 requires = []
 required_by = []
+
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+orb_version = ""
+job_name = ""
+requires = []
+required_by = []
+params = { deny_unused_licenses = "true", deny_stale_exceptions = "true" }
