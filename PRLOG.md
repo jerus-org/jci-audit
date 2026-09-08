@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- ci-dogfood check-ci-wiring on jci-audit itself(pr [#166])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.10(pr [#165])
@@ -417,6 +421,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#162]: https://github.com/jerus-org/jci-audit/pull/162
 [#163]: https://github.com/jerus-org/jci-audit/pull/163
 [#165]: https://github.com/jerus-org/jci-audit/pull/165
+[#166]: https://github.com/jerus-org/jci-audit/pull/166
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...HEAD
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
