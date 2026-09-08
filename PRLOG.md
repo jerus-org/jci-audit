@@ -10,6 +10,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - self-referencing jci-audit orb version(pr [#169])
 - arbitrary per-job orb parameters(pr [#170])
+- adopt and resync existing orb jobs(pr [#172])
 
 ### Changed
 
@@ -429,6 +430,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#166]: https://github.com/jerus-org/jci-audit/pull/166
 [#169]: https://github.com/jerus-org/jci-audit/pull/169
 [#170]: https://github.com/jerus-org/jci-audit/pull/170
+[#172]: https://github.com/jerus-org/jci-audit/pull/172
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...HEAD
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
