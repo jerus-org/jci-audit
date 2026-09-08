@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- self-referencing jci-audit orb version(pr [#169])
+
 ### Changed
 
 - ci-dogfood check-ci-wiring on jci-audit itself(pr [#166])
@@ -422,6 +426,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#163]: https://github.com/jerus-org/jci-audit/pull/163
 [#165]: https://github.com/jerus-org/jci-audit/pull/165
 [#166]: https://github.com/jerus-org/jci-audit/pull/166
+[#169]: https://github.com/jerus-org/jci-audit/pull/169
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...HEAD
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/jerus-org/jci-audit/compare/v0.1.8...v0.1.9
