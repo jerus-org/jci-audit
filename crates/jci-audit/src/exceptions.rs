@@ -15,6 +15,8 @@
 use anyhow::{Context, Result};
 use toml_edit::{DocumentMut, Item, TableLike, Value, value};
 
+use crate::diagnostics;
+
 /// One `[[bans.skip]]` entry, as configured in `deny.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SkipEntry {
@@ -240,8 +242,11 @@ pub(crate) fn accepted_warnings(configured: Vec<SkipEntry>, stderr: &str) -> Acc
 pub(crate) fn print_notice(accepted: &AcceptedWarnings) {
     if !accepted.in_force.is_empty() {
         println!(
-            "  {} accepted duplicate exception(s) in force:",
-            accepted.in_force.len()
+            "  {}",
+            diagnostics::warn_tag(format!(
+                "{} accepted duplicate exception(s) in force:",
+                accepted.in_force.len()
+            ))
         );
         for entry in &accepted.in_force {
             match &entry.reason {
@@ -252,8 +257,12 @@ pub(crate) fn print_notice(accepted: &AcceptedWarnings) {
     }
     if !accepted.stale.is_empty() {
         println!(
-            "  {} stale accepted exception(s) — no longer needed, safe to remove from deny.toml:",
-            accepted.stale.len()
+            "  {}",
+            diagnostics::warn_tag(format!(
+                "{} stale accepted exception(s) — no longer needed, safe to remove from \
+                 deny.toml:",
+                accepted.stale.len()
+            ))
         );
         for entry in &accepted.stale {
             println!("    - {}", entry.name);

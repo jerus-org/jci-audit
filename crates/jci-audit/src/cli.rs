@@ -501,8 +501,11 @@ fn run_release(
         println!("  live audit (currency, non-blocking): no findings");
     } else {
         println!(
-            "  live audit (currency, non-blocking) reported {} advisory(ies):",
-            outcome.live_findings.len()
+            "  {}",
+            diagnostics::warn_tag(format!(
+                "live audit (currency, non-blocking) reported {} advisory(ies):",
+                outcome.live_findings.len()
+            ))
         );
         for id in &outcome.live_findings {
             println!("    - {id}");
@@ -528,7 +531,10 @@ fn report_sync_outcome(path: &str, outcome: &sync::SyncOutcome, noun: &str) -> b
             false
         }
         sync::SyncOutcome::Drift => {
-            eprintln!("{path} is out of sync with deny.toml");
+            eprintln!(
+                "{}",
+                diagnostics::action_tag(format!("{path} is out of sync with deny.toml"))
+            );
             true
         }
     }
@@ -577,7 +583,10 @@ fn report_wire_ci_outcome(path: &str, outcome: wire_ci::WriteOutcome) -> bool {
             false
         }
         wire_ci::WriteOutcome::Drift => {
-            eprintln!("{path} is out of sync");
+            eprintln!(
+                "{}",
+                diagnostics::action_tag(format!("{path} is out of sync"))
+            );
             true
         }
     }
@@ -655,7 +664,10 @@ fn run_prune(check: bool) -> Result<()> {
         println!("no stale ignores — every configured ignore still fires");
         return Ok(());
     }
-    println!("stale ignore(s) — no longer fire, remove from deny.toml:");
+    println!(
+        "{}",
+        diagnostics::action_tag("stale ignore(s) — no longer fire, remove from deny.toml:")
+    );
     for id in &report.stale {
         println!("  - {id}");
     }
@@ -729,15 +741,22 @@ fn run_verify(
             outcome.version, outcome.db_commit
         );
         for note in &outcome.unverified {
-            println!("  not verified: {note}");
+            println!(
+                "  {}",
+                diagnostics::warn_tag(format!("not verified: {note}"))
+            );
         }
         for m in &outcome.mismatches {
-            println!("  MISMATCH: {m}");
+            println!("  {}", diagnostics::action_tag(format!("MISMATCH: {m}")));
         }
         if !outcome.stale_exceptions.is_empty() {
             println!(
-                "  {} stale accepted exception(s) — no longer needed, safe to remove from deny.toml:",
-                outcome.stale_exceptions.len()
+                "  {}",
+                diagnostics::warn_tag(format!(
+                    "{} stale accepted exception(s) — no longer needed, safe to remove from \
+                     deny.toml:",
+                    outcome.stale_exceptions.len()
+                ))
             );
             for name in &outcome.stale_exceptions {
                 println!("    - {name}");
@@ -876,7 +895,10 @@ fn run_verify_remote(
         }
     );
     for note in &outcome.unchecked {
-        println!("  not checked: {note}");
+        println!(
+            "  {}",
+            diagnostics::warn_tag(format!("not checked: {note}"))
+        );
     }
     // Neither flag has anything to act on here: this mode never re-runs the
     // gate, so there is no local advisory-db checkout to point --advisory-db
@@ -884,14 +906,20 @@ fn run_verify_remote(
     // silently accepting a flag that does nothing.
     if advisory_db.is_some() {
         println!(
-            "  note: --advisory-db has no effect on this fetch-only path — nothing is re-run \
-             against it"
+            "  {}",
+            diagnostics::warn_tag(
+                "note: --advisory-db has no effect on this fetch-only path — nothing is \
+                 re-run against it"
+            )
         );
     }
     if output.deny_warnings {
         println!(
-            "  note: --deny-warnings has no effect on this fetch-only path — there is no live \
-             tool output to scan for warnings"
+            "  {}",
+            diagnostics::warn_tag(
+                "note: --deny-warnings has no effect on this fetch-only path — there is no \
+                 live tool output to scan for warnings"
+            )
         );
     }
     if !outcome.recorded_pass {

@@ -76,6 +76,20 @@ pub(crate) fn render_summary(counts: &[WarningCount]) -> Option<String> {
     ))
 }
 
+/// Flags `msg` as non-blocking but worth noticing — distinct from a plain
+/// statement of fact (jerus-org/jci-audit#176: review on #175 asked for "a
+/// clear understanding of the urgency of the findings"). Text prefix only;
+/// colour is deferred per that same request.
+pub(crate) fn warn_tag(msg: impl std::fmt::Display) -> String {
+    format!("[warn] {msg}")
+}
+
+/// Flags `msg` as something the reader needs to act on — the top of the
+/// three-tier scheme from jerus-org/jci-audit#176 (fact / warning / action).
+pub(crate) fn action_tag(msg: impl std::fmt::Display) -> String {
+    format!("[!] {msg}")
+}
+
 /// How much of a tool's output to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Detail {
@@ -197,6 +211,22 @@ fn strip_ansi(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warn_tag_prefixes_with_the_warning_marker() {
+        assert_eq!(
+            warn_tag("live audit reported 2 advisory(ies)"),
+            "[warn] live audit reported 2 advisory(ies)"
+        );
+    }
+
+    #[test]
+    fn action_tag_prefixes_with_the_action_marker() {
+        assert_eq!(
+            action_tag("jci-audit.toml is out of sync"),
+            "[!] jci-audit.toml is out of sync"
+        );
+    }
 
     const STDERR: &str = "\
 warning[license-exception-not-encountered]: license exception was not encountered

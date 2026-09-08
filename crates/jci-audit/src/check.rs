@@ -212,8 +212,11 @@ pub(crate) fn check_with<R: CommandRunner>(
                 if result.outcome == sync::SyncOutcome::Drift {
                     drift_ok = false;
                     println!(
-                        "  {} is out of sync with deny.toml",
-                        result.about_toml_path.display()
+                        "  {}",
+                        crate::diagnostics::action_tag(format!(
+                            "{} is out of sync with deny.toml",
+                            result.about_toml_path.display()
+                        ))
                     );
                 }
             }

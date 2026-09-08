@@ -101,7 +101,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use toml_edit::{ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 
-use crate::{fs_atomic, sync};
+use crate::{diagnostics, fs_atomic, sync};
 
 /// A `- job:` entry's own indent inside a workflow's `jobs:` list.
 const JOB_ENTRY_INDENT: usize = 6;
@@ -1047,22 +1047,24 @@ fn diff_params_notes(
     let mut notes = Vec::new();
     for (key, value) in existing {
         match desired.iter().find(|(k, _)| k == key) {
-            None => notes.push(format!(
+            None => notes.push(diagnostics::warn_tag(format!(
                 "{job_label}: removing param '{key}: {value}' — not declared in \
                  jci-audit.toml; add it there to keep it"
-            )),
-            Some((_, new_value)) if new_value != value => notes.push(format!(
-                "{job_label}: param '{key}' changing from '{value}' to '{new_value}' to \
+            ))),
+            Some((_, new_value)) if new_value != value => {
+                notes.push(diagnostics::warn_tag(format!(
+                    "{job_label}: param '{key}' changing from '{value}' to '{new_value}' to \
                  match jci-audit.toml"
-            )),
+                )));
+            }
             Some(_) => {}
         }
     }
     for (key, value) in desired {
         if !existing.iter().any(|(k, _)| k == key) {
-            notes.push(format!(
+            notes.push(diagnostics::warn_tag(format!(
                 "{job_label}: adding param '{key}: {value}' from jci-audit.toml"
-            ));
+            )));
         }
     }
     notes
@@ -1108,9 +1110,9 @@ fn resync_job_entry(
     let notes_before = notes.len();
     notes.extend(diff_params_notes(job_label, &existing_params, &job.params));
     if existing_requires != job.requires {
-        notes.push(format!(
+        notes.push(diagnostics::warn_tag(format!(
             "{job_label}: requires updated to match jci-audit.toml"
-        ));
+        )));
     }
     if !is_marked {
         notes.push(format!(
@@ -1401,11 +1403,11 @@ fn discover_undeclared_jobs(lines: &[String], declared: &[JobSpec]) -> (Vec<JobS
                 continue;
             }
             let Some(requires) = entry_current_requires(lines, entry) else {
-                notes.push(format!(
+                notes.push(diagnostics::action_tag(format!(
                     "'{name}' in workflow '{workflow}': existing `requires:` is in a shape \
                      jci-audit can't safely capture — add a [[ci.jobs]] entry for it to \
                      jci-audit.toml by hand"
-                ));
+                )));
                 continue;
             };
             notes.push(format!(
@@ -2727,6 +2729,13 @@ workflows:
                 .any(|n| n.contains("changing from 'false' to 'true'")),
             "got: {notes:?}"
         );
+        // A param drift is non-blocking (jci-audit auto-corrects it) but
+        // worth noticing — the warning tier (jerus-org/jci-audit#176), not
+        // plain fact text.
+        assert!(
+            notes.iter().all(|n| n.starts_with("[warn] ")),
+            "got: {notes:?}"
+        );
     }
 
     #[test]
@@ -2981,6 +2990,12 @@ workflows:
         let (discovered, notes) = discover_undeclared_jobs(&lines, &[]);
         assert_eq!(notes.len(), 1, "got: {notes:?}");
         assert!(notes[0].contains("discovered"), "got: {notes:?}");
+        // A successful discovery is a plain fact — jci-audit already handled
+        // it, there's nothing for the reader to do (jerus-org/jci-audit#176).
+        assert!(
+            !notes[0].starts_with("[warn] ") && !notes[0].starts_with("[!] "),
+            "got: {notes:?}"
+        );
         assert_eq!(
             discovered,
             vec![JobSpec {
@@ -3028,6 +3043,9 @@ workflows:
         assert_eq!(warnings.len(), 1, "got: {warnings:?}");
         assert!(warnings[0].contains("jci-audit/check"));
         assert!(warnings[0].contains("validation"));
+        // The reader must hand-author the [[ci.jobs]] entry — the action
+        // tier (jerus-org/jci-audit#176), not just a fact or a soft warning.
+        assert!(warnings[0].starts_with("[!] "), "got: {warnings:?}");
     }
 
     /// Same refusal, block form — without it, the commented-out text would
