@@ -14,6 +14,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: update dependency jci-audit to v0.1.11(pr [#173])
 - relative paths in CLI messages(pr [#175])
+- relativize check's about.toml drift path(pr [#179])
 
 ## [0.1.11] - 2026-09-08
 
@@ -447,6 +448,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#173]: https://github.com/jerus-org/jci-audit/pull/173
 [#175]: https://github.com/jerus-org/jci-audit/pull/175
 [#177]: https://github.com/jerus-org/jci-audit/pull/177
+[#179]: https://github.com/jerus-org/jci-audit/pull/179
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
