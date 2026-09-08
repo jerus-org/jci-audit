@@ -501,9 +501,9 @@ fn run_release(
         println!("  live audit (currency, non-blocking): no findings");
     } else {
         println!(
-            "{}",
+            "  {}",
             diagnostics::warn_tag(format!(
-                "  live audit (currency, non-blocking) reported {} advisory(ies):",
+                "live audit (currency, non-blocking) reported {} advisory(ies):",
                 outcome.live_findings.len()
             ))
         );
@@ -742,18 +742,18 @@ fn run_verify(
         );
         for note in &outcome.unverified {
             println!(
-                "{}",
-                diagnostics::warn_tag(format!("  not verified: {note}"))
+                "  {}",
+                diagnostics::warn_tag(format!("not verified: {note}"))
             );
         }
         for m in &outcome.mismatches {
-            println!("{}", diagnostics::action_tag(format!("  MISMATCH: {m}")));
+            println!("  {}", diagnostics::action_tag(format!("MISMATCH: {m}")));
         }
         if !outcome.stale_exceptions.is_empty() {
             println!(
-                "{}",
+                "  {}",
                 diagnostics::warn_tag(format!(
-                    "  {} stale accepted exception(s) — no longer needed, safe to remove from \
+                    "{} stale accepted exception(s) — no longer needed, safe to remove from \
                      deny.toml:",
                     outcome.stale_exceptions.len()
                 ))
@@ -896,8 +896,8 @@ fn run_verify_remote(
     );
     for note in &outcome.unchecked {
         println!(
-            "{}",
-            diagnostics::warn_tag(format!("  not checked: {note}"))
+            "  {}",
+            diagnostics::warn_tag(format!("not checked: {note}"))
         );
     }
     // Neither flag has anything to act on here: this mode never re-runs the
@@ -906,18 +906,18 @@ fn run_verify_remote(
     // silently accepting a flag that does nothing.
     if advisory_db.is_some() {
         println!(
-            "{}",
+            "  {}",
             diagnostics::warn_tag(
-                "  note: --advisory-db has no effect on this fetch-only path — nothing is \
+                "note: --advisory-db has no effect on this fetch-only path — nothing is \
                  re-run against it"
             )
         );
     }
     if output.deny_warnings {
         println!(
-            "{}",
+            "  {}",
             diagnostics::warn_tag(
-                "  note: --deny-warnings has no effect on this fetch-only path — there is no \
+                "note: --deny-warnings has no effect on this fetch-only path — there is no \
                  live tool output to scan for warnings"
             )
         );

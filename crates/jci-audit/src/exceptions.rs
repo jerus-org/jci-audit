@@ -242,9 +242,9 @@ pub(crate) fn accepted_warnings(configured: Vec<SkipEntry>, stderr: &str) -> Acc
 pub(crate) fn print_notice(accepted: &AcceptedWarnings) {
     if !accepted.in_force.is_empty() {
         println!(
-            "{}",
+            "  {}",
             diagnostics::warn_tag(format!(
-                "  {} accepted duplicate exception(s) in force:",
+                "{} accepted duplicate exception(s) in force:",
                 accepted.in_force.len()
             ))
         );
@@ -257,9 +257,9 @@ pub(crate) fn print_notice(accepted: &AcceptedWarnings) {
     }
     if !accepted.stale.is_empty() {
         println!(
-            "{}",
+            "  {}",
             diagnostics::warn_tag(format!(
-                "  {} stale accepted exception(s) — no longer needed, safe to remove from \
+                "{} stale accepted exception(s) — no longer needed, safe to remove from \
                  deny.toml:",
                 accepted.stale.len()
             ))
