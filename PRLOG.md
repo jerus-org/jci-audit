@@ -10,6 +10,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - severity prefix on CLI messages(pr [#177])
 
+### Changed
+
+- docs-correct v0.2.0 roadmap state, add #164(pr [#181])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.11(pr [#173])
@@ -449,6 +453,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#175]: https://github.com/jerus-org/jci-audit/pull/175
 [#177]: https://github.com/jerus-org/jci-audit/pull/177
 [#179]: https://github.com/jerus-org/jci-audit/pull/179
+[#181]: https://github.com/jerus-org/jci-audit/pull/181
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
