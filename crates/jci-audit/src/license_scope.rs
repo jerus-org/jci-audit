@@ -49,6 +49,71 @@ pub(crate) struct CrateLicenseScope {
     pub(crate) reachable_exception_crates: BTreeSet<String>,
 }
 
+/// Which dependency-graph edges/depth a crate's `about.toml` says to include
+/// when resolving its license scope — mirrors cargo-about's own
+/// `ignore-dev-dependencies`/`ignore-build-dependencies`/
+/// `ignore-transitive-dependencies` config fields
+/// (jerus-org/jci-audit#63). cargo-about's real default for all three is
+/// `false` (nothing excluded, full transitive walk) — the `Default` impl
+/// here matches that, rather than the fixed "dev excluded, everything else
+/// included" assumption this derivation used to hardcode regardless of what
+/// a crate's own `about.toml` actually declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct DependencyScopePolicy {
+    pub(crate) ignore_dev_dependencies: bool,
+    pub(crate) ignore_build_dependencies: bool,
+    pub(crate) ignore_transitive_dependencies: bool,
+}
+
+impl DependencyScopePolicy {
+    /// The fixed policy [`reachable_dependency_versions`] (#62's per-crate
+    /// dependency-digest scoping) has always used: dev-only edges excluded,
+    /// everything else included, full transitive walk — "what actually
+    /// ships to a consumer". Deliberately not derived from any crate's
+    /// `about.toml`: that file's ignore flags are about license-notice
+    /// scope, a different (if related) question from advisory/digest
+    /// exposure.
+    pub(crate) fn shipped() -> Self {
+        Self {
+            ignore_dev_dependencies: true,
+            ignore_build_dependencies: false,
+            ignore_transitive_dependencies: false,
+        }
+    }
+}
+
+/// Read the three cargo-about dependency-scope fields directly from a
+/// crate's own `about.toml` content. A key that's simply absent defaults to
+/// `false`, matching cargo-about's own default; unparseable TOML syntax also
+/// falls back to all-`false` here — `merge_about_toml`'s own parse of the
+/// same content is what surfaces *that* error to the caller, so this
+/// derivation shouldn't fail twice over the same bad input. A key that IS
+/// present but isn't a boolean (e.g. `ignore-dev-dependencies = "true"`,
+/// a quoted string) is different: that content parses as valid TOML, so
+/// `merge_about_toml` would never catch it, and silently treating it as
+/// `false` would misrepresent a maintainer's explicit (if malformed) intent
+/// — so this errors instead.
+pub(crate) fn dependency_scope_policy_from_about_toml(
+    content: &str,
+) -> Result<DependencyScopePolicy> {
+    let Ok(doc) = content.parse::<toml_edit::DocumentMut>() else {
+        return Ok(DependencyScopePolicy::default());
+    };
+    let flag = |key: &str| -> Result<bool> {
+        match doc.get(key) {
+            None => Ok(false),
+            Some(item) => item
+                .as_bool()
+                .with_context(|| format!("about.toml's '{key}' must be a boolean, found: {item}")),
+        }
+    };
+    Ok(DependencyScopePolicy {
+        ignore_dev_dependencies: flag("ignore-dev-dependencies")?,
+        ignore_build_dependencies: flag("ignore-build-dependencies")?,
+        ignore_transitive_dependencies: flag("ignore-transitive-dependencies")?,
+    })
+}
+
 /// Compute the license scope for the crate at `manifest_path`, given
 /// `deny.toml`'s global allow set and the full (workspace-wide) set of
 /// exception crate names. `manifest_path` must be an absolute path — the
@@ -61,9 +126,10 @@ pub(crate) fn scope_for_crate<R: CommandRunner>(
     manifest_path: &Path,
     allow: &BTreeSet<String>,
     exception_crates: &BTreeSet<String>,
+    policy: DependencyScopePolicy,
 ) -> Result<CrateLicenseScope> {
     let json = crate_metadata(runner, manifest_path)?;
-    scope_from_metadata(&json, allow, exception_crates)
+    scope_from_metadata(&json, allow, exception_crates, policy)
 }
 
 /// Run `cargo metadata --all-features` scoped to one crate's own manifest,
@@ -102,6 +168,7 @@ pub(crate) fn scope_from_metadata(
     metadata_json: &str,
     allow: &BTreeSet<String>,
     exception_crates: &BTreeSet<String>,
+    policy: DependencyScopePolicy,
 ) -> Result<CrateLicenseScope> {
     let doc: Value =
         serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
@@ -122,7 +189,7 @@ pub(crate) fn scope_from_metadata(
         .and_then(Value::as_array)
         .context("cargo metadata JSON has no 'resolve.nodes'")?;
 
-    let reachable = reachable_shipped_ids(root, nodes);
+    let reachable = reachable_shipped_ids(root, nodes, policy);
 
     let id_to_pkg = index_by_id(packages);
 
@@ -196,7 +263,7 @@ pub(crate) fn reachable_dependency_versions(
         .and_then(Value::as_array)
         .context("cargo metadata JSON has no 'resolve.nodes'")?;
 
-    let reachable = reachable_shipped_ids(root, nodes);
+    let reachable = reachable_shipped_ids(root, nodes, DependencyScopePolicy::shipped());
     let id_to_pkg = index_by_id(packages);
 
     Ok(reachable
@@ -215,31 +282,51 @@ pub(crate) fn reachable_dependency_versions(
         .collect())
 }
 
-/// Package ids reachable from `root` via edges that ship (excludes an edge
-/// only when *every one* of its `dep_kinds` is `"dev"` — a dependency that is
-/// also a normal or build dependency via any other kind still ships).
-fn reachable_shipped_ids(root: &str, nodes: &[Value]) -> BTreeSet<String> {
+/// Package ids reachable from `root` via edges that ship under `policy`
+/// (excludes an edge only when *every one* of its `dep_kinds` is excluded —
+/// a dependency that is also a normal dependency, or a non-excluded kind,
+/// via any other edge still ships). When `policy.ignore_transitive_dependencies`
+/// is set, only `root`'s own direct dependencies are considered — matching
+/// cargo-about's "only direct dependencies... transitive dependencies are
+/// ignored" semantics — rather than walking the full graph.
+fn reachable_shipped_ids(
+    root: &str,
+    nodes: &[Value],
+    policy: DependencyScopePolicy,
+) -> BTreeSet<String> {
     let by_id = index_by_id(nodes);
-
     let mut seen = BTreeSet::new();
+
+    let deps_of = |id: &str| -> &[Value] {
+        by_id
+            .get(id)
+            .and_then(|node| node.get("deps"))
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    };
+
+    if policy.ignore_transitive_dependencies {
+        for dep in deps_of(root) {
+            if let Some(dep_id) = dep.get("pkg").and_then(Value::as_str)
+                && edge_ships(dep, policy)
+            {
+                seen.insert(dep_id.to_string());
+            }
+        }
+        return seen;
+    }
+
     let mut stack = vec![root.to_string()];
     while let Some(id) = stack.pop() {
         if !seen.insert(id.clone()) {
             continue;
         }
-        let Some(node) = by_id.get(id.as_str()) else {
-            continue;
-        };
-        let deps = node
-            .get("deps")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        for dep in deps {
+        for dep in deps_of(&id) {
             let Some(dep_id) = dep.get("pkg").and_then(Value::as_str) else {
                 continue;
             };
-            if edge_ships(dep) {
+            if edge_ships(dep, policy) {
                 stack.push(dep_id.to_string());
             }
         }
@@ -247,19 +334,19 @@ fn reachable_shipped_ids(root: &str, nodes: &[Value]) -> BTreeSet<String> {
     seen
 }
 
-/// An edge ships if any of its `dep_kinds` entries is not `"dev"` (`null` =
-/// normal, `"build"` = build — both ship; only an edge that is *exclusively*
-/// `"dev"` across every kind is excluded, matching `about.toml`'s
-/// `ignore-dev-dependencies = true`).
-fn edge_ships(dep: &Value) -> bool {
+/// An edge ships under `policy` if any of its `dep_kinds` entries is a kind
+/// `policy` doesn't exclude: `null` (normal) always ships; `"dev"`/`"build"`
+/// ship unless `policy.ignore_dev_dependencies`/`ignore_build_dependencies`
+/// says otherwise. An edge with mixed kinds (e.g. normal for one target, dev
+/// for another) ships as long as at least one kind isn't excluded.
+fn edge_ships(dep: &Value, policy: DependencyScopePolicy) -> bool {
     let Some(kinds) = dep.get("dep_kinds").and_then(Value::as_array) else {
         return true;
     };
-    kinds.iter().any(|k| {
-        !matches!(
-            k.get("kind"),
-            Some(Value::String(s)) if s == "dev"
-        )
+    kinds.iter().any(|k| match k.get("kind") {
+        Some(Value::String(s)) if s == "dev" => !policy.ignore_dev_dependencies,
+        Some(Value::String(s)) if s == "build" => !policy.ignore_build_dependencies,
+        _ => true,
     })
 }
 
@@ -367,32 +454,82 @@ mod tests {
     #[test]
     fn compound_expression_resolves_to_the_one_allowed_arm() {
         // anyhow is "MIT OR Apache-2.0"; only MIT is allowed here.
-        let scope = scope_from_metadata(METADATA_JSON, &allow(&["MIT"]), &BTreeSet::new()).unwrap();
+        let scope = scope_from_metadata(
+            METADATA_JSON,
+            &allow(&["MIT"]),
+            &BTreeSet::new(),
+            DependencyScopePolicy::default(),
+        )
+        .unwrap();
         assert!(scope.accepted.contains("MIT"));
         assert!(!scope.accepted.contains("Apache-2.0"));
     }
 
     #[test]
-    fn dev_only_dependency_is_excluded() {
+    fn dev_only_dependency_is_included_by_default() {
+        // cargo-about's real default for ignore-dev-dependencies is false —
         // tempfile (dev-only) is the fixture's only source of BSD-3-Clause,
-        // so its (non-)presence in `accepted` isolates dev-edge handling.
-        let scope = scope_from_metadata(METADATA_JSON, &allow(&["BSD-3-Clause"]), &BTreeSet::new())
-            .unwrap();
+        // so its presence in `accepted` isolates dev-edge handling.
+        let scope = scope_from_metadata(
+            METADATA_JSON,
+            &allow(&["BSD-3-Clause"]),
+            &BTreeSet::new(),
+            DependencyScopePolicy::default(),
+        )
+        .unwrap();
         assert!(
-            !scope.accepted.contains("BSD-3-Clause"),
-            "a dev-only dependency's license must not be counted: {scope:?}"
+            scope.accepted.contains("BSD-3-Clause"),
+            "a dev-only dependency must be counted when about.toml doesn't ignore it: {scope:?}"
         );
     }
 
     #[test]
-    fn build_dependency_is_included() {
+    fn dev_only_dependency_is_excluded_when_about_toml_ignores_it() {
+        let policy = DependencyScopePolicy {
+            ignore_dev_dependencies: true,
+            ..Default::default()
+        };
+        let scope = scope_from_metadata(
+            METADATA_JSON,
+            &allow(&["BSD-3-Clause"]),
+            &BTreeSet::new(),
+            policy,
+        )
+        .unwrap();
+        assert!(
+            !scope.accepted.contains("BSD-3-Clause"),
+            "ignore-dev-dependencies = true must drop a dev-only dependency's license: {scope:?}"
+        );
+    }
+
+    #[test]
+    fn build_dependency_is_included_by_default() {
         // cc (build-only) is the fixture's only source of Zlib, so its
         // presence in `accepted` isolates build-edge handling.
-        let scope =
-            scope_from_metadata(METADATA_JSON, &allow(&["Zlib"]), &BTreeSet::new()).unwrap();
+        let scope = scope_from_metadata(
+            METADATA_JSON,
+            &allow(&["Zlib"]),
+            &BTreeSet::new(),
+            DependencyScopePolicy::default(),
+        )
+        .unwrap();
         assert!(
             scope.accepted.contains("Zlib"),
-            "a build dependency's license must be counted: {scope:?}"
+            "a build dependency's license must be counted by default: {scope:?}"
+        );
+    }
+
+    #[test]
+    fn build_dependency_is_excluded_when_about_toml_ignores_it() {
+        let policy = DependencyScopePolicy {
+            ignore_build_dependencies: true,
+            ..Default::default()
+        };
+        let scope = scope_from_metadata(METADATA_JSON, &allow(&["Zlib"]), &BTreeSet::new(), policy)
+            .unwrap();
+        assert!(
+            !scope.accepted.contains("Zlib"),
+            "ignore-build-dependencies = true must drop a build-only dependency's license: {scope:?}"
         );
     }
 
@@ -402,6 +539,7 @@ mod tests {
             METADATA_JSON,
             &allow(&["MIT"]),
             &["option-ext".to_string()].into_iter().collect(),
+            DependencyScopePolicy::default(),
         )
         .unwrap();
         assert!(scope.reachable_exception_crates.contains("option-ext"));
@@ -413,6 +551,7 @@ mod tests {
             METADATA_JSON,
             &allow(&["MIT"]),
             &["some-other-crate".to_string()].into_iter().collect(),
+            DependencyScopePolicy::default(),
         )
         .unwrap();
         assert!(scope.reachable_exception_crates.is_empty());
@@ -427,6 +566,7 @@ mod tests {
             METADATA_JSON,
             &allow(&["MIT", "Apache-2.0"]),
             &BTreeSet::new(),
+            DependencyScopePolicy::default(),
         )
         .unwrap();
         // Sanity: root contributes nothing beyond what its real dependencies
@@ -438,7 +578,12 @@ mod tests {
     fn unparseable_license_is_skipped_not_fatal() {
         let json =
             METADATA_JSON.replace(r#""license": "MPL-2.0""#, r#""license": "???not-spdx???""#);
-        let scope = scope_from_metadata(&json, &allow(&["MIT"]), &BTreeSet::new());
+        let scope = scope_from_metadata(
+            &json,
+            &allow(&["MIT"]),
+            &BTreeSet::new(),
+            DependencyScopePolicy::default(),
+        );
         assert!(
             scope.is_ok(),
             "an unparseable license must not fail the whole scope: {scope:?}"
@@ -545,10 +690,119 @@ mod tests {
             recorded_cwd: std::cell::RefCell::new(None),
         };
         let manifest_path = Path::new("/workspace/crates/demo/Cargo.toml");
-        scope_for_crate(&runner, manifest_path, &BTreeSet::new(), &BTreeSet::new()).unwrap();
+        scope_for_crate(
+            &runner,
+            manifest_path,
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            DependencyScopePolicy::default(),
+        )
+        .unwrap();
         assert_eq!(
             runner.recorded_cwd.into_inner(),
             Some(std::path::PathBuf::from("/workspace/crates/demo"))
+        );
+    }
+
+    // --- ignore-transitive-dependencies ---------------------------------
+
+    // A two-level chain: root -> direct (MIT) -> transitive (Zlib). Isolates
+    // depth handling from edge-kind handling (both edges here are normal).
+    const METADATA_JSON_TWO_LEVELS: &str = r#"
+    {
+      "packages": [
+        { "name": "root", "version": "0.0.0", "id": "id-root", "source": null, "license": null },
+        { "name": "direct", "version": "1.0.0", "id": "id-direct",
+          "source": "registry+https://x", "license": "MIT" },
+        { "name": "transitive", "version": "1.0.0", "id": "id-transitive",
+          "source": "registry+https://x", "license": "Zlib" }
+      ],
+      "resolve": {
+        "root": "id-root",
+        "nodes": [
+          { "id": "id-root", "deps": [
+              { "name": "direct", "pkg": "id-direct", "dep_kinds": [ { "kind": null, "target": null } ] }
+          ] },
+          { "id": "id-direct", "deps": [
+              { "name": "transitive", "pkg": "id-transitive", "dep_kinds": [ { "kind": null, "target": null } ] }
+          ] },
+          { "id": "id-transitive", "deps": [] }
+        ]
+      }
+    }
+    "#;
+
+    #[test]
+    fn transitive_dependency_is_included_by_default() {
+        let scope = scope_from_metadata(
+            METADATA_JSON_TWO_LEVELS,
+            &allow(&["MIT", "Zlib"]),
+            &BTreeSet::new(),
+            DependencyScopePolicy::default(),
+        )
+        .unwrap();
+        assert_eq!(scope.accepted, allow(&["MIT", "Zlib"]));
+    }
+
+    #[test]
+    fn transitive_dependency_is_excluded_when_about_toml_ignores_it() {
+        let policy = DependencyScopePolicy {
+            ignore_transitive_dependencies: true,
+            ..Default::default()
+        };
+        let scope = scope_from_metadata(
+            METADATA_JSON_TWO_LEVELS,
+            &allow(&["MIT", "Zlib"]),
+            &BTreeSet::new(),
+            policy,
+        )
+        .unwrap();
+        assert_eq!(
+            scope.accepted,
+            allow(&["MIT"]),
+            "direct dependency stays, transitive one must be dropped: {scope:?}"
+        );
+    }
+
+    // --- dependency_scope_policy_from_about_toml -------------------------
+
+    #[test]
+    fn dependency_scope_policy_from_about_toml_defaults_to_all_false_when_absent() {
+        let policy = dependency_scope_policy_from_about_toml("accepted = []\n").unwrap();
+        assert_eq!(policy, DependencyScopePolicy::default());
+    }
+
+    #[test]
+    fn dependency_scope_policy_from_about_toml_reads_declared_flags() {
+        let policy = dependency_scope_policy_from_about_toml(
+            "ignore-dev-dependencies = true\nignore-build-dependencies = true\n",
+        )
+        .unwrap();
+        assert_eq!(
+            policy,
+            DependencyScopePolicy {
+                ignore_dev_dependencies: true,
+                ignore_build_dependencies: true,
+                ignore_transitive_dependencies: false,
+            }
+        );
+    }
+
+    #[test]
+    fn dependency_scope_policy_from_about_toml_falls_back_to_defaults_on_unparseable_content() {
+        let policy = dependency_scope_policy_from_about_toml("not = [valid toml").unwrap();
+        assert_eq!(policy, DependencyScopePolicy::default());
+    }
+
+    #[test]
+    fn dependency_scope_policy_from_about_toml_errs_on_a_non_boolean_value() {
+        // Valid TOML syntax (merge_about_toml's own parse would succeed), but
+        // the wrong type for this key — must not be silently read as `false`.
+        let result =
+            dependency_scope_policy_from_about_toml("ignore-dev-dependencies = \"true\"\n");
+        assert!(
+            result.is_err(),
+            "a non-boolean ignore-dev-dependencies must error, not silently default: {result:?}"
         );
     }
 }

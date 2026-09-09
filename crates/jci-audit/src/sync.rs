@@ -484,14 +484,22 @@ pub(crate) fn sync_about_toml_at<R: crate::check::CommandRunner>(
             .parent()
             .context("about.toml path has no parent directory")?;
         let manifest_path = crate_dir.join("Cargo.toml");
+        let existing = std::fs::read_to_string(&about_path)
+            .with_context(|| format!("failed to read '{}'", about_path.display()))?;
+        // Read before computing the scope (jerus-org/jci-audit#63): the
+        // scope derivation itself depends on what this crate's own
+        // about.toml says about ignore-dev/build/transitive-dependencies,
+        // not a fixed assumption.
+        let dep_scope_policy =
+            crate::license_scope::dependency_scope_policy_from_about_toml(&existing)
+                .with_context(|| format!("while reading '{}'", about_path.display()))?;
         let scope = crate::license_scope::scope_for_crate(
             runner,
             &manifest_path,
             &policy.allow,
             &exception_names,
+            dep_scope_policy,
         )?;
-        let existing = std::fs::read_to_string(&about_path)
-            .with_context(|| format!("failed to read '{}'", about_path.display()))?;
         // merge_about_toml only sees the content, not the path (it's tested
         // against fixture strings) — name which crate's about.toml failed
         // here, at the one call site that knows, since a workspace can hold
