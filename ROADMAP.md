@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-09-06._
+_Last updated: 2026-09-09._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -103,10 +103,15 @@ per-crate item below ships. This is a deliberate minor release, not folded into 
 releases Phase 0-2 bugfixes have been shipping as.
 
 - **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
-  ✅ Done — `cargo-about`/`cargo-audit`/`cargo-deny`/`rsign2` now install at explicit
-  `# renovate: datasource=crate ...`-tracked versions, mirroring `ci-container`'s pattern. Also
-  adds the `docker:pinDigests`/`customManagers:dockerfileVersions` extends that this repo's
-  `renovate.json` was missing — without them, those comments would have stayed inert.
+  ⚠️ **Closed, but not actually fixed.** PR #161 genuinely added `ENV CARGO_ABOUT_VERSION=...`-style
+  pins, but `orb/Dockerfile` is a **generated** file and `gen-circleci-orb.toml`'s `cargo_tools`
+  field has no version-pin syntax at all — the `jerus-bot` regenerate-orb auto-commit that lands
+  mid-PR silently reverted the pins back to the generator's unpinned template *before* #161 merged,
+  and that reverted, unpinned state is what's on `main` today. Root-caused and re-opened for
+  tracking as [#180](https://github.com/jerus-org/jci-audit/issues/180); the actual fix is blocked
+  on the generator gaining pin support
+  ([gen-circleci-orb#321](https://github.com/jerus-org/gen-circleci-orb/issues/321)) — a per-repo
+  hand-edit to the Dockerfile again would just get reverted the same way.
 - **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
   ✅ Done — `release-prep`/`verify --package <NAME>` scope the dependency digest to that crate's
   reachable graph (via `cargo metadata`, reusing `license_scope`'s reachability rule) and the
@@ -116,18 +121,39 @@ releases Phase 0-2 bugfixes have been shipping as.
   and `verify`'s remote-fetch path don't take a per-package record path yet — deferred until a
   real multi-crate consumer needs the full pipeline, per the issue's own "why post-MVP" note.
 - **[#101 — no command wires the orb into a consumer's CI config.](https://github.com/jerus-org/jci-audit/issues/101)**
-  Required for the initial published pre-release: a tool with no onboarding command isn't
-  actually installable software for anyone outside this repo, pre-1.0 or not.
+  ✅ Done (in two parts) — [#163](https://github.com/jerus-org/jci-audit/pull/163) shipped
+  `wire-ci`/`check-ci-wiring` for a single job in a single workflow (e.g. `jci-audit/check` in a
+  `validation`-style workflow), and [#171](https://github.com/jerus-org/jci-audit/issues/171)
+  (merged as #172) made `jci-audit.toml` canonical in both directions — resyncing a
+  toml-declared job whose config has drifted or was never marked, and discovering an existing
+  `jci-audit/*` config job that has no toml entry yet and writing one. #101 itself is closed; the
+  one piece explicitly deferred out of it — wiring the three-job **release workflow**
+  (`release_prep`/the consumer's own release job/`publish_record`) — is tracked separately as
+  #164, below.
+- **[#164 — wire-ci support for the release workflow.](https://github.com/jerus-org/jci-audit/issues/164)**
+  In scope for `0.2.0` (added 2026-09-09). The release workflow is a three-job chain, not a single
+  job — `jci-audit/release_prep` → the consumer's own release job → `jci-audit/publish_record` —
+  with mechanics `wire_job_into`/`CiConfig` don't handle yet: `context:`, `post-steps:
+  [persist_to_workspace]`, `attach_workspace: true`, and new `--tag`/`--owner`/`--repo`/`--version`
+  fields. The middle job is always the consumer's own; `wire-ci` can only wire the first and third
+  around wherever a `--release-job <name>`-style flag says it is. Also open: whether this needs its
+  own `[ci.release]` config table alongside `[ci]`, decided during implementation.
 - **[#63 — `license_scope`/`about.toml` ignore-build/ignore-transitive-dependencies.](https://github.com/jerus-org/jci-audit/issues/63)**
-  Honour those settings in the derivation instead of always including build dependencies.
+  Honour those settings in the derivation instead of always including build dependencies. Not
+  started; no external blocker.
 - **[#36 — run `licenses-check` in validation so notices cannot go stale.](https://github.com/jerus-org/jci-audit/issues/36)**
-  Partially blocked on #101: the "which container's `cargo-about` gets used" half needs #101's
-  wiring command, while #142 (above) covers the pinning half.
+  The "which container's `cargo-about` gets used" half is unblocked now that #101 is done. The
+  determinism half is still blocked — not on #101 any more, but on #180/#142 above: the
+  cold/warm-cache cargo-about investigation in this issue's own history depends on the orb image
+  actually running a pinned, known-good cargo-about version, which it currently does not.
 - **[#138 — clippy::pedantic adoption.](https://github.com/jerus-org/jci-audit/issues/138)**
   ✅ Done — whole-group `warn` (with `too_many_lines` allowed) in `[workspace.lints.clippy]`.
 - **[#136 — invoke cargo-audit/cargo-deny/cargo-about via `cargo <sub>`.](https://github.com/jerus-org/jci-audit/issues/136)**
   ✅ Done — every invocation (and version probe) now dispatches through `cargo <sub>`, including
   the one asymmetry discovered along the way (`cargo-audit`'s dispatch reinserts `audit` itself).
+
+**Remaining before `0.2.0` can ship:** #180 (blocked on upstream gen-circleci-orb#321), #63, #36
+(blocked on #180), #164. #142/#101/#62/#138/#136 are genuinely done.
 
 ## Backlog (tracked as issues, not yet scheduled)
 
