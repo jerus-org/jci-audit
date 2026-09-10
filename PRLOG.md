@@ -20,6 +20,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - relative paths in CLI messages(pr [#175])
 - relativize check's about.toml drift path(pr [#179])
 - honour about.toml's dependency-scope flags(pr [#182])
+- deps: update rust crate reqwest to 0.13.5(pr [#183])
 
 ## [0.1.11] - 2026-09-08
 
@@ -456,6 +457,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#179]: https://github.com/jerus-org/jci-audit/pull/179
 [#181]: https://github.com/jerus-org/jci-audit/pull/181
 [#182]: https://github.com/jerus-org/jci-audit/pull/182
+[#183]: https://github.com/jerus-org/jci-audit/pull/183
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
