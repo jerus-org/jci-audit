@@ -1,5 +1,10 @@
 set -- jci-audit check-ci-wiring
-[[ "${VERBOSE:-false}" = "true" ]] && set -- "$@" --verbose
-[[ "${QUIET:-false}" = "true" ]] && set -- "$@" --quiet
+case "${LOG_LEVEL:-default}" in
+  quiet) set -- "$@" --quiet ;;
+  verbose) set -- "$@" --verbose ;;
+  verbose2) set -- "$@" --verbose --verbose ;;
+  verbose3) set -- "$@" --verbose --verbose --verbose ;;
+  verbose4) set -- "$@" --verbose --verbose --verbose --verbose ;;
+esac
 [[ -n "${CONFIG:-}" ]] && set -- "$@" --config "${CONFIG}"
 "$@"

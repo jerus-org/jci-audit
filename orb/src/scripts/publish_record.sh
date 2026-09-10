@@ -1,6 +1,11 @@
 set -- jci-audit publish-record
-[[ "${VERBOSE:-false}" = "true" ]] && set -- "$@" --verbose
-[[ "${QUIET:-false}" = "true" ]] && set -- "$@" --quiet
+case "${LOG_LEVEL:-default}" in
+  quiet) set -- "$@" --quiet ;;
+  verbose) set -- "$@" --verbose ;;
+  verbose2) set -- "$@" --verbose --verbose ;;
+  verbose3) set -- "$@" --verbose --verbose --verbose ;;
+  verbose4) set -- "$@" --verbose --verbose --verbose --verbose ;;
+esac
 set -- "$@" --tag "${TAG}"
 set -- "$@" --owner "${OWNER}"
 set -- "$@" --repo "${REPO}"

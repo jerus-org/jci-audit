@@ -1,14 +1,17 @@
 description: Run check-ci-wiring command in a dedicated job.
 executor: default
 parameters:
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
-    default: false
+  log_level:
+    type: enum
+    description: Logging verbosity, relative to this tool's own default level (quiet, default, verbose, verbose2, verbose3, verbose4).
+    default: default
+    enum:
+    - quiet
+    - default
+    - verbose
+    - verbose2
+    - verbose3
+    - verbose4
   config:
     type: string
     description: Path to the jci-audit.toml-shaped wiring spec to read. Same resolution rules as `wire-ci --config`
@@ -34,6 +37,5 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - check_ci_wiring:
-    verbose: << parameters.verbose >>
-    quiet: << parameters.quiet >>
+    log_level: << parameters.log_level >>
     config: << parameters.config >>

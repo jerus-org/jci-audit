@@ -4,14 +4,17 @@ parameters:
   version:
     type: string
     description: The release version being validated (e.g. "1.2.0")
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
-    default: false
+  log_level:
+    type: enum
+    description: Logging verbosity, relative to this tool's own default level (quiet, default, verbose, verbose2, verbose3, verbose4).
+    default: default
+    enum:
+    - quiet
+    - default
+    - verbose
+    - verbose2
+    - verbose3
+    - verbose4
   advisory_db:
     type: string
     description: Advisory-db root; cargo-deny's checkout lives beneath it. Its commit becomes the pin. Defaults to ~/.cargo/advisory-db.
@@ -46,8 +49,7 @@ steps:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - release_prep:
     version: << parameters.version >>
-    verbose: << parameters.verbose >>
-    quiet: << parameters.quiet >>
+    log_level: << parameters.log_level >>
     advisory_db: << parameters.advisory_db >>
     package: << parameters.package >>
     deny_warnings: << parameters.deny_warnings >>

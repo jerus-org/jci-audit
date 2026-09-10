@@ -1,13 +1,16 @@
 description: 'PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy. All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml drift check, and the cargo-about resolution check. Aggregates exit codes and surfaces stderr.'
 parameters:
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
-    default: false
+  log_level:
+    type: enum
+    description: Logging verbosity, relative to this tool's own default level (quiet, default, verbose, verbose2, verbose3, verbose4).
+    default: default
+    enum:
+    - quiet
+    - default
+    - verbose
+    - verbose2
+    - verbose3
+    - verbose4
   manifest_path:
     type: string
     description: Path to the Cargo.toml (or its directory) to check
@@ -25,18 +28,6 @@ parameters:
     description: Fail if the tools report any warning
     default: false
 steps:
-- when:
-    condition: << parameters.verbose >>
-    steps:
-    - run:
-        name: Set VERBOSE flag
-        command: echo 'export VERBOSE=true' >> "$BASH_ENV"
-- when:
-    condition: << parameters.quiet >>
-    steps:
-    - run:
-        name: Set QUIET flag
-        command: echo 'export QUIET=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.deny_stale_exceptions >>
     steps:
@@ -59,4 +50,5 @@ steps:
     name: 'PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.'
     command: <<include(scripts/check.sh)>>
     environment:
+      LOG_LEVEL: << parameters.log_level >>
       MANIFEST_PATH: << parameters.manifest_path >>
