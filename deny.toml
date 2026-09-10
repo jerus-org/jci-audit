@@ -80,6 +80,10 @@ reason = "0.52 via ring (TLS/crypto stack); 0.61 via clap's anstream/anstyle-que
 crate = "getrandom"
 reason = "0.2 via ring; 0.4 via jobserver/cc's build-time chain (aws-lc-sys) — unrelated consumers"
 
+[[bans.skip]]
+crate = "base64"
+reason = "0.22 via hyper-util; 0.23 via reqwest@0.13.5 — unrelated consumers"
+
 [sources]
 unknown-registry = "warn"
 unknown-git = "warn"
