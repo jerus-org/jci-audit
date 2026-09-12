@@ -1,4 +1,4 @@
-pre-release-commit-message = "chore: Release jci-audit v{{version}}"
+pre-release-commit-message = "chore: Release jci-audit v{{version}} [skip ci]"
 tag-message = "{{tag_name}}"
 tag-name = "jci-audit-v{{version}}"
 pre-release-hook = ["./release-hook.sh"]
