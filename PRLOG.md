@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - docs-correct v0.2.0 roadmap state, add #164(pr [#181])
+- chore-add ci-skip marker to release commit(pr [#186])
 
 ### Fixed
 
@@ -460,6 +461,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#182]: https://github.com/jerus-org/jci-audit/pull/182
 [#183]: https://github.com/jerus-org/jci-audit/pull/183
 [#184]: https://github.com/jerus-org/jci-audit/pull/184
+[#186]: https://github.com/jerus-org/jci-audit/pull/186
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
