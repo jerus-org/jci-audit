@@ -1,5 +1,10 @@
 set -- jci-audit sync
 [[ "${CHECK:-false}" = "true" ]] && set -- "$@" --check
-[[ "${VERBOSE:-false}" = "true" ]] && set -- "$@" --verbose
-[[ "${QUIET:-false}" = "true" ]] && set -- "$@" --quiet
+case "${LOG_LEVEL:-default}" in
+  quiet) set -- "$@" --quiet ;;
+  v) set -- "$@" --verbose ;;
+  vv) set -- "$@" --verbose --verbose ;;
+  vvv) set -- "$@" --verbose --verbose --verbose ;;
+  vvvv) set -- "$@" --verbose --verbose --verbose --verbose ;;
+esac
 "$@"

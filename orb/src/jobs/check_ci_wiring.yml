@@ -1,14 +1,17 @@
 description: Run check-ci-wiring command in a dedicated job.
 executor: default
 parameters:
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
-    default: false
+  log_level:
+    type: enum
+    description: 'Logging verbosity: consolidates this tool''s clap-verbosity-flag -q/--quiet and -v/--verbose repeat-counters (its own linked pair) into one selector, so they can''t be set independently and cancel out. clap-verbosity-flag escalates off -> error -> warn -> info -> debug -> trace, typically starting at error: `quiet` is a single -q (one step quieter); `default` is this tool''s own starting point on that scale; `v` / `vv` / `vvv` / `vvvv` are -v / -vv / -vvv / -vvvv (one to four steps louder).'
+    default: default
+    enum:
+    - quiet
+    - default
+    - v
+    - vv
+    - vvv
+    - vvvv
   config:
     type: string
     description: Path to the jci-audit.toml-shaped wiring spec to read. Same resolution rules as `wire-ci --config`
@@ -34,6 +37,5 @@ steps:
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
 - check_ci_wiring:
-    verbose: << parameters.verbose >>
-    quiet: << parameters.quiet >>
+    log_level: << parameters.log_level >>
     config: << parameters.config >>

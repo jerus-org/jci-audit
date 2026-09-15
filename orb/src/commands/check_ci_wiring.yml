@@ -1,32 +1,24 @@
 description: 'Check that the `CircleCI` config matches `jci-audit.toml`''s `[ci]` wiring spec, without writing. The CI-facing counterpart to `wire-ci`: fails (non-zero) on drift, or if `[[ci.jobs]]` isn''t configured yet, and never writes either file. This is a separate subcommand rather than a `--check` flag on `wire-ci` because a CI job must never be able to rewrite the `CircleCI` config that is currently running it — holds by construction: `check-ci-wiring`''s CLI surface has no flag that could make it write, so the orb job the generator produces for it can''t be wired into a workflow in a way that regresses to write mode.'
 parameters:
-  verbose:
-    type: boolean
-    description: Increase logging verbosity
-    default: false
-  quiet:
-    type: boolean
-    description: Decrease logging verbosity
-    default: false
+  log_level:
+    type: enum
+    description: 'Logging verbosity: consolidates this tool''s clap-verbosity-flag -q/--quiet and -v/--verbose repeat-counters (its own linked pair) into one selector, so they can''t be set independently and cancel out. clap-verbosity-flag escalates off -> error -> warn -> info -> debug -> trace, typically starting at error: `quiet` is a single -q (one step quieter); `default` is this tool''s own starting point on that scale; `v` / `vv` / `vvv` / `vvvv` are -v / -vv / -vvv / -vvvv (one to four steps louder).'
+    default: default
+    enum:
+    - quiet
+    - default
+    - v
+    - vv
+    - vvv
+    - vvvv
   config:
     type: string
     description: Path to the jci-audit.toml-shaped wiring spec to read. Same resolution rules as `wire-ci --config`
     default: ''
 steps:
-- when:
-    condition: << parameters.verbose >>
-    steps:
-    - run:
-        name: Set VERBOSE flag
-        command: echo 'export VERBOSE=true' >> "$BASH_ENV"
-- when:
-    condition: << parameters.quiet >>
-    steps:
-    - run:
-        name: Set QUIET flag
-        command: echo 'export QUIET=true' >> "$BASH_ENV"
 - run:
     name: Check that the `CircleCI` config matches `jci-audit.toml`'s `[ci]` wiring spec, without writing.
     command: <<include(scripts/check_ci_wiring.sh)>>
     environment:
+      LOG_LEVEL: << parameters.log_level >>
       CONFIG: << parameters.config >>
