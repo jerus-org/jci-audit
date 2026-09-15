@@ -29,6 +29,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency orb-tools to v12.5.0(pr [#193])
 - deps: update rust crate clap to 4.6.7(pr [#190])
 - deps: update rust crate toml_edit to 0.25.15(pr [#191])
+- deps: update rust crate uuid to 1.26.1(pr [#192])
 
 ## [0.1.11] - 2026-09-08
 
@@ -474,6 +475,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#193]: https://github.com/jerus-org/jci-audit/pull/193
 [#190]: https://github.com/jerus-org/jci-audit/pull/190
 [#191]: https://github.com/jerus-org/jci-audit/pull/191
+[#192]: https://github.com/jerus-org/jci-audit/pull/192
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
