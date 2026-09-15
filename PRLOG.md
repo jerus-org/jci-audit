@@ -23,6 +23,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - honour about.toml's dependency-scope flags(pr [#182])
 - deps: update rust crate reqwest to 0.13.5(pr [#183])
 - deps: update rust:1-slim-trixie docker digest to bce1476(pr [#184])
+- deps: lock file maintenance(pr [#187])
 
 ## [0.1.11] - 2026-09-08
 
@@ -462,6 +463,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#183]: https://github.com/jerus-org/jci-audit/pull/183
 [#184]: https://github.com/jerus-org/jci-audit/pull/184
 [#186]: https://github.com/jerus-org/jci-audit/pull/186
+[#187]: https://github.com/jerus-org/jci-audit/pull/187
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
