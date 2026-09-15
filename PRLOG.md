@@ -26,6 +26,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust:1-slim-trixie docker digest to bce1476(pr [#184])
 - deps: lock file maintenance(pr [#187])
 - deps: update dependency gen-circleci-orb to v0.1.18(pr [#188])
+- deps: update dependency orb-tools to v12.5.0(pr [#193])
 
 ## [0.1.11] - 2026-09-08
 
@@ -468,6 +469,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#187]: https://github.com/jerus-org/jci-audit/pull/187
 [#188]: https://github.com/jerus-org/jci-audit/pull/188
 [#189]: https://github.com/jerus-org/jci-audit/pull/189
+[#193]: https://github.com/jerus-org/jci-audit/pull/193
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
