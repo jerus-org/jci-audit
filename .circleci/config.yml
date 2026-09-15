@@ -16,7 +16,7 @@ orbs:
   jci-audit: jerus-org/jci-audit@0.1.11
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.10
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.18
   # <<< gen-circleci-orb
 workflows:
   validation:
@@ -114,18 +114,23 @@ workflows:
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
           package: jci-audit
-          rust_image: jerusdp/ci-rust:rolling-6mo@sha256:a0be475b440dfb940ee2b89e29c3299e161aa6868f7191871d70076769200c6d
       - gen-circleci-orb/generate:
           name: regenerate-orb
           binary: jci-audit
           orb_namespace: jerus-org
           orb_dir: orb
           attach_workspace: true
-          check_ci_wiring: true
           ssh_fingerprint: "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
           persist_orb_workspace: true
           context: [release]
           requires: [build-binary, toolkit/common_tests]
+          filters:
+            branches:
+              ignore:
+                - main
+      - gen-circleci-orb/update:
+          name: check-ci-wiring
+          check: true
           filters:
             branches:
               ignore:
