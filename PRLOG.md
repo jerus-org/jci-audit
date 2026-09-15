@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - severity prefix on CLI messages(pr [#177])
+- cut over to post-merge regen (#328)(pr [#189])
 
 ### Changed
 
@@ -466,6 +467,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#186]: https://github.com/jerus-org/jci-audit/pull/186
 [#187]: https://github.com/jerus-org/jci-audit/pull/187
 [#188]: https://github.com/jerus-org/jci-audit/pull/188
+[#189]: https://github.com/jerus-org/jci-audit/pull/189
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
