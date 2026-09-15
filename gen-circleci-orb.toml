@@ -67,6 +67,17 @@ interactive = true
 # in the first place.
 interactive = true
 
+# Relocates the regen+record chain off Renovate branches (which it would
+# otherwise freeze, gen-circleci-orb#326/#328) and into this repo's existing
+# "PR merged"-triggered update_prlog workflow, run last after
+# toolkit/update_prlog per the requires-ordering fix in #394, with the
+# original validation-workflow chain excluded on qualifying branches per
+# #397.
+[post_merge_regen]
+branch_patterns = ["renovate/*"]
+workflow = "update_prlog"
+file = "update_prlog.yml"
+
 [record]
 enabled = true
 gpg_key_env = "BOT_GPG_KEY"
