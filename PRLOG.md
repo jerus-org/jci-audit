@@ -34,6 +34,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#198])
 - deps: update pinned containers(pr [#195])
 - deps: update dependency gen-circleci-orb to v0.1.22(pr [#196])
+- deps: update dependency toolkit to v8(pr [#197])
 
 ## [0.1.11] - 2026-09-08
 
@@ -484,6 +485,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#198]: https://github.com/jerus-org/jci-audit/pull/198
 [#195]: https://github.com/jerus-org/jci-audit/pull/195
 [#196]: https://github.com/jerus-org/jci-audit/pull/196
+[#197]: https://github.com/jerus-org/jci-audit/pull/197
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...HEAD
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
