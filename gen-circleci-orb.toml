@@ -21,12 +21,12 @@ custom_files = ["src/examples/record_release.yml"]
 # regeneration — the Dockerfile is rewritten from this config, so a digest
 # Renovate wrote into the Dockerfile would otherwise be stripped. Renovate keeps
 # these two values current via a customManager in renovate.json.
-builder_image = "rust:1-slim-trixie@sha256:bce1476d4be4d78b83705bc5f428b86d640eeeea33e9dadafbc037b5703a53bf"
+builder_image = "rust:1-slim-trixie@sha256:f47a8de237dcbb0b0ce1099901e60a89728e3d51f24e664b40e947171538ade7"
 # The runtime needs a CARGO TOOLCHAIN, not just the tool binaries: cargo-deny
 # shells out to `cargo metadata` to build the crate graph, so on a bare
 # debian-slim runtime every check fails with "failed to start `cargo metadata`".
 # Same image and digest as the builder stage.
-base_image = "rust:1-slim-trixie@sha256:bce1476d4be4d78b83705bc5f428b86d640eeeea33e9dadafbc037b5703a53bf"
+base_image = "rust:1-slim-trixie@sha256:f47a8de237dcbb0b0ce1099901e60a89728e3d51f24e664b40e947171538ade7"
 
 [ci]
 build_workflow = "validation"
@@ -43,7 +43,7 @@ orb_context = "orb-publishing"
 # openssl-sys, reached through pcu (sequoia-openpgp's OpenSSL backend). This is
 # the toolkit's clang-equipped compile image, digest-pinned so it survives
 # regeneration; Renovate tracks the digest here and in .circleci/ together.
-rust_image = "jerusdp/ci-rust:rolling-6mo@sha256:a0be475b440dfb940ee2b89e29c3299e161aa6868f7191871d70076769200c6d"
+rust_image = "jerusdp/ci-rust:rolling-6mo@sha256:a1700f3835aac13b62464b7065a18976ef9e4e81dfd3826259ffd2fd3fa59910"
 mcp = false
 mcp_context = ["pcu-app"]
 mcp_earliest_version = "0.0.1"
