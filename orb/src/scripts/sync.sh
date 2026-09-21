@@ -1,6 +1,6 @@
 set -- jci-audit sync
-[[ "${CHECK:-false}" = "true" ]] && set -- "$@" --check
-case "${LOG_LEVEL:-default}" in
+[[ "${GCO_CHECK:-false}" = "true" ]] && set -- "$@" --check
+case "${GCO_LOG_LEVEL:-default}" in
   quiet) set -- "$@" --quiet ;;
   v) set -- "$@" --verbose ;;
   vv) set -- "$@" --verbose --verbose ;;

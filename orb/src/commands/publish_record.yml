@@ -36,15 +36,15 @@ steps:
     condition: << parameters.publish >>
     steps:
     - run:
-        name: Set PUBLISH flag
-        command: echo 'export PUBLISH=true' >> "$BASH_ENV"
+        name: Set GCO_PUBLISH flag
+        command: echo 'export GCO_PUBLISH=true' >> "$BASH_ENV"
 - run:
     name: 'Self-contained: sign and upload the release record.'
     command: <<include(scripts/publish_record.sh)>>
     environment:
-      VERSION: << parameters.version >>
-      LOG_LEVEL: << parameters.log_level >>
-      TAG: << parameters.tag >>
-      OWNER: << parameters.owner >>
-      REPO: << parameters.repo >>
-      RECORD_PATH: << parameters.record_path >>
+      GCO_VERSION: << parameters.version >>
+      GCO_LOG_LEVEL: << parameters.log_level >>
+      GCO_TAG: << parameters.tag >>
+      GCO_OWNER: << parameters.owner >>
+      GCO_REPO: << parameters.repo >>
+      GCO_RECORD_PATH: << parameters.record_path >>

@@ -31,13 +31,13 @@ steps:
     condition: << parameters.deny_warnings >>
     steps:
     - run:
-        name: Set DENY_WARNINGS flag
-        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
+        name: Set GCO_DENY_WARNINGS flag
+        command: echo 'export GCO_DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
     name: 'Release gate: reproducible, pinned-advisory-db validation.'
     command: <<include(scripts/release_prep.sh)>>
     environment:
-      VERSION: << parameters.version >>
-      LOG_LEVEL: << parameters.log_level >>
-      ADVISORY_DB: << parameters.advisory_db >>
-      PACKAGE: << parameters.package >>
+      GCO_VERSION: << parameters.version >>
+      GCO_LOG_LEVEL: << parameters.log_level >>
+      GCO_ADVISORY_DB: << parameters.advisory_db >>
+      GCO_PACKAGE: << parameters.package >>

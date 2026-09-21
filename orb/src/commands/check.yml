@@ -32,23 +32,23 @@ steps:
     condition: << parameters.deny_stale_exceptions >>
     steps:
     - run:
-        name: Set DENY_STALE_EXCEPTIONS flag
-        command: echo 'export DENY_STALE_EXCEPTIONS=true' >> "$BASH_ENV"
+        name: Set GCO_DENY_STALE_EXCEPTIONS flag
+        command: echo 'export GCO_DENY_STALE_EXCEPTIONS=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.deny_unused_licenses >>
     steps:
     - run:
-        name: Set DENY_UNUSED_LICENSES flag
-        command: echo 'export DENY_UNUSED_LICENSES=true' >> "$BASH_ENV"
+        name: Set GCO_DENY_UNUSED_LICENSES flag
+        command: echo 'export GCO_DENY_UNUSED_LICENSES=true' >> "$BASH_ENV"
 - when:
     condition: << parameters.deny_warnings >>
     steps:
     - run:
-        name: Set DENY_WARNINGS flag
-        command: echo 'export DENY_WARNINGS=true' >> "$BASH_ENV"
+        name: Set GCO_DENY_WARNINGS flag
+        command: echo 'export GCO_DENY_WARNINGS=true' >> "$BASH_ENV"
 - run:
     name: 'PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.'
     command: <<include(scripts/check.sh)>>
     environment:
-      LOG_LEVEL: << parameters.log_level >>
-      MANIFEST_PATH: << parameters.manifest_path >>
+      GCO_LOG_LEVEL: << parameters.log_level >>
+      GCO_MANIFEST_PATH: << parameters.manifest_path >>
