@@ -20,5 +20,5 @@ steps:
     name: Check that the `CircleCI` config matches `jci-audit.toml`'s `[ci]` wiring spec, without writing.
     command: <<include(scripts/check_ci_wiring.sh)>>
     environment:
-      LOG_LEVEL: << parameters.log_level >>
-      CONFIG: << parameters.config >>
+      GCO_LOG_LEVEL: << parameters.log_level >>
+      GCO_CONFIG: << parameters.config >>

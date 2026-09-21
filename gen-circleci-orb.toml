@@ -12,7 +12,7 @@ source_url = "https://github.com/jerus-org/jci-audit"
 # >= 0.1.8 (#319). Pre-provisions rsign for #88's `verify` remote-fetch path
 # (minisign signature check on a fetched release record); the container gains
 # the binary here, the call to it lands separately when #88 is implemented.
-cargo_tools = ["cargo-audit", "cargo-deny", "cargo-about", "rsign2:rsign"]
+cargo_tools = ["cargo-audit@0.22.2", "cargo-deny@0.20.2", "cargo-about@0.9.2", "rsign2:rsign@0.6.6"]
 # Hand-authored orb files the generator does not produce. Without this the prune
 # step would delete them as orphans on the next `generate`.
 custom_files = ["src/examples/record_release.yml"]

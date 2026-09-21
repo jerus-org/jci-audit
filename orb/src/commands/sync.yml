@@ -20,10 +20,10 @@ steps:
     condition: << parameters.check >>
     steps:
     - run:
-        name: Set CHECK flag
-        command: echo 'export CHECK=true' >> "$BASH_ENV"
+        name: Set GCO_CHECK flag
+        command: echo 'export GCO_CHECK=true' >> "$BASH_ENV"
 - run:
     name: Derive `.cargo/audit.toml` from the canonical `deny.toml`.
     command: <<include(scripts/sync.sh)>>
     environment:
-      LOG_LEVEL: << parameters.log_level >>
+      GCO_LOG_LEVEL: << parameters.log_level >>
