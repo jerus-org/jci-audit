@@ -12,12 +12,39 @@ orbs:
 
   # Self-contained: jci-audit/check runs the published binary in its own
   # public image (orb/Dockerfile) — no dependency on the private toolkit's
-  # executors or container.
-  jci-audit: jerus-org/jci-audit@0.1.11
+  # executors or container. Kept in lockstep by hand with the
+  # licenses-check job's `image:` tag below — Renovate tracks the orb pin
+  # and the docker tag as two independent dependencies, so a Renovate PR
+  # bumping one must bump the other to match in the same PR, or the two
+  # jobs silently run cargo-about/cargo-audit/cargo-deny from different
+  # builds (caught in review on this PR's first draft, where they'd
+  # already drifted one version apart).
+  jci-audit: jerus-org/jci-audit@0.1.12
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.25
   # <<< gen-circleci-orb
+jobs:
+  # `cargo-about generate`'s rendered bytes depend on the local cargo
+  # registry cache, so this can't run on toolkit's job images without a
+  # deterministic warm cache — see scripts/licenses.sh's own comment.
+  # Fixed upstream in cargo-about 0.9.2 (EmbarkStudios/cargo-about#312,
+  # closing #309) and confirmed byte-identical against a cold cache before
+  # wiring this in (jerus-org/jci-audit#36). Runs in the published
+  # jci-audit image specifically — the same container jci-audit/check
+  # already dogfoods below, which pins cargo-about (jerus-org/jci-audit#180)
+  # so the version generating this check's output is never a second,
+  # independently-drifting copy.
+  licenses-check:
+    docker:
+      - image: jerusdp/jci-audit:0.1.12
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Check third-party license notices are current
+          command: bash scripts/licenses.sh --check
+
 workflows:
   validation:
     jobs:
@@ -84,6 +111,13 @@ workflows:
           deny_unused_licenses: true
           deny_stale_exceptions: true
       # <<< jci-audit wire-ci
+
+      # Unfiltered, like the other correctness gates above: notices drift
+      # arrives with the dependency change that caused it, not on a release
+      # branch. See the licenses-check job definition for why this needs
+      # its own image rather than running inside jci-audit/check itself.
+      - licenses-check
+
       - toolkit/security:
           name: security with sonarcloud
           # jci-audit/check above already covers cargo-audit unfiltered; this
