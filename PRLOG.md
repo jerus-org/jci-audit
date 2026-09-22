@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- add jci-audit check --deny-stale-notices(pr [#205])
+
 ### Fixed
 
 - remove dead [ci].rust_image key(pr [#204])
@@ -501,6 +505,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#200]: https://github.com/jerus-org/jci-audit/pull/200
 [#203]: https://github.com/jerus-org/jci-audit/pull/203
 [#204]: https://github.com/jerus-org/jci-audit/pull/204
+[#205]: https://github.com/jerus-org/jci-audit/pull/205
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...HEAD
 [0.1.12]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
