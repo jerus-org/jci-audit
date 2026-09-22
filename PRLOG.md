@@ -4,6 +4,12 @@ All notable pull requests merged into this workspace are recorded here. This log
 tracks workspace-level changes (`v<VERSION>` tags); per-crate code changes are
 tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
+## [Unreleased]
+
+### Fixed
+
+- remove dead [ci].rust_image key(pr [#204])
+
 ## [0.1.12] - 2026-09-22
 
 ### Added
@@ -494,6 +500,8 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#201]: https://github.com/jerus-org/jci-audit/pull/201
 [#200]: https://github.com/jerus-org/jci-audit/pull/200
 [#203]: https://github.com/jerus-org/jci-audit/pull/203
+[#204]: https://github.com/jerus-org/jci-audit/pull/204
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...HEAD
 [0.1.12]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
