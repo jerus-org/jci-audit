@@ -9,5 +9,6 @@ esac
 [[ -n "${GCO_MANIFEST_PATH:-}" ]] && set -- "$@" --manifest-path "${GCO_MANIFEST_PATH}"
 [[ "${GCO_DENY_STALE_EXCEPTIONS:-false}" = "true" ]] && set -- "$@" --deny-stale-exceptions
 [[ "${GCO_DENY_UNUSED_LICENSES:-false}" = "true" ]] && set -- "$@" --deny-unused-licenses
+[[ "${GCO_DENY_STALE_NOTICES:-false}" = "true" ]] && set -- "$@" --deny-stale-notices
 [[ "${GCO_DENY_WARNINGS:-false}" = "true" ]] && set -- "$@" --deny-warnings
 "$@"
