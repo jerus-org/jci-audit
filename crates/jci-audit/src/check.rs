@@ -1,6 +1,7 @@
 //! The PR / dev gate: run cargo-deny policy checks, a live cargo-audit scan,
-//! the about.toml/deny.toml license-policy drift check, and the cargo-about
-//! license-policy resolution check, all blocking.
+//! the about.toml/deny.toml license-policy drift check, the cargo-about
+//! license-policy resolution check, and (opt-in) the third-party notices
+//! staleness check, all blocking.
 //!
 //! `cargo deny` enforces policy (advisories, bans, licenses, sources) with the
 //! justified, file-based ignores in `deny.toml`; `cargo audit` adds a fresh
@@ -9,11 +10,14 @@
 //! derivation, the same one `jci-audit sync --check` performs, no
 //! `cargo-about` invocation needed; the resolution check confirms
 //! `cargo-about` can actually attribute every reachable dependency's licence
-//! with what's on disk right now, independent of drift. All four run — exit
-//! codes are **aggregated**, not short-circuited, so one failing check never
-//! hides another's findings — and each tool's stderr is surfaced (per the
-//! CI-diagnostics discipline: never swallow the output of a tool whose
-//! result drives a decision).
+//! with what's on disk right now, independent of drift; the notices check
+//! (behind `--deny-stale-notices`, since it costs a real `cargo-about`
+//! render per crate rather than discarding one — see [`stale_notices`])
+//! confirms the committed `THIRD-PARTY-LICENSES.md` itself is current. All
+//! requested steps run — exit codes are **aggregated**, not short-circuited,
+//! so one failing check never hides another's findings — and each tool's
+//! stderr is surfaced (per the CI-diagnostics discipline: never swallow the
+//! output of a tool whose result drives a decision).
 
 use std::{path::Path, process::Command};
 
@@ -135,10 +139,11 @@ fn deny_dispatch_args<'a>(deny_args: &[&'a str]) -> Vec<&'a str> {
 }
 
 /// Run cargo-deny and cargo-audit in `cwd` (the workspace root — both need to
-/// find `deny.toml`/`Cargo.lock` there), then the about.toml drift check and
-/// the cargo-about resolution check, surfacing each one's output, and return
-/// the aggregated report. All four always run — a failing check never skips
-/// the others.
+/// find `deny.toml`/`Cargo.lock` there), then the about.toml drift check, the
+/// cargo-about resolution check, and (when `deny_stale_notices`) the
+/// third-party notices staleness check, surfacing each one's output, and
+/// return the aggregated report. Every requested step always runs — a
+/// failing check never skips the others.
 ///
 /// The drift check isn't scoped to `cwd`: `deny.toml` is located by walking
 /// up from `cwd`, but each crate's `cargo metadata` call runs with *that
@@ -149,6 +154,7 @@ pub(crate) fn check_with<R: CommandRunner>(
     runner: &R,
     cwd: &Path,
     detail: crate::diagnostics::Detail,
+    deny_stale_notices: bool,
 ) -> Result<CheckReport> {
     let mut steps = Vec::with_capacity(4);
 
@@ -233,6 +239,15 @@ pub(crate) fn check_with<R: CommandRunner>(
                 label: "cargo-about license policy".to_string(),
                 success: unresolved.is_empty(),
             });
+
+            if deny_stale_notices {
+                println!("$ third-party license notices");
+                let stale = stale_notices(runner, &about_results);
+                steps.push(CheckStep {
+                    label: "third-party license notices".to_string(),
+                    success: stale.is_empty(),
+                });
+            }
         }
         Err(e) => {
             println!("  error: {e:#}");
@@ -244,6 +259,12 @@ pub(crate) fn check_with<R: CommandRunner>(
                 label: "cargo-about license policy".to_string(),
                 success: false,
             });
+            if deny_stale_notices {
+                steps.push(CheckStep {
+                    label: "third-party license notices".to_string(),
+                    success: false,
+                });
+            }
         }
     }
 
@@ -452,12 +473,13 @@ fn report_accepted_duplicates_in_detail<R: CommandRunner>(
 
 /// Run cargo-about's resolution check for every crate in `about_results`,
 /// returning a description of each crate cargo-about couldn't attribute
-/// (empty when every crate resolves cleanly). Cache-independent
-/// (`--output-file /dev/null` discards the rendered text — see
-/// `scripts/licenses.sh`'s own comment on why rendered bytes aren't
-/// reproducible across machines). Shared by `check`'s PR-time gate and
-/// `release-prep`'s release-time gate so the two invocations can't drift
-/// apart from each other.
+/// (empty when every crate resolves cleanly). Discards the rendered text
+/// (`--output-file /dev/null`) deliberately — this answers "can cargo-about
+/// attribute everything", a cheaper and narrower question than [`stale_notices`]'s
+/// "does the committed rendering still match", so it always runs
+/// unconditionally rather than only under `--deny-stale-notices`. Shared by
+/// `check`'s PR-time gate and `release-prep`'s release-time gate so the two
+/// invocations can't drift apart from each other.
 pub(crate) fn resolve_license_policy<R: CommandRunner>(
     runner: &R,
     about_results: &[sync::AboutSyncResult],
@@ -506,6 +528,94 @@ pub(crate) fn resolve_license_policy<R: CommandRunner>(
         }
     }
     unresolved
+}
+
+/// Filename of a crate's committed third-party license notices — the same
+/// name `scripts/licenses.sh` hardcodes for its own regeneration.
+const THIRD_PARTY_NOTICES: &str = "THIRD-PARTY-LICENSES.md";
+/// The handlebars template `cargo about generate` renders against.
+const NOTICES_TEMPLATE: &str = "about.hbs";
+
+/// Names every crate in `about_results` whose committed
+/// [`THIRD_PARTY_NOTICES`] no longer matches a fresh `cargo about generate`
+/// render (empty when every crate's notices are current). Skips a crate
+/// that doesn't carry both [`NOTICES_TEMPLATE`] and [`THIRD_PARTY_NOTICES`]
+/// — not every crate in a workspace renders notices, and a crate with
+/// neither has nothing this check can compare.
+///
+/// Compares against captured stdout rather than `--output-file`: confirmed
+/// byte-identical to `--output-file` modulo one trailing newline `cargo
+/// about generate` adds in stdout mode (trimmed before comparing), which
+/// keeps this runnable through the same [`CommandRunner`] abstraction
+/// every other step here uses, with no temp-file bookkeeping. Unlike
+/// [`resolve_license_policy`]'s discarded-output resolution check, this
+/// needs cargo-about to actually render the notices — which used to depend
+/// on the local cargo registry cache, so a CI job comparing bytes would
+/// have flapped on a correct tree. Fixed upstream in cargo-about 0.9.2
+/// (EmbarkStudios/cargo-about#312, closing #309); confirmed deterministic
+/// against a cold cache before this was wired into CI
+/// (jerus-org/jci-audit#36). Cost is opt-in — [`crate::cli`] only calls
+/// this when `--deny-stale-notices` is set.
+pub(crate) fn stale_notices<R: CommandRunner>(
+    runner: &R,
+    about_results: &[sync::AboutSyncResult],
+) -> Vec<String> {
+    let mut stale = Vec::new();
+    for result in about_results {
+        let Some(crate_dir) = result.about_toml_path.parent() else {
+            continue;
+        };
+        let hbs = crate_dir.join(NOTICES_TEMPLATE);
+        let notices_path = crate_dir.join(THIRD_PARTY_NOTICES);
+        if !hbs.is_file() || !notices_path.is_file() {
+            continue;
+        }
+        let Ok(existing) = std::fs::read_to_string(&notices_path) else {
+            println!(
+                "  {}: failed to read {THIRD_PARTY_NOTICES}",
+                crate_dir.display()
+            );
+            stale.push(format!(
+                "{}: failed to read {THIRD_PARTY_NOTICES}",
+                crate_dir.display()
+            ));
+            continue;
+        };
+        match runner.run(
+            "cargo",
+            &["about", "generate", "--locked", NOTICES_TEMPLATE],
+            crate_dir,
+        ) {
+            Ok(rendered) if rendered.success => {
+                if rendered.stdout.trim_end_matches('\n') != existing.trim_end_matches('\n') {
+                    println!(
+                        "  {}",
+                        crate::diagnostics::action_tag(format!(
+                            "{}/{THIRD_PARTY_NOTICES} does not match the current dependency graph — run 'just licenses' and commit the result",
+                            crate_dir.display()
+                        ))
+                    );
+                    stale.push(crate_dir.display().to_string());
+                }
+            }
+            Ok(rendered) => {
+                println!(
+                    "  {}: cargo-about could not resolve licences",
+                    crate_dir.display()
+                );
+                stale.push(format!(
+                    "{}: {}",
+                    crate_dir.display(),
+                    rendered.stderr.trim()
+                ));
+            }
+            Err(e) => {
+                println!("  {}: {e:#}", crate_dir.display());
+                stale.push(format!("{}: {e:#}", crate_dir.display()));
+            }
+        }
+    }
+    stale
 }
 
 /// Print a tool's output under a labelled command header, returning its warnings.
@@ -603,7 +713,13 @@ mod tests {
     fn both_pass_is_success_and_invokes_expected_commands() {
         let dir = empty_workspace();
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(report.success());
 
         let calls = runner.calls.borrow();
@@ -629,7 +745,13 @@ mod tests {
         // cargo deny fails; cargo audit passes. Both must run (no short-circuit).
         let dir = empty_workspace();
         let runner = MockRunner::new(vec![fail("license denied"), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(
             runner.calls.borrow().len(),
@@ -647,7 +769,13 @@ mod tests {
             fail("RUSTSEC-2024-0001"),
             workspace_metadata(&[]),
         ]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo audit"]);
     }
@@ -660,7 +788,13 @@ mod tests {
             fail("advisory"),
             workspace_metadata(&[]),
         ]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo deny", "cargo audit"]);
     }
@@ -683,7 +817,13 @@ mod tests {
         // behaviour captured in exceptions.rs.
         let deny_stderr = "warning[unmatched-skip]: skipped crate 'widget' was not encountered\n";
         let runner = MockRunner::new(vec![fail(deny_stderr), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(report.accepted_warnings.in_force.len(), 1);
         assert_eq!(report.accepted_warnings.in_force[0].name, "syn");
@@ -712,7 +852,8 @@ mod tests {
         // Call order: deny, [naked informational], audit, cargo-metadata.
         // deny.stderr names nothing unmatched, so 'syn' is in force.
         let runner = MockRunner::new(vec![ok(), ok(), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Full).unwrap();
+        let report =
+            check_with(&runner, dir.path(), crate::diagnostics::Detail::Full, false).unwrap();
         assert_eq!(report.accepted_warnings.in_force.len(), 1);
 
         let calls = runner.calls.borrow();
@@ -736,7 +877,8 @@ mod tests {
     fn full_detail_with_no_in_force_exceptions_skips_the_informational_pass() {
         let dir = empty_workspace();
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Full).unwrap();
+        let report =
+            check_with(&runner, dir.path(), crate::diagnostics::Detail::Full, false).unwrap();
         assert!(report.accepted_warnings.in_force.is_empty());
         assert_eq!(
             runner.calls.borrow().len(),
@@ -749,7 +891,8 @@ mod tests {
     fn list_detail_with_an_in_force_exception_skips_the_informational_pass() {
         let dir = workspace_with_in_force_skip();
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::List).unwrap();
+        let report =
+            check_with(&runner, dir.path(), crate::diagnostics::Detail::List, false).unwrap();
         assert_eq!(report.accepted_warnings.in_force.len(), 1);
         assert_eq!(
             runner.calls.borrow().len(),
@@ -762,7 +905,13 @@ mod tests {
     fn no_bans_skip_entries_means_no_accepted_warnings() {
         let dir = empty_workspace();
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(report.accepted_warnings.in_force.is_empty());
         assert!(report.accepted_warnings.stale.is_empty());
     }
@@ -803,7 +952,13 @@ mod tests {
             // so only the drift step ends up in `failures()`.
             ok(),
         ]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["about.toml license policy"]);
     }
@@ -842,7 +997,13 @@ mod tests {
             },
             fail("error: failed to satisfy license requirements"),
         ]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(!report.success());
         assert_eq!(report.failures(), vec!["cargo-about license policy"]);
 
@@ -889,8 +1050,270 @@ mod tests {
             },
             ok(),
         ]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(report.success());
+    }
+
+    /// Fixture shared by the `--deny-stale-notices` tests below: a crate
+    /// with a real `about.hbs` template and committed
+    /// `THIRD-PARTY-LICENSES.md` on disk, in an otherwise in-sync,
+    /// resolvable workspace (matches
+    /// `about_toml_in_sync_and_resolvable_all_steps_pass`'s fixture, plus
+    /// the two notices-related files).
+    fn workspace_with_notices(notices_content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = [\"MIT\"]\n",
+        )
+        .unwrap();
+        let crate_dir = dir.path().join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+        std::fs::write(crate_dir.join("about.toml"), "accepted = []\n").unwrap();
+        std::fs::write(crate_dir.join("about.hbs"), "template\n").unwrap();
+        std::fs::write(crate_dir.join(THIRD_PARTY_NOTICES), notices_content).unwrap();
+        (dir, crate_dir)
+    }
+
+    const NOTICES_METADATA: &str = r#"{
+      "packages": [ { "name": "root", "version": "0.0.0", "id": "path+file:///demo#0.0.0", "license": null } ],
+      "resolve": { "root": "path+file:///demo#0.0.0", "nodes": [ { "id": "path+file:///demo#0.0.0", "deps": [] } ] }
+    }"#;
+
+    #[test]
+    fn deny_stale_notices_false_skips_the_extra_cargo_about_call() {
+        let (dir, crate_dir) = workspace_with_notices("# Notices\n");
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
+        assert!(report.success());
+        assert!(
+            !report
+                .steps
+                .iter()
+                .any(|s| s.label == "third-party license notices"),
+            "the notices step must not run at all when the flag is off: {:?}",
+            report.steps
+        );
+        assert_eq!(
+            runner.calls.borrow().len(),
+            5,
+            "no extra cargo-about call when the flag is off"
+        );
+    }
+
+    #[test]
+    fn deny_stale_notices_passes_when_notices_match() {
+        let (dir, crate_dir) = workspace_with_notices("# Notices\n");
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: "# Notices\n".to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(report.success());
+        assert!(
+            report
+                .steps
+                .iter()
+                .any(|s| s.label == "third-party license notices" && s.success),
+            "matching notices must pass: {:?}",
+            report.steps
+        );
+    }
+
+    #[test]
+    fn deny_stale_notices_detects_stale_notices_and_fails_the_step() {
+        let (dir, crate_dir) = workspace_with_notices("# Notices\n");
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: "# Different Notices\n".to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(!report.success());
+        assert_eq!(report.failures(), vec!["third-party license notices"]);
+    }
+
+    #[test]
+    fn deny_stale_notices_ignores_a_trailing_newline_difference() {
+        // On-disk file has no trailing newline; cargo-about's stdout mode
+        // adds exactly one (confirmed empirically against the real tool,
+        // not assumed) — must still count as a match.
+        let (dir, crate_dir) = workspace_with_notices("# Notices");
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: "# Notices\n".to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(
+            report.success(),
+            "a trailing-newline-only difference must not count as stale: {:?}",
+            report.steps
+        );
+    }
+
+    #[test]
+    fn deny_stale_notices_skips_crates_without_a_template_or_notices_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = [\"MIT\"]\n",
+        )
+        .unwrap();
+        let crate_dir = dir.path().join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+        std::fs::write(crate_dir.join("about.toml"), "accepted = []\n").unwrap();
+        // Deliberately no about.hbs / THIRD-PARTY-LICENSES.md — this crate
+        // doesn't render notices at all.
+
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(report.success());
+        assert!(
+            report
+                .steps
+                .iter()
+                .any(|s| s.label == "third-party license notices" && s.success),
+            "the step still appears (vacuously passing) when nothing needs checking: {:?}",
+            report.steps
+        );
+        assert_eq!(
+            runner.calls.borrow().len(),
+            5,
+            "a crate with no template/notices file must not trigger an extra cargo-about call"
+        );
+    }
+
+    #[test]
+    fn deny_stale_notices_err_branch_adds_a_failing_step() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("deny.toml"),
+            "[licenses]\nallow = [\"MIT\"]\n",
+        )
+        .unwrap();
+        let crate_dir = dir.path().join("crates/demo");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").unwrap();
+        std::fs::write(crate_dir.join("about.toml"), "accepted = []\n").unwrap();
+
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            ToolOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: "error: could not find `Cargo.toml`".to_string(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(!report.success());
+        assert_eq!(
+            report.failures(),
+            vec![
+                "about.toml license policy",
+                "cargo-about license policy",
+                "third-party license notices"
+            ]
+        );
     }
 
     #[test]
@@ -919,7 +1342,13 @@ mod tests {
                 stderr: "error: could not find `Cargo.toml`".to_string(),
             },
         ]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).expect(
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .expect(
             "a failing about.toml step must not propagate as an Err — \
                      it must become a failed CheckStep so deny/audit results survive",
         );
@@ -1041,7 +1470,13 @@ licenses ok
             ok(),
             workspace_metadata(&[]),
         ]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert_eq!(report.unused_licenses, vec!["BSD-2-Clause", "Zlib"]);
     }
 
@@ -1049,7 +1484,13 @@ licenses ok
     fn no_license_not_encountered_warnings_means_no_unused_licenses() {
         let dir = empty_workspace();
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(report.unused_licenses.is_empty());
     }
 
@@ -1098,7 +1539,13 @@ error[duplicate]: found 2 duplicate entries for crate 'syn'
         let dir = empty_workspace();
         let deny_stderr = "error[duplicate]: found 2 duplicate entries for crate 'syn'\n";
         let runner = MockRunner::new(vec![fail(deny_stderr), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert_eq!(report.duplicate_crates, vec!["syn".to_string()]);
     }
 
@@ -1123,7 +1570,13 @@ error[duplicate]: found 2 duplicate entries for crate 'syn'
         // per exceptions.rs's own convention (silence = still matching).
         let deny_stderr = "error[duplicate]: found 2 duplicate entries for crate 'syn'\n";
         let runner = MockRunner::new(vec![fail(deny_stderr), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert_eq!(report.accepted_warnings.in_force.len(), 1);
         assert!(
             report.duplicate_crates.is_empty(),
@@ -1136,7 +1589,13 @@ error[duplicate]: found 2 duplicate entries for crate 'syn'
     fn no_duplicates_means_an_empty_duplicate_crates_list() {
         let dir = empty_workspace();
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
-        let report = check_with(&runner, dir.path(), crate::diagnostics::Detail::Summary).unwrap();
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            false,
+        )
+        .unwrap();
         assert!(report.duplicate_crates.is_empty());
     }
 }

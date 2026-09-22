@@ -43,9 +43,10 @@ struct ToolOutput {
 enum Commands {
     /// PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.
     ///
-    /// All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml
-    /// drift check, and the cargo-about resolution check. Aggregates exit
-    /// codes and surfaces stderr.
+    /// cargo-deny, cargo-audit, the about.toml/deny.toml drift check, and the
+    /// cargo-about resolution check always run; the third-party notices
+    /// staleness check runs when --deny-stale-notices is set. Aggregates
+    /// exit codes and surfaces stderr.
     Check {
         /// Path to the Cargo.toml (or its directory) to check.
         #[arg(long, default_value = ".", help_heading = "Input")]
@@ -73,6 +74,18 @@ enum Commands {
         /// stale config, so there is no exception mechanism to pair this with.
         #[arg(long, help_heading = "Output")]
         deny_unused_licenses: bool,
+
+        /// Fail if the committed third-party license notices are stale.
+        ///
+        /// Regenerates each crate's notices (that carries both an
+        /// about.hbs template and a committed THIRD-PARTY-LICENSES.md) via
+        /// `cargo about generate` and compares against what's committed —
+        /// a real render, unlike the always-on resolution check above,
+        /// which discards its own render. Costs one cargo-about invocation
+        /// per crate that renders notices, so it's opt-in rather than
+        /// always-on.
+        #[arg(long, help_heading = "Output")]
+        deny_stale_notices: bool,
 
         #[command(flatten)]
         output: ToolOutput,
@@ -297,11 +310,13 @@ impl Cli {
                 manifest_path,
                 deny_stale_exceptions,
                 deny_unused_licenses,
+                deny_stale_notices,
                 output,
             } => run_check(
                 manifest_path,
                 *deny_stale_exceptions,
                 *deny_unused_licenses,
+                *deny_stale_notices,
                 output,
                 detail,
             ),
@@ -424,6 +439,7 @@ fn run_check(
     manifest_path: &std::path::Path,
     deny_stale_exceptions: bool,
     deny_unused_licenses: bool,
+    deny_stale_notices: bool,
     output: &ToolOutput,
     detail: diagnostics::Detail,
 ) -> Result<()> {
@@ -439,7 +455,12 @@ fn run_check(
         Tool::Cargo,
     ])?;
     tracing::info!(?manifest_path, "check");
-    let report = check::check_with(&check::SystemRunner, manifest_path, detail)?;
+    let report = check::check_with(
+        &check::SystemRunner,
+        manifest_path,
+        detail,
+        deny_stale_notices,
+    )?;
     let failures = check_failures(
         &report,
         output.deny_warnings,
@@ -1133,6 +1154,7 @@ mod tests {
                 manifest_path,
                 deny_stale_exceptions,
                 deny_unused_licenses,
+                deny_stale_notices,
                 output,
             } => {
                 assert_eq!(manifest_path, std::path::PathBuf::from("."));
@@ -1144,6 +1166,10 @@ mod tests {
                 assert!(
                     !deny_unused_licenses,
                     "unused license allowances are reported, not fatal, by default"
+                );
+                assert!(
+                    !deny_stale_notices,
+                    "stale notices check doesn't run at all by default (it costs a real render)"
                 );
             }
             other => panic!("expected Check, got {other:?}"),
@@ -1172,6 +1198,18 @@ mod tests {
                 deny_unused_licenses,
                 ..
             } => assert!(deny_unused_licenses),
+            other => panic!("expected Check, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_check_accepts_deny_stale_notices() {
+        let cli = Cli::try_parse_from(["jci-audit", "check", "--deny-stale-notices"])
+            .expect("check parses");
+        match cli.command {
+            Commands::Check {
+                deny_stale_notices, ..
+            } => assert!(deny_stale_notices),
             other => panic!("expected Check, got {other:?}"),
         }
     }

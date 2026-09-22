@@ -15,12 +15,13 @@ Input:
 Output:
       --deny-stale-exceptions  Fail if a configured [[bans.skip]] exception no longer fires
       --deny-unused-licenses   Fail if deny.toml allows a license nothing in the graph uses
+      --deny-stale-notices     Fail if the committed third-party license notices are stale
       --deny-warnings          Fail if the tools report any warning
 
 $ jci-audit check --help
 PR/dev gate: cargo-deny policy, a live cargo-audit scan, and license policy.
 
-All four blocking: cargo-deny, cargo-audit, the about.toml/deny.toml drift check, and the cargo-about resolution check. Aggregates exit codes and surfaces stderr.
+cargo-deny, cargo-audit, the about.toml/deny.toml drift check, and the cargo-about resolution check always run; the third-party notices staleness check runs when --deny-stale-notices is set. Aggregates exit codes and surfaces stderr.
 
 Usage: jci-audit check [OPTIONS]
 
@@ -50,6 +51,11 @@ Output:
           Fail if deny.toml allows a license nothing in the graph uses.
           
           cargo-deny already reports this as `warning[license-not-encountered]` (surfaced via --deny-warnings too, along with every other warning) — this is the same check narrowed to just unused allowances, so a repo can require deny.toml cleanup without also failing on unrelated warnings. Unlike a duplicate crate, an unused allowance is never a legitimately-unfixable condition worth accepting — it's always just stale config, so there is no exception mechanism to pair this with.
+
+      --deny-stale-notices
+          Fail if the committed third-party license notices are stale.
+          
+          Regenerates each crate's notices (that carries both an about.hbs template and a committed THIRD-PARTY-LICENSES.md) via `cargo about generate` and compares against what's committed — a real render, unlike the always-on resolution check above, which discards its own render. Costs one cargo-about invocation per crate that renders notices, so it's opt-in rather than always-on.
 
       --deny-warnings
           Fail if the tools report any warning

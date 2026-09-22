@@ -5,27 +5,35 @@
 #   (no argument)  regenerate crates/jci-audit/THIRD-PARTY-LICENSES.md
 #   --check        regenerate and fail if the committed copy differs
 #
-# Shared by the justfile recipes. `jci-audit check`/`release-prep` run the
-# equivalent cargo-about resolution check natively now (jerus-org/jci-audit#80)
-# — this script only regenerates/verifies the rendered notices file.
+# Shared by the justfile recipes, for local regeneration and verification.
 #
-# THIS RUNS IN CI TOO — the `licenses-check` job in .circleci/config.yml runs
-# `--check` exactly as below, in the published jerusdp/jci-audit image.
+# `jci-audit check --deny-stale-notices` is the CI-facing equivalent of
+# `--check` below (jerus-org/jci-audit#36) — it compares a captured
+# `cargo about generate` render against the committed file through the same
+# `CommandRunner` abstraction every other check step uses, rather than
+# writing to disk and shelling out to `git diff` the way this script does.
+# Not yet wired into this repo's own CI: the flag needs a release before
+# `.circleci/config.yml` can reference it (`jci-audit wire-ci` resolves
+# against the *published* orb). This script remains genuinely useful
+# locally regardless — its `write` mode is how you actually regenerate and
+# commit the file, which the CLI's stdout-comparison alone doesn't do.
 #
-# It didn't always: cargo-about resolves a crate's licence partly by reading
-# files from the extracted crate sources under ~/.cargo/registry/src, so on
-# cargo-about 0.9.1 its output depended on what the local cargo cache
-# happened to have unpacked — measured against a cold CARGO_HOME, `sigstore`
-# gained an Apache-2.0 section of its own, a 208-line difference from the
-# same commit and lockfile. A CI job comparing bytes would have failed on a
-# correct tree. Fixed upstream in cargo-about 0.9.2
+# Both this script and the CLI check depend on cargo-about's rendered text
+# being reproducible across machines, which it wasn't always: cargo-about
+# resolves a crate's licence partly by reading files from the extracted
+# crate sources under ~/.cargo/registry/src, so on cargo-about 0.9.1 its
+# output depended on what the local cargo cache happened to have unpacked —
+# measured against a cold CARGO_HOME, `sigstore` gained an Apache-2.0
+# section of its own, a 208-line difference from the same commit and
+# lockfile. Fixed upstream in cargo-about 0.9.2
 # (EmbarkStudios/cargo-about#312, closing #309); confirmed byte-identical
-# against a cold cache before wiring the CI job in (jerus-org/jci-audit#36).
+# against a cold cache before relying on it for #36.
 #
-# `jci-audit check`'s own resolution check is still narrower on purpose: it
-# fails only when cargo-about *errors* on a licence the policy doesn't
-# accept, discarding the rendered text (jerus-org/jci-audit#80) — this
-# script is still what verifies the rendered notices themselves.
+# `jci-audit check`'s own *resolution* check (no flag needed, always runs)
+# is narrower on purpose: it fails only when cargo-about *errors* on a
+# licence the policy doesn't accept, discarding the rendered text
+# (jerus-org/jci-audit#80) — cheaper than either notices-staleness check,
+# so it doesn't need to be opt-in.
 set -euo pipefail
 
 CRATE_DIR="crates/jci-audit"
