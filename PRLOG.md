@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- ci-wire deny-stale-notices into check job (#36 phase 2)(pr [#207])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.13(pr [#206])
@@ -513,6 +517,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#204]: https://github.com/jerus-org/jci-audit/pull/204
 [#205]: https://github.com/jerus-org/jci-audit/pull/205
 [#206]: https://github.com/jerus-org/jci-audit/pull/206
+[#207]: https://github.com/jerus-org/jci-audit/pull/207
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...HEAD
 [0.1.13]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...v0.1.12
