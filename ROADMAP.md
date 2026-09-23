@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-09-09._
+_Last updated: 2026-09-23._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -103,15 +103,13 @@ per-crate item below ships. This is a deliberate minor release, not folded into 
 releases Phase 0-2 bugfixes have been shipping as.
 
 - **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
-  ⚠️ **Closed, but not actually fixed.** PR #161 genuinely added `ENV CARGO_ABOUT_VERSION=...`-style
-  pins, but `orb/Dockerfile` is a **generated** file and `gen-circleci-orb.toml`'s `cargo_tools`
-  field has no version-pin syntax at all — the `jerus-bot` regenerate-orb auto-commit that lands
-  mid-PR silently reverted the pins back to the generator's unpinned template *before* #161 merged,
-  and that reverted, unpinned state is what's on `main` today. Root-caused and re-opened for
-  tracking as [#180](https://github.com/jerus-org/jci-audit/issues/180); the actual fix is blocked
-  on the generator gaining pin support
-  ([gen-circleci-orb#321](https://github.com/jerus-org/gen-circleci-orb/issues/321)) — a per-repo
-  hand-edit to the Dockerfile again would just get reverted the same way.
+  ✅ Done (for real this time) — tracked via [#180](https://github.com/jerus-org/jci-audit/issues/180)
+  below, which closed once gen-circleci-orb 0.1.22 added `crate[:binary][@version]` pin syntax to
+  `cargo_tools`, so the pins now survive the regenerate-orb bot's auto-commit instead of being
+  silently reverted.
+- **[#180 — `orb/Dockerfile` tool-version pins reverted by regenerate-orb bot.](https://github.com/jerus-org/jci-audit/issues/180)**
+  ✅ Done — `gen-circleci-orb.toml`'s `cargo_tools` now uses `crate@version` syntax
+  (gen-circleci-orb 0.1.22+), so `orb/Dockerfile`'s pins are generator-owned and regeneration-safe.
 - **[#62 — per-crate package selection for release/verify.](https://github.com/jerus-org/jci-audit/issues/62)**
   ✅ Done — `release-prep`/`verify --package <NAME>` scope the dependency digest to that crate's
   reachable graph (via `cargo metadata`, reusing `license_scope`'s reachability rule) and the
@@ -139,21 +137,23 @@ releases Phase 0-2 bugfixes have been shipping as.
   around wherever a `--release-job <name>`-style flag says it is. Also open: whether this needs its
   own `[ci.release]` config table alongside `[ci]`, decided during implementation.
 - **[#63 — `license_scope`/`about.toml` ignore-build/ignore-transitive-dependencies.](https://github.com/jerus-org/jci-audit/issues/63)**
-  Honour those settings in the derivation instead of always including build dependencies. Not
-  started; no external blocker.
+  ✅ Done — `DependencyScopePolicy` mirrors cargo-about's real
+  `ignore-dev-dependencies`/`ignore-build-dependencies`/`ignore-transitive-dependencies` fields
+  (default all-`false`, cargo-about's own default), derived from `about.toml` and threaded through
+  `scope_for_crate`/`reachable_shipped_ids`.
 - **[#36 — run `licenses-check` in validation so notices cannot go stale.](https://github.com/jerus-org/jci-audit/issues/36)**
-  The "which container's `cargo-about` gets used" half is unblocked now that #101 is done. The
-  determinism half is still blocked — not on #101 any more, but on #180/#142 above: the
-  cold/warm-cache cargo-about investigation in this issue's own history depends on the orb image
-  actually running a pinned, known-good cargo-about version, which it currently does not.
+  ✅ Done — shipped as a native `jci-audit check --deny-stale-notices` flag (not a hand-authored CI
+  job, per review on the first draft), confirmed deterministic against a cold cargo-about 0.9.2
+  cache. Wired into this repo's own `validation` workflow via `jci-audit wire-ci` once the orb
+  self-pin reached the release that carried the flag (`0.1.13`), with the drift-then-fix sequence
+  verified on real CircleCI runs before merge.
 - **[#138 — clippy::pedantic adoption.](https://github.com/jerus-org/jci-audit/issues/138)**
   ✅ Done — whole-group `warn` (with `too_many_lines` allowed) in `[workspace.lints.clippy]`.
 - **[#136 — invoke cargo-audit/cargo-deny/cargo-about via `cargo <sub>`.](https://github.com/jerus-org/jci-audit/issues/136)**
   ✅ Done — every invocation (and version probe) now dispatches through `cargo <sub>`, including
   the one asymmetry discovered along the way (`cargo-audit`'s dispatch reinserts `audit` itself).
 
-**Remaining before `0.2.0` can ship:** #180 (blocked on upstream gen-circleci-orb#321), #63, #36
-(blocked on #180), #164. #142/#101/#62/#138/#136 are genuinely done.
+**Remaining before `0.2.0` can ship:** #164 only. #142/#180/#101/#62/#63/#36/#138/#136 are all done.
 
 ## Backlog (tracked as issues, not yet scheduled)
 
