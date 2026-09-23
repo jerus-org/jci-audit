@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- per-job file override for wire-ci(pr [#213])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.14(pr [#210])
@@ -532,6 +536,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#209]: https://github.com/jerus-org/jci-audit/pull/209
 [#208]: https://github.com/jerus-org/jci-audit/pull/208
 [#210]: https://github.com/jerus-org/jci-audit/pull/210
+[#213]: https://github.com/jerus-org/jci-audit/pull/213
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.14...HEAD
 [0.1.14]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...v0.1.13
