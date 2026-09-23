@@ -35,14 +35,20 @@
 //! **Why array-of-tables, not CLI flags for each field**: an early version of
 //! this module took `--workflow`/`--orb-job`/`--requires`/etc. as CLI
 //! overrides merged onto a single-job `[ci]` table. Review feedback on PR
-//! jerus-org/jci-audit#163 pushed back — the release workflow (tracked by the
-//! follow-on issue jerus-org/jci-audit#164) needs a three-job chain
-//! (`release_prep`/the consumer's own release job/`publish_record`), which
-//! would have meant a pile of new/renamed CLI flags to add a second job. A
-//! `[[ci.jobs]]` array needs none of that: #164 adds a second array entry
-//! (`workflow = "release"`, plus new fields on `JobSpec` like `context`/
-//! `attach_workspace`/`post_steps` as they're needed) without touching this
-//! module's CLI surface or its existing entries at all. `wire-ci` itself also
+//! jerus-org/jci-audit#163 pushed back — the release workflow needs a
+//! three-job chain (`release_prep`/the consumer's own release job/
+//! `publish_record`, see `orb/src/examples/record_release.yml`), which would
+//! have meant a pile of new/renamed CLI flags to add a second job. A
+//! `[[ci.jobs]]` array needs none of that: `#164` (shipped) added a second
+//! array entry (`workflow = "release"`) plus three new `JobSpec` fields —
+//! `context`, `attach_workspace`, `persist_to_workspace_paths` (the only
+//! `post-steps:` shape in scope) — with no CLI change at all. The release
+//! chain's other two apparent gaps turned out to need no new mechanism
+//! either: the consumer's own middle job is named via the existing
+//! `requires`/`required_by` fields (`release_prep` sets `required_by`, and
+//! `publish_record` sets `requires`, pointing at the same, unmanaged job),
+//! and `version`/`tag`/`owner`/`repo`/`record_path`/`publish` are ordinary
+//! `params` entries — no `[ci.release]` table needed. `wire-ci` itself also
 //! gets simpler: with no per-field flags, a fresh run just reads whatever
 //! `jci-audit.toml` already says. On first run — nothing configured yet — it
 //! scaffolds ONE example `[[ci.jobs]]` entry (this repo's own dogfooded
@@ -132,6 +138,17 @@ pub(crate) struct JobSpec {
     pub(crate) requires: Vec<String>,
     pub(crate) required_by: Vec<String>,
     pub(crate) params: Vec<(String, String)>,
+    /// `context: [...]` — the release workflow's `publish_record` job needs
+    /// a context carrying its GitHub write token (jerus-org/jci-audit#164).
+    pub(crate) context: Vec<String>,
+    /// `attach_workspace: true` — `publish_record` reads the security
+    /// record `release_prep` persisted from an earlier job.
+    pub(crate) attach_workspace: bool,
+    /// `post-steps: [persist_to_workspace: {root: ., paths: [...]}]` —
+    /// `release_prep` persists `.security` for `publish_record` to attach.
+    /// Root is always `.` (the job's own working directory); no other
+    /// `post-steps` shape is in scope (jerus-org/jci-audit#164).
+    pub(crate) persist_to_workspace_paths: Vec<String>,
 }
 
 /// `jci-audit.toml`'s `[ci]` table as a whole: which `CircleCI` config file to
@@ -202,6 +219,14 @@ pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
                 requires: string_list(table.get("requires")),
                 required_by: string_list(table.get("required_by")),
                 params,
+                context: string_list(table.get("context")),
+                attach_workspace: match table.get("attach_workspace") {
+                    None => false,
+                    Some(item) => item.as_bool().with_context(|| {
+                        format!("ci.jobs[{index}].attach_workspace: not a boolean")
+                    })?,
+                },
+                persist_to_workspace_paths: string_list(table.get("persist_to_workspace")),
             });
         }
     }
@@ -295,6 +320,23 @@ fn job_spec_to_table(job: &JobSpec) -> Table {
             params.insert(key, value.clone().into());
         }
         table["params"] = Item::Value(Value::InlineTable(params));
+    }
+    // Unlike requires/required_by, these three (jerus-org/jci-audit#164) are
+    // specialized to the release workflow's jobs — written only when set,
+    // like `params`, rather than noising up every scaffolded/discovered
+    // entry (e.g. `jci-audit/check`) with `attach_workspace = false`.
+    if !job.context.is_empty() {
+        table["context"] = Item::Value(Value::Array(sync::multiline_array(
+            job.context.iter().cloned(),
+        )));
+    }
+    if job.attach_workspace {
+        table["attach_workspace"] = toml_edit::value(true);
+    }
+    if !job.persist_to_workspace_paths.is_empty() {
+        table["persist_to_workspace"] = Item::Value(Value::Array(sync::multiline_array(
+            job.persist_to_workspace_paths.iter().cloned(),
+        )));
     }
     table
 }
@@ -651,15 +693,26 @@ fn entry_bare_job(lines: &[String], entry: &JobEntry) -> String {
 }
 
 /// An entry's own current custom params — any `key: value` line at
-/// `JOB_PARAM_INDENT` other than `name:`/`requires:`, in file order.
-/// Mirrors [`effective_name`]'s indent-scoped scan.
+/// `JOB_PARAM_INDENT` other than `name:`/`requires:`/`context:`/
+/// `attach_workspace:`/`post-steps:`, in file order. The three excluded
+/// keys have their own dedicated `JobSpec` fields (jerus-org/jci-audit#164)
+/// but discovery doesn't capture them back (like `orb_version`, just below
+/// this function's own call site) — excluding them here only stops them
+/// being misread as garbled params (`post-steps:` has no scalar value on
+/// its own line; `context: [...]` would render as a literal bracketed
+/// string). Mirrors [`effective_name`]'s indent-scoped scan.
 fn entry_current_params(lines: &[String], entry: &JobEntry) -> Vec<(String, String)> {
     lines[entry.start..entry.end]
         .iter()
         .filter(|line| indent_of(line) == JOB_PARAM_INDENT)
         .filter_map(|line| {
             let trimmed = line.trim();
-            if trimmed.starts_with("name:") || trimmed.starts_with("requires:") {
+            if trimmed.starts_with("name:")
+                || trimmed.starts_with("requires:")
+                || trimmed.starts_with("context:")
+                || trimmed.starts_with("attach_workspace:")
+                || trimmed.starts_with("post-steps:")
+            {
                 return None;
             }
             let (key, value) = trimmed.split_once(':')?;
@@ -667,6 +720,68 @@ fn entry_current_params(lines: &[String], entry: &JobEntry) -> Vec<(String, Stri
                 key.trim().to_string(),
                 strip_trailing_comment(value.trim()).to_string(),
             ))
+        })
+        .collect()
+}
+
+/// An entry's own current scalar value for a `key:` line at
+/// `JOB_PARAM_INDENT`, if present — the raw text after the colon, trimmed.
+/// Only ever used to build a resync diff *note* (jerus-org/jci-audit#164),
+/// never to round-trip data back into a `JobSpec` — like
+/// `entry_current_params`'s own doc comment explains for the same three
+/// fields, a best-effort read is enough for that.
+fn entry_scalar_line<'a>(lines: &'a [String], entry: &JobEntry, key: &str) -> Option<&'a str> {
+    lines[entry.start..entry.end]
+        .iter()
+        .find_map(|line| {
+            (indent_of(line) == JOB_PARAM_INDENT)
+                .then(|| line.trim().strip_prefix(key))
+                .flatten()
+        })
+        .map(str::trim)
+}
+
+/// An entry's own current `context: [...]` value, if present — the only
+/// shape this tool ever renders for it (see [`render_job_body`]).
+fn entry_current_context(lines: &[String], entry: &JobEntry) -> Vec<String> {
+    entry_scalar_line(lines, entry, "context:")
+        .map(|value| {
+            value
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// An entry's own current `attach_workspace:` value, if present.
+fn entry_current_attach_workspace(lines: &[String], entry: &JobEntry) -> bool {
+    entry_scalar_line(lines, entry, "attach_workspace:").is_some_and(|value| value == "true")
+}
+
+/// An entry's own current `post-steps: [persist_to_workspace: {paths}]`
+/// paths, if present — the only `post-steps:` shape this tool ever renders
+/// (see [`render_job_body`]).
+fn entry_current_persist_to_workspace_paths(lines: &[String], entry: &JobEntry) -> Vec<String> {
+    let has_post_steps = lines[entry.start..entry.end]
+        .iter()
+        .any(|line| indent_of(line) == JOB_PARAM_INDENT && line.trim() == "post-steps:");
+    if !has_post_steps {
+        return Vec::new();
+    }
+    let path_indent = JOB_PARAM_INDENT + 8;
+    lines[entry.start..entry.end]
+        .iter()
+        .filter(|line| indent_of(line) == path_indent && line.trim_start().starts_with("- "))
+        .map(|line| {
+            line.trim_start()
+                .trim_start_matches("- ")
+                .trim()
+                .to_string()
         })
         .collect()
 }
@@ -754,7 +869,12 @@ fn render_job_body(job: &JobSpec, existing_name: Option<&str>) -> Vec<String> {
         .as_deref()
         .filter(|n| !n.is_empty())
         .or(existing_name);
-    let has_params = job_name.is_some() || !job.requires.is_empty() || !job.params.is_empty();
+    let has_params = job_name.is_some()
+        || !job.requires.is_empty()
+        || !job.params.is_empty()
+        || !job.context.is_empty()
+        || job.attach_workspace
+        || !job.persist_to_workspace_paths.is_empty();
 
     let mut lines = Vec::new();
     if has_params {
@@ -770,6 +890,27 @@ fn render_job_body(job: &JobSpec, existing_name: Option<&str>) -> Vec<String> {
                 "{param_indent}requires: [{}]",
                 job.requires.join(", ")
             ));
+        }
+        if !job.context.is_empty() {
+            lines.push(format!(
+                "{param_indent}context: [{}]",
+                job.context.join(", ")
+            ));
+        }
+        if job.attach_workspace {
+            lines.push(format!("{param_indent}attach_workspace: true"));
+        }
+        if !job.persist_to_workspace_paths.is_empty() {
+            let post_step_indent = " ".repeat(JOB_PARAM_INDENT + 2);
+            let root_indent = " ".repeat(JOB_PARAM_INDENT + 6);
+            let path_indent = " ".repeat(JOB_PARAM_INDENT + 8);
+            lines.push(format!("{param_indent}post-steps:"));
+            lines.push(format!("{post_step_indent}- persist_to_workspace:"));
+            lines.push(format!("{root_indent}root: ."));
+            lines.push(format!("{root_indent}paths:"));
+            for path in &job.persist_to_workspace_paths {
+                lines.push(format!("{path_indent}- {path}"));
+            }
         }
     } else {
         lines.push(format!("{entry_indent}- {orb_job}"));
@@ -1070,6 +1211,51 @@ fn diff_params_notes(
     notes
 }
 
+/// One note when `field`'s existing (list-shaped) value and jci-audit.toml's
+/// desired value differ — mirrors [`diff_params_notes`]'s three cases
+/// (removed/changed/added) for a single named field, rather than a
+/// per-key map (jerus-org/jci-audit#164: `context` and
+/// `persist_to_workspace` are each one whole list, not several independent
+/// keys). Without this, a security-relevant field silently dropping (e.g.
+/// `publish_record`'s `context:`) would only ever surface as the generic
+/// "reordering" fallback note in [`resync_job_entry`], giving no hint that
+/// anything was actually removed.
+fn diff_list_field_note(
+    job_label: &str,
+    field: &str,
+    existing: &[String],
+    desired: &[String],
+) -> Option<String> {
+    if existing == desired {
+        return None;
+    }
+    let message = if desired.is_empty() {
+        format!(
+            "{job_label}: removing {field} {existing:?} — not declared in jci-audit.toml; add \
+             it there to keep it"
+        )
+    } else if existing.is_empty() {
+        format!("{job_label}: adding {field} {desired:?} from jci-audit.toml")
+    } else {
+        format!(
+            "{job_label}: {field} changing from {existing:?} to {desired:?} to match \
+             jci-audit.toml"
+        )
+    };
+    Some(diagnostics::warn_tag(message))
+}
+
+/// Same as [`diff_list_field_note`] but for `attach_workspace`'s bool.
+fn diff_attach_workspace_note(job_label: &str, existing: bool, desired: bool) -> Option<String> {
+    if existing == desired {
+        return None;
+    }
+    Some(diagnostics::warn_tag(format!(
+        "{job_label}: attach_workspace changing from {existing} to {desired} to match \
+         jci-audit.toml"
+    )))
+}
+
 /// Resync an existing job entry (matched by effective name) against `job`'s
 /// declared spec — the counterpart to a fresh insert for a job that's
 /// already there, marked or not (jerus-org/jci-audit#171). `params` and
@@ -1099,6 +1285,9 @@ fn resync_job_entry(
     };
     let existing_name = entry_explicit_name(lines, entry);
     let existing_params = entry_current_params(lines, entry);
+    let existing_context = entry_current_context(lines, entry);
+    let existing_attach_workspace = entry_current_attach_workspace(lines, entry);
+    let existing_persist_paths = entry_current_persist_to_workspace_paths(lines, entry);
     let is_marked = entry_is_marked(lines, entry);
 
     let desired_body = render_job_body(job, existing_name.as_deref());
@@ -1114,6 +1303,23 @@ fn resync_job_entry(
             "{job_label}: requires updated to match jci-audit.toml"
         )));
     }
+    notes.extend(diff_list_field_note(
+        job_label,
+        "context",
+        &existing_context,
+        &job.context,
+    ));
+    notes.extend(diff_attach_workspace_note(
+        job_label,
+        existing_attach_workspace,
+        job.attach_workspace,
+    ));
+    notes.extend(diff_list_field_note(
+        job_label,
+        "persist_to_workspace",
+        &existing_persist_paths,
+        &job.persist_to_workspace_paths,
+    ));
     if !is_marked {
         notes.push(format!(
             "{job_label}: wrapping in jci-audit managed markers (was unmarked)"
@@ -1422,6 +1628,12 @@ fn discover_undeclared_jobs(lines: &[String], declared: &[JobSpec]) -> (Vec<JobS
                 requires,
                 required_by: Vec::new(),
                 params: entry_current_params(lines, entry),
+                // Not hand-captured, like `orb_version` above — see
+                // `entry_current_params`'s own doc comment
+                // (jerus-org/jci-audit#164).
+                context: Vec::new(),
+                attach_workspace: false,
+                persist_to_workspace_paths: Vec::new(),
             });
         }
     }
@@ -1673,6 +1885,9 @@ mod tests {
             requires: vec!["toolkit/common_tests".to_string()],
             required_by: vec!["deploy".to_string()],
             params: vec![("deny_unused_licenses".to_string(), "true".to_string())],
+            context: Vec::new(),
+            attach_workspace: false,
+            persist_to_workspace_paths: Vec::new(),
         }
     }
 
@@ -1709,6 +1924,41 @@ deny_unused_licenses = "true"
         let got = read_ci_file(toml).unwrap();
         assert_eq!(got.file.as_deref(), Some(".circleci/config.yml"));
         assert_eq!(got.jobs, vec![full_job()]);
+    }
+
+    #[test]
+    fn read_ci_file_parses_context_attach_workspace_and_persist_to_workspace() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "release"
+orb_job = "jci-audit/publish_record"
+context = ["github-release-write"]
+attach_workspace = true
+persist_to_workspace = [".security"]
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(
+            got.jobs[0].context,
+            vec!["github-release-write".to_string()]
+        );
+        assert!(got.jobs[0].attach_workspace);
+        assert_eq!(
+            got.jobs[0].persist_to_workspace_paths,
+            vec![".security".to_string()]
+        );
+    }
+
+    #[test]
+    fn read_ci_file_defaults_context_attach_workspace_and_persist_to_workspace_when_absent() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(got.jobs[0].context, Vec::<String>::new());
+        assert!(!got.jobs[0].attach_workspace);
+        assert_eq!(got.jobs[0].persist_to_workspace_paths, Vec::<String>::new());
     }
 
     /// A hand-authored `jci-audit.toml` may reasonably use the inline-table
@@ -1769,6 +2019,23 @@ params = { targets = ["a", "b"] }
         let err = format!("{:?}", read_ci_file(toml).unwrap_err());
         assert!(err.contains("params.targets"), "got: {err}");
         assert!(err.contains("unsupported value"), "got: {err}");
+    }
+
+    /// A present-but-wrong-typed `attach_workspace` (e.g. a string typo)
+    /// must fail loudly, not silently coerce to `false` the same way an
+    /// absent key does — mirrors this module's own stated principle for
+    /// `params` values (jerus-org/jci-audit#164).
+    #[test]
+    fn read_ci_file_errs_on_non_boolean_attach_workspace_value() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "release"
+orb_job = "jci-audit/publish_record"
+attach_workspace = "true"
+"#;
+        let err = format!("{:?}", read_ci_file(toml).unwrap_err());
+        assert!(err.contains("attach_workspace"), "got: {err}");
+        assert!(err.contains("not a boolean"), "got: {err}");
     }
 
     /// A `params` key present but not table-shaped (a typo — a bare string
@@ -2030,6 +2297,9 @@ workflows:
             requires: Vec::new(),
             required_by: Vec::new(),
             params: Vec::new(),
+            context: Vec::new(),
+            attach_workspace: false,
+            persist_to_workspace_paths: Vec::new(),
         }
     }
 
@@ -2355,6 +2625,107 @@ workflows:
         );
     }
 
+    #[test]
+    fn render_new_job_block_omits_context_attach_workspace_and_post_steps_when_unset() {
+        // Regression guard: an ordinary job like jci-audit/check must render
+        // byte-identical to before #164's fields existed.
+        let job = base_job();
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn render_new_job_block_emits_context_when_declared() {
+        let mut job = base_job();
+        job.context = vec!["github-release-write".to_string()];
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          context: [github-release-write]".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn render_new_job_block_emits_attach_workspace_only_when_true() {
+        let mut job = base_job();
+        job.attach_workspace = true;
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          attach_workspace: true".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn render_new_job_block_emits_persist_to_workspace_post_steps() {
+        let mut job = base_job();
+        job.persist_to_workspace_paths = vec![".security".to_string()];
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          post-steps:".to_string(),
+                "            - persist_to_workspace:".to_string(),
+                "                root: .".to_string(),
+                "                paths:".to_string(),
+                "                  - .security".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
+    /// Field order matches `orb/src/examples/record_release.yml`'s
+    /// `publish_record` entry: name, params, requires, `context`,
+    /// `attach_workspace`, `post-steps`.
+    #[test]
+    fn render_new_job_block_orders_all_new_fields_together() {
+        let mut job = base_job();
+        job.job_name = Some("publish-security-record".to_string());
+        job.params = vec![("version".to_string(), "\"1.2.0\"".to_string())];
+        job.requires = vec!["your-draft-release-job".to_string()];
+        job.context = vec!["github-release-write".to_string()];
+        job.attach_workspace = true;
+        job.persist_to_workspace_paths = vec![".security".to_string()];
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          name: publish-security-record".to_string(),
+                "          version: \"1.2.0\"".to_string(),
+                "          requires: [your-draft-release-job]".to_string(),
+                "          context: [github-release-write]".to_string(),
+                "          attach_workspace: true".to_string(),
+                "          post-steps:".to_string(),
+                "            - persist_to_workspace:".to_string(),
+                "                root: .".to_string(),
+                "                paths:".to_string(),
+                "                  - .security".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
     // -- wire_jobs_into / wire_one_job ---------------------------------------
 
     #[test]
@@ -2669,6 +3040,9 @@ workflows:
             requires: Vec::new(),
             required_by: Vec::new(),
             params: Vec::new(),
+            context: Vec::new(),
+            attach_workspace: false,
+            persist_to_workspace_paths: Vec::new(),
         };
         release_job.orb_version = Some("jerus-org/jci-audit@1.0".to_string());
 
@@ -2735,6 +3109,197 @@ workflows:
         assert!(
             notes.iter().all(|n| n.starts_with("[warn] ")),
             "got: {notes:?}"
+        );
+    }
+
+    const CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB: &str = "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      # >>> jci-audit wire-ci (managed — edits overwritten by re-running 'jci-audit wire-ci')
+      - jci-audit/check:
+          name: publish-security-record
+      # <<< jci-audit wire-ci
+";
+
+    fn release_job() -> JobSpec {
+        let mut job = base_job();
+        job.workflow = Some("release".to_string());
+        job
+    }
+
+    #[test]
+    fn wire_jobs_into_resync_detects_context_drift() {
+        let mut job = release_job();
+        job.job_name = Some("publish-security-record".to_string());
+        job.context = vec!["github-release-write".to_string()];
+        let mut notes = Vec::new();
+        let out =
+            wire_jobs_into_with_notes(CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB, &[job], &mut notes)
+                .unwrap();
+        assert!(
+            out.contains("context: [github-release-write]"),
+            "got: {out}"
+        );
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("adding context") && n.contains("github-release-write")),
+            "got: {notes:?}"
+        );
+    }
+
+    const CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB_CONTEXT: &str = "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      # >>> jci-audit wire-ci (managed — edits overwritten by re-running 'jci-audit wire-ci')
+      - jci-audit/check:
+          name: publish-security-record
+          context: [github-release-write]
+      # <<< jci-audit wire-ci
+";
+
+    /// Regression guard for a `/code-review` finding: dropping a
+    /// jci-audit.toml-undeclared `context:` must name what was removed,
+    /// not fall through to the generic "reordering" note — losing a
+    /// security-relevant field silently is worse than losing an ordinary
+    /// param silently, which already gets a specific note
+    /// (jerus-org/jci-audit#164).
+    #[test]
+    fn wire_jobs_into_resync_names_a_removed_context_not_a_generic_reorder() {
+        let mut job = release_job();
+        job.job_name = Some("publish-security-record".to_string());
+        // job.context left empty — no longer declared.
+        let mut notes = Vec::new();
+        let out = wire_jobs_into_with_notes(
+            CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB_CONTEXT,
+            &[job],
+            &mut notes,
+        )
+        .unwrap();
+        assert!(!out.contains("context:"), "got: {out}");
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("removing context") && n.contains("github-release-write")),
+            "got: {notes:?}"
+        );
+        assert!(
+            !notes.iter().any(|n| n.contains("reordering")),
+            "got: {notes:?}"
+        );
+    }
+
+    #[test]
+    fn wire_jobs_into_resync_detects_attach_workspace_drift() {
+        let mut job = release_job();
+        job.job_name = Some("publish-security-record".to_string());
+        job.attach_workspace = true;
+        let mut notes = Vec::new();
+        let out =
+            wire_jobs_into_with_notes(CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB, &[job], &mut notes)
+                .unwrap();
+        assert!(out.contains("attach_workspace: true"), "got: {out}");
+    }
+
+    #[test]
+    fn wire_jobs_into_resync_detects_persist_to_workspace_drift() {
+        let mut job = release_job();
+        job.job_name = Some("publish-security-record".to_string());
+        job.persist_to_workspace_paths = vec![".security".to_string()];
+        let mut notes = Vec::new();
+        let out =
+            wire_jobs_into_with_notes(CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB, &[job], &mut notes)
+                .unwrap();
+        assert!(out.contains("- persist_to_workspace:"), "got: {out}");
+        assert!(out.contains("- .security"), "got: {out}");
+    }
+
+    /// The full `orb/src/examples/record_release.yml` shape: `release_prep`
+    /// persists `.security` for the consumer's own already-existing
+    /// `your-draft-release-job` to require, and `publish_record` requires
+    /// that same job and attaches the workspace back. Confirms `wire-ci`
+    /// can wire the entire three-job release chain in one pass, with
+    /// `required_by` on the first job and `requires` on the third both
+    /// resolving to the same untouched, unmanaged middle job
+    /// (jerus-org/jci-audit#164).
+    #[test]
+    fn wire_jobs_into_wires_a_three_job_release_chain() {
+        let config = "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - your-draft-release-job:
+          requires: []
+";
+        let release_prep = JobSpec {
+            workflow: Some("release".to_string()),
+            orb_job: Some("jci-audit/release_prep".to_string()),
+            orb_version: None,
+            job_name: Some("record-release".to_string()),
+            requires: Vec::new(),
+            required_by: vec!["your-draft-release-job".to_string()],
+            params: vec![("version".to_string(), "\"1.2.0\"".to_string())],
+            context: Vec::new(),
+            attach_workspace: false,
+            persist_to_workspace_paths: vec![".security".to_string()],
+        };
+        let publish_record = JobSpec {
+            workflow: Some("release".to_string()),
+            orb_job: Some("jci-audit/publish_record".to_string()),
+            orb_version: None,
+            job_name: Some("publish-security-record".to_string()),
+            requires: vec!["your-draft-release-job".to_string()],
+            required_by: Vec::new(),
+            params: vec![
+                ("version".to_string(), "\"1.2.0\"".to_string()),
+                ("tag".to_string(), "\"myapp-v1.2.0\"".to_string()),
+            ],
+            context: vec!["github-release-write".to_string()],
+            attach_workspace: true,
+            persist_to_workspace_paths: Vec::new(),
+        };
+        let mut notes = Vec::new();
+        let out =
+            wire_jobs_into_with_notes(config, &[release_prep, publish_record], &mut notes).unwrap();
+
+        // release_prep: persists .security, and is required by the
+        // consumer's own already-existing job.
+        assert!(out.contains("- jci-audit/release_prep:"), "got: {out}");
+        assert!(out.contains("name: record-release"), "got: {out}");
+        assert!(out.contains("post-steps:"), "got: {out}");
+        assert!(out.contains("- persist_to_workspace:"), "got: {out}");
+        assert!(out.contains("- .security"), "got: {out}");
+
+        // publish_record: requires the same consumer job, carries the
+        // release-write context, and attaches the workspace back.
+        assert!(out.contains("- jci-audit/publish_record:"), "got: {out}");
+        assert!(
+            out.contains("requires: [your-draft-release-job]"),
+            "got: {out}"
+        );
+        assert!(
+            out.contains("context: [github-release-write]"),
+            "got: {out}"
+        );
+        assert!(out.contains("attach_workspace: true"), "got: {out}");
+
+        // The consumer's own job gained record-release in its requires.
+        let your_job_idx = out.find("- your-draft-release-job").unwrap();
+        let requires_idx = out.find("requires: [record-release]").unwrap();
+        assert!(
+            requires_idx > your_job_idx,
+            "requires must be appended to your-draft-release-job's own entry: {out}"
         );
     }
 
@@ -3006,6 +3571,9 @@ workflows:
                 requires: Vec::new(),
                 required_by: Vec::new(),
                 params: vec![("deny_unused_licenses".to_string(), "true".to_string())],
+                context: Vec::new(),
+                attach_workspace: false,
+                persist_to_workspace_paths: Vec::new(),
             }]
         );
     }
@@ -3082,11 +3650,29 @@ workflows:
             requires: Vec::new(),
             required_by: Vec::new(),
             params: vec![("deny_unused_licenses".to_string(), "true".to_string())],
+            context: Vec::new(),
+            attach_workspace: false,
+            persist_to_workspace_paths: Vec::new(),
         }];
         let out = append_discovered_jobs(existing, &discovered).unwrap();
         assert!(out.contains("kept = true"), "got: {out}");
         let got = read_ci_file(&out).unwrap();
         assert_eq!(got.jobs, discovered);
+    }
+
+    /// `job_spec_to_table` (via `append_discovered_jobs`) must serialize
+    /// the three #164 fields, not just `requires`/`required_by`/`params` —
+    /// a `JobSpec` carrying them must round-trip through a write.
+    #[test]
+    fn append_discovered_jobs_roundtrips_context_attach_workspace_and_persist_to_workspace() {
+        let mut job = release_job();
+        job.orb_job = Some("jci-audit/publish_record".to_string());
+        job.context = vec!["github-release-write".to_string()];
+        job.attach_workspace = true;
+        job.persist_to_workspace_paths = vec![".security".to_string()];
+        let out = append_discovered_jobs("", &[job.clone()]).unwrap();
+        let got = read_ci_file(&out).unwrap();
+        assert_eq!(got.jobs, vec![job]);
     }
 
     #[test]
