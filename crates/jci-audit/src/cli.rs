@@ -641,8 +641,7 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
         wire_ci::WireCiOutcome::Configured {
             toml_path,
             toml,
-            ci_file_path,
-            ci_file,
+            ci_files,
             notes,
         } => {
             // Printed before the outcome lines, in both check and write
@@ -653,10 +652,20 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
             for note in &notes {
                 println!("{note}");
             }
-            let ci_file_display = wire_ci::display_path(&ci_file_path, &cwd);
             let toml_display = wire_ci::display_path(&toml_path, &cwd);
-            let toml_out_of_sync = report_wire_ci_outcome(&toml_display, &ci_file_display, toml);
-            let ci_out_of_sync = report_wire_ci_outcome(&ci_file_display, &toml_display, ci_file);
+            let ci_file_displays: Vec<String> = ci_files
+                .iter()
+                .map(|(path, _)| wire_ci::display_path(path, &cwd))
+                .collect();
+            // Joined even for the single-file case — renders identically to
+            // the one path it used to be, so existing single-file output is
+            // unaffected (jerus-org/jci-audit#211).
+            let ci_files_display = ci_file_displays.join(", ");
+            let toml_out_of_sync = report_wire_ci_outcome(&toml_display, &ci_files_display, toml);
+            let mut ci_out_of_sync = false;
+            for ((_, outcome), display) in ci_files.into_iter().zip(ci_file_displays) {
+                ci_out_of_sync |= report_wire_ci_outcome(&display, &toml_display, outcome);
+            }
             if toml_out_of_sync || ci_out_of_sync {
                 bail!("out of sync — run `jci-audit wire-ci` to apply");
             }

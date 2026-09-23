@@ -3,17 +3,37 @@
 //! `jci-audit check-ci-wiring` (verify, CI-facing).
 //!
 //! **`jci-audit.toml`'s `[ci]` table is the required, authoritative spec —
-//! not CLI flags.** `[ci].file` names the `CircleCI` config file to patch
-//! (default `.circleci/config.yml`, resolved relative to `jci-audit.toml`'s
-//! own directory), and each `[[ci.jobs]]` entry describes one job to wire
-//! into one workflow — see [`JobSpec`] for the full field list, including
-//! `params` for the orb job's own extra parameters (e.g. `jci-audit/check`'s
-//! `deny_unused_licenses`). This mirrors `gen-circleci-orb.toml`'s own `[ci]`
-//! table role for that tool's wiring of a repo's CI, and stays fully
-//! independent of it: a `wire-ci` consumer need not use gen-circleci-orb at
-//! all. `--config` only says WHICH file to read as this spec (default
-//! `jci-audit.toml` at the discovered workspace root) — it carries no
-//! per-job settings itself.
+//! not CLI flags.** `[ci].file` names the default `CircleCI` config file to
+//! patch (default `.circleci/config.yml`, resolved relative to
+//! `jci-audit.toml`'s own directory), and each `[[ci.jobs]]` entry describes
+//! one job to wire into one workflow of one file — see [`JobSpec`] for the
+//! full field list, including `params` for the orb job's own extra
+//! parameters (e.g. `jci-audit/check`'s `deny_unused_licenses`). This
+//! mirrors `gen-circleci-orb.toml`'s own `[ci]` table role for that tool's
+//! wiring of a repo's CI, and stays fully independent of it: a `wire-ci`
+//! consumer need not use gen-circleci-orb at all. `--config` only says WHICH
+//! file to read as this spec (default `jci-audit.toml` at the discovered
+//! workspace root) — it carries no per-job settings itself.
+//!
+//! **One `jci-audit.toml` can target more than one `CircleCI` file**
+//! (jerus-org/jci-audit#211): a job's own `file` field overrides `[ci].file`
+//! for that entry only — e.g. `release.yml`'s `release_prep`/`publish_record`
+//! chain alongside `config.yml`'s validation jobs, in a repo using the
+//! toolkit's 3-file CI model. This is a field on `JobSpec`, not a CLI flag or
+//! a second `[ci]` table, for the same reason as every other field here (see
+//! the array-of-tables rationale below) — and it costs `wire_ci_at`'s core
+//! per-file logic nothing: `discover_undeclared_jobs`/`wire_jobs_into_with_notes`/
+//! `resync_job_entry` already only ever see one file's own `lines` and job
+//! subset, and workflow-name matching was already scoped to "within one
+//! file's content," so two files can each safely have (say) a `release`
+//! workflow without colliding — only `wire_ci_at`'s own orchestration groups
+//! jobs by resolved file before delegating to that unchanged per-file core.
+//! A second file only ever enters scope because something explicitly names
+//! it — never invented — either a job's own `file`, or `[ci].discover_files`
+//! (a list of extra files to scan for undeclared `jci-audit/*` jobs even
+//! before anything references them, bootstrapping discovery on a file that
+//! already hand-authors unmanaged jobs, the same chicken-and-egg problem
+//! `[ci].file` never has since it's always in scope).
 //!
 //! A `[ci.jobs.params]` table (or an inline `params = {...}`) belongs to
 //! whichever `[[ci.jobs]]` entry it's written directly under — ordinary TOML
@@ -149,15 +169,28 @@ pub(crate) struct JobSpec {
     /// Root is always `.` (the job's own working directory); no other
     /// `post-steps` shape is in scope (jerus-org/jci-audit#164).
     pub(crate) persist_to_workspace_paths: Vec<String>,
+    /// Overrides `[ci].file` for this job only — lets one `jci-audit.toml`
+    /// wire jobs into more than one `CircleCI` file (e.g. `release.yml`'s
+    /// release chain alongside `config.yml`'s validation jobs,
+    /// jerus-org/jci-audit#211). `None` inherits `[ci].file`.
+    pub(crate) file: Option<String>,
 }
 
 /// `jci-audit.toml`'s `[ci]` table as a whole: which `CircleCI` config file to
-/// patch, and the ordered list of jobs to wire into it. `Default` (no file
-/// set, no jobs) means nothing configured yet — a consumer running
-/// `wire-ci` for the first time, not an error.
+/// patch by default, any additional files to scan for undeclared jobs, and
+/// the ordered list of jobs to wire in. `Default` (no file set, no jobs)
+/// means nothing configured yet — a consumer running `wire-ci` for the
+/// first time, not an error.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct CiFile {
     pub(crate) file: Option<String>,
+    /// Additional `CircleCI` files to scan for undeclared `jci-audit/*`
+    /// jobs, even when no `[[ci.jobs]]` entry references them yet
+    /// (jerus-org/jci-audit#211) — bootstraps discovery on a second file
+    /// (e.g. `release.yml`) the same way `[ci].file` always does for the
+    /// default. A named file that doesn't exist on disk is an error, not a
+    /// silent skip: this is an explicit ask, not passive scope.
+    pub(crate) discover_files: Vec<String>,
     pub(crate) jobs: Vec<JobSpec>,
 }
 
@@ -187,6 +220,7 @@ pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
         .and_then(Item::as_str)
         .map(str::to_string)
         .filter(|s| !s.is_empty());
+    let discover_files = string_list(ci.get("discover_files"));
 
     let mut jobs = Vec::new();
     if let Some(array) = ci.get("jobs").and_then(Item::as_array_of_tables) {
@@ -227,11 +261,16 @@ pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
                     })?,
                 },
                 persist_to_workspace_paths: string_list(table.get("persist_to_workspace")),
+                file: str_field("file"),
             });
         }
     }
 
-    Ok(CiFile { file, jobs })
+    Ok(CiFile {
+        file,
+        discover_files,
+        jobs,
+    })
 }
 
 fn string_list(item: Option<&Item>) -> Vec<String> {
@@ -337,6 +376,12 @@ fn job_spec_to_table(job: &JobSpec) -> Table {
         table["persist_to_workspace"] = Item::Value(Value::Array(sync::multiline_array(
             job.persist_to_workspace_paths.iter().cloned(),
         )));
+    }
+    // Same "only when set" convention as params/context/etc. — most jobs
+    // inherit [ci].file and should carry no per-job file line at all
+    // (jerus-org/jci-audit#211).
+    if let Some(file) = &job.file {
+        table["file"] = toml_edit::value(file.as_str());
     }
     table
 }
@@ -446,18 +491,21 @@ pub(crate) enum WriteOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WireCiOutcome {
     /// At least one `[[ci.jobs]]` entry existed, or one was discoverable in
-    /// the `CircleCI` config (jerus-org/jci-audit#171): both files' own
-    /// resolved paths and what was (or would be) done to each, plus a
-    /// human-readable note per concrete change either direction makes —
-    /// a param/requires drift correction, a job adopted into managed
-    /// markers, or a newly-discovered job appended to `jci-audit.toml`.
-    /// Printed by the CLI in both check and write mode, so `check-ci-wiring`
-    /// states the effect of alignment *before* anything is changed.
+    /// a `CircleCI` config file (jerus-org/jci-audit#171): the toml's own
+    /// resolved path and what was (or would be) done to it, every in-scope
+    /// `CircleCI` file's own resolved path and outcome (jerus-org/
+    /// jci-audit#211 — one `jci-audit.toml` can target more than one
+    /// `CircleCI` file; only files actually in scope appear here, never a
+    /// file that was never referenced by any job), plus a human-readable
+    /// note per concrete change either direction makes — a param/requires
+    /// drift correction, a job adopted into managed markers, or a
+    /// newly-discovered job appended to `jci-audit.toml`. Printed by the
+    /// CLI in both check and write mode, so `check-ci-wiring` states the
+    /// effect of alignment *before* anything is changed.
     Configured {
         toml_path: std::path::PathBuf,
         toml: WriteOutcome,
-        ci_file_path: std::path::PathBuf,
-        ci_file: WriteOutcome,
+        ci_files: Vec<(std::path::PathBuf, WriteOutcome)>,
         notes: Vec<String>,
     },
     /// No `[[ci.jobs]]` entries existed in `jci-audit.toml`, AND nothing
@@ -1567,6 +1615,20 @@ fn dedupe_preserving_order(items: &[String]) -> Vec<String> {
     out
 }
 
+/// Lexically normalizes a `[ci]`/job `file` value for comparison — strips
+/// redundant `./` and empty (`//`) segments; no filesystem access, since
+/// the file may not exist yet. Two differently-spelled references to the
+/// same physical file (`.circleci/release.yml` vs `./.circleci/release.yml`)
+/// must resolve to the same target file, or each spelling would end up
+/// with its own independent scan and write of the same path — the second
+/// silently clobbering the first's wiring (jerus-org/jci-audit#211).
+fn normalize_file_rel(rel: &str) -> String {
+    rel.split('/')
+        .filter(|seg| !seg.is_empty() && *seg != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Scan every workflow in `lines` for `jci-audit/*` job entries `declared`
 /// doesn't already account for (matched the same way `wire_one_job` matches
 /// — `(workflow, effective_name)`), and synthesize a `JobSpec` reflecting
@@ -1587,7 +1649,24 @@ fn dedupe_preserving_order(items: &[String]) -> Vec<String> {
 /// silently swallowed on the `Scaffolded` path (nothing else discoverable)
 /// would otherwise leave a customer with no idea a real job already exists
 /// that jci-audit couldn't capture.
-fn discover_undeclared_jobs(lines: &[String], declared: &[JobSpec]) -> (Vec<JobSpec>, Vec<String>) {
+///
+/// `file_display` names the file being scanned, always — printed in every
+/// note this function emits, since two files can legitimately share a
+/// workflow name (jerus-org/jci-audit#211's whole premise) and a note like
+/// "'jci-audit/check' in workflow 'validation': discovered..." would
+/// otherwise be ambiguous about which physical file it's about. `file_tag`
+/// is the same file, but only `Some` when it is NOT the resolved default
+/// (`None` for the default file) — unlike `orb_version` above, this
+/// genuinely is known here, so a discovered job's `.file` is set to it,
+/// keeping the file it was found in explicit rather than silently
+/// defaulting; the default file itself needs no per-job override since
+/// every job already inherits it.
+fn discover_undeclared_jobs(
+    lines: &[String],
+    declared: &[JobSpec],
+    file_display: &str,
+    file_tag: Option<&str>,
+) -> (Vec<JobSpec>, Vec<String>) {
     let mut discovered = Vec::new();
     let mut notes = Vec::new();
 
@@ -1610,15 +1689,15 @@ fn discover_undeclared_jobs(lines: &[String], declared: &[JobSpec]) -> (Vec<JobS
             }
             let Some(requires) = entry_current_requires(lines, entry) else {
                 notes.push(diagnostics::action_tag(format!(
-                    "'{name}' in workflow '{workflow}': existing `requires:` is in a shape \
-                     jci-audit can't safely capture — add a [[ci.jobs]] entry for it to \
-                     jci-audit.toml by hand"
+                    "'{name}' in workflow '{workflow}' ({file_display}): existing `requires:` \
+                     is in a shape jci-audit can't safely capture — add a [[ci.jobs]] entry \
+                     for it to jci-audit.toml by hand"
                 )));
                 continue;
             };
             notes.push(format!(
-                "'{name}' in workflow '{workflow}': discovered — appending a new [[ci.jobs]] \
-                 entry for it to jci-audit.toml"
+                "'{name}' in workflow '{workflow}' ({file_display}): discovered — appending a \
+                 new [[ci.jobs]] entry for it to jci-audit.toml"
             ));
             discovered.push(JobSpec {
                 workflow: Some(workflow.clone()),
@@ -1634,6 +1713,7 @@ fn discover_undeclared_jobs(lines: &[String], declared: &[JobSpec]) -> (Vec<JobS
                 context: Vec::new(),
                 attach_workspace: false,
                 persist_to_workspace_paths: Vec::new(),
+                file: file_tag.map(str::to_string),
             });
         }
     }
@@ -1709,6 +1789,25 @@ pub(crate) fn display_path(path: &Path, start: &Path) -> String {
     }
 }
 
+/// One in-scope `CircleCI` file, after reading and scanning it — the
+/// intermediate state `wire_ci_at` builds per file before deciding what (if
+/// anything) needs to change (jerus-org/jci-audit#211).
+struct FileScan {
+    path: std::path::PathBuf,
+    existing_text: String,
+    file_jobs: Vec<JobSpec>,
+    discovered: Vec<JobSpec>,
+}
+
+/// One file's fully-computed desired content, ready to `decide()` —
+/// separated from [`FileScan`] because computing it is the fallible step
+/// (jerus-org/jci-audit#211's phase-1/phase-2 split in `wire_ci_at`).
+struct Computed {
+    path: std::path::PathBuf,
+    existing: String,
+    desired: String,
+}
+
 /// Locate `jci-audit.toml` (an explicit `config_override`, used as given —
 /// mirrors `resolve_publish_record_path`'s "override short-circuits before
 /// any discovery" precedent — or `jci-audit.toml` at the workspace root
@@ -1748,25 +1847,93 @@ pub(crate) fn wire_ci_at(
     };
     let spec = read_ci_file(&existing_toml_text)?;
 
-    let ci_file_path = spec_dir.join(spec.file.as_deref().unwrap_or(".circleci/config.yml"));
-    let existing_ci_text =
-        if ci_file_path.is_file() {
-            Some(std::fs::read_to_string(&ci_file_path).with_context(|| {
-                format!("failed to read '{}'", display_path(&ci_file_path, start))
-            })?)
-        } else {
-            None
-        };
+    let default_file = normalize_file_rel(spec.file.as_deref().unwrap_or(".circleci/config.yml"));
 
-    let (discovered, mut notes) = match &existing_ci_text {
-        Some(text) => {
-            let lines: Vec<String> = text.lines().map(str::to_string).collect();
-            discover_undeclared_jobs(&lines, &spec.jobs)
+    // Every distinct target file, in scope order: the default (always),
+    // then `discover_files` (bootstraps discovery on a file with no
+    // declared jobs yet — jerus-org/jci-audit#211), then any additional
+    // per-job `file` override not already covered. Normalized before
+    // dedup/comparison — two differently-spelled references to the same
+    // physical file (`.circleci/release.yml` vs `./.circleci/release.yml`)
+    // must resolve to one target, not each get their own independent,
+    // disk-clobbering scan and write.
+    let mut candidate_files = vec![default_file.clone()];
+    candidate_files.extend(spec.discover_files.iter().map(|f| normalize_file_rel(f)));
+    candidate_files.extend(
+        spec.jobs
+            .iter()
+            .filter_map(|job| job.file.as_deref())
+            .map(normalize_file_rel),
+    );
+    let target_files = dedupe_preserving_order(&candidate_files);
+
+    // discover_files names an explicit ask — a missing entry is a loud
+    // error, not a silent skip (unlike a file only ever reached implicitly
+    // via a job's own `file`, handled per-file below).
+    for f in &spec.discover_files {
+        let f = normalize_file_rel(f);
+        let path = spec_dir.join(&f);
+        if !path.is_file() {
+            bail!(
+                "'{}' (declared in [ci].discover_files) not found",
+                display_path(&path, start)
+            );
         }
-        None => (Vec::new(), Vec::new()),
-    };
+    }
 
-    if spec.jobs.is_empty() && discovered.is_empty() {
+    let mut scans: Vec<FileScan> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+
+    for rel in &target_files {
+        let path = spec_dir.join(rel);
+        let file_jobs: Vec<JobSpec> = spec
+            .jobs
+            .iter()
+            .filter(|j| {
+                let jf = j
+                    .file
+                    .as_deref()
+                    .map_or_else(|| default_file.clone(), normalize_file_rel);
+                jf == *rel
+            })
+            .cloned()
+            .collect();
+
+        if !path.is_file() {
+            if file_jobs.is_empty() {
+                // Nothing declared for it and it isn't there — a no-op,
+                // not an error: this file simply never entered scope.
+                continue;
+            }
+            bail!(
+                "'{}' not found — run from a repo with .circleci/config.yml, or set [ci].file \
+                 (or a job's own `file`) in '{}'",
+                display_path(&path, start),
+                display_path(&config_path, start)
+            );
+        }
+
+        let existing_text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read '{}'", display_path(&path, start)))?;
+        let lines: Vec<String> = existing_text.lines().map(str::to_string).collect();
+        let file_tag = if rel == &default_file {
+            None
+        } else {
+            Some(rel.as_str())
+        };
+        let (discovered, file_notes) = discover_undeclared_jobs(&lines, &file_jobs, rel, file_tag);
+        notes.extend(file_notes);
+
+        scans.push(FileScan {
+            path,
+            existing_text,
+            file_jobs,
+            discovered,
+        });
+    }
+
+    let total_discovered: usize = scans.iter().map(|s| s.discovered.len()).sum();
+    if spec.jobs.is_empty() && total_discovered == 0 {
         if check {
             let mut message = format!(
                 "'{}' has no [[ci.jobs]] entries — run `jci-audit wire-ci` to scaffold one, edit \
@@ -1784,39 +1951,56 @@ pub(crate) fn wire_ci_at(
         return Ok(WireCiOutcome::Scaffolded { notes });
     }
 
-    let Some(existing_ci_text) = existing_ci_text else {
-        bail!(
-            "'{}' not found — run from a repo with .circleci/config.yml, or set [ci].file in \
-             '{}'",
-            display_path(&ci_file_path, start),
-            display_path(&config_path, start)
-        );
-    };
+    // Phase 1: compute every in-scope file's desired text (the only
+    // fallible step — an unrecognized `requires:` shape on some other
+    // already-declared job, say) before any file is touched on disk.
+    // Mirrors the original single-file atomicity guarantee
+    // (jerus-org/jci-audit#171) across N files instead of one: nothing
+    // reaches disk unless every file's desired content computes cleanly.
+    let mut computed: Vec<Computed> = Vec::new();
+    let mut all_discovered: Vec<JobSpec> = Vec::new();
+    // Consumed by value — `scans` is never read again after this loop, so
+    // `existing_text` (a full file's content) moves into `Computed` rather
+    // than being cloned.
+    for scan in scans {
+        if scan.file_jobs.is_empty() && scan.discovered.is_empty() {
+            // Nothing to report for this file — e.g. the default file when
+            // every real job targets a different one.
+            continue;
+        }
+        let all_jobs: Vec<JobSpec> = scan
+            .file_jobs
+            .into_iter()
+            .chain(scan.discovered.iter().cloned())
+            .collect();
+        all_discovered.extend(scan.discovered);
+        let desired = wire_jobs_into_with_notes(&scan.existing_text, &all_jobs, &mut notes)?;
+        computed.push(Computed {
+            path: scan.path,
+            existing: scan.existing_text,
+            desired,
+        });
+    }
 
-    // Both desired texts are computed — and any failure (an unrecognized
-    // `requires:` shape on some *other* already-declared job, say) has a
-    // chance to surface — before either file is touched on disk. Writing
-    // jci-audit.toml here first and only then discovering the CI file's own
-    // update fails would leave a newly-appended, not-yet-reviewed toml entry
-    // persisted with nothing applied to match it — exactly the half-applied
-    // state this module's own atomicity guarantee (jerus-org/jci-audit#171)
-    // exists to rule out.
-    let desired_toml_text = if discovered.is_empty() {
+    let desired_toml_text = if all_discovered.is_empty() {
         existing_toml_text.clone()
     } else {
-        append_discovered_jobs(&existing_toml_text, &discovered)?
+        append_discovered_jobs(&existing_toml_text, &all_discovered)?
     };
-    let all_jobs: Vec<JobSpec> = spec.jobs.iter().cloned().chain(discovered).collect();
-    let desired_ci_text = wire_jobs_into_with_notes(&existing_ci_text, &all_jobs, &mut notes)?;
 
+    // Phase 2: decide (and, under write mode, write) — only now, since
+    // phase 1 already proved every file's content computes cleanly.
     let toml = decide(&config_path, &existing_toml_text, &desired_toml_text, check)?;
-    let ci_file = decide(&ci_file_path, &existing_ci_text, &desired_ci_text, check)?;
+    let mut ci_files: Vec<(std::path::PathBuf, WriteOutcome)> = Vec::new();
+    for c in &computed {
+        let outcome = decide(&c.path, &c.existing, &c.desired, check)?;
+        ci_files.push((c.path.clone(), outcome));
+    }
 
     Ok(WireCiOutcome::Configured {
         toml_path: config_path,
         toml,
-        ci_file_path,
-        ci_file,
+        ci_files,
         notes,
     })
 }
@@ -1888,6 +2072,7 @@ mod tests {
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            file: None,
         }
     }
 
@@ -1959,6 +2144,42 @@ orb_job = "jci-audit/check"
         assert_eq!(got.jobs[0].context, Vec::<String>::new());
         assert!(!got.jobs[0].attach_workspace);
         assert_eq!(got.jobs[0].persist_to_workspace_paths, Vec::<String>::new());
+    }
+
+    #[test]
+    fn read_ci_file_parses_a_per_job_file_override() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "release"
+orb_job = "jci-audit/publish_record"
+file = ".circleci/release.yml"
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(got.jobs[0].file.as_deref(), Some(".circleci/release.yml"));
+    }
+
+    #[test]
+    fn read_ci_file_job_file_defaults_to_none() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(got.jobs[0].file, None);
+    }
+
+    #[test]
+    fn read_ci_file_parses_discover_files() {
+        let toml = r#"
+[ci]
+discover_files = [".circleci/release.yml"]
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(
+            got.discover_files,
+            vec![".circleci/release.yml".to_string()]
+        );
     }
 
     /// A hand-authored `jci-audit.toml` may reasonably use the inline-table
@@ -2300,6 +2521,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            file: None,
         }
     }
 
@@ -3043,6 +3265,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            file: None,
         };
         release_job.orb_version = Some("jerus-org/jci-audit@1.0".to_string());
 
@@ -3253,6 +3476,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: vec![".security".to_string()],
+            file: None,
         };
         let publish_record = JobSpec {
             workflow: Some("release".to_string()),
@@ -3268,6 +3492,7 @@ workflows:
             context: vec!["github-release-write".to_string()],
             attach_workspace: true,
             persist_to_workspace_paths: Vec::new(),
+            file: None,
         };
         let mut notes = Vec::new();
         let out =
@@ -3537,8 +3762,35 @@ workflows:
         // via the bare-orb-job fallback, so it's not "undeclared."
         let mut declared = base_job();
         declared.job_name = Some("some-other-name".to_string());
-        let (discovered, _) = discover_undeclared_jobs(&lines, &[declared]);
+        let (discovered, _) =
+            discover_undeclared_jobs(&lines, &[declared], ".circleci/config.yml", None);
         assert!(discovered.is_empty(), "got: {discovered:?}");
+    }
+
+    // -- normalize_file_rel (jerus-org/jci-audit#211) ------------------------
+
+    #[test]
+    fn normalize_file_rel_is_a_no_op_on_an_already_clean_path() {
+        assert_eq!(
+            normalize_file_rel(".circleci/release.yml"),
+            ".circleci/release.yml"
+        );
+    }
+
+    #[test]
+    fn normalize_file_rel_strips_a_leading_dot_slash() {
+        assert_eq!(
+            normalize_file_rel("./.circleci/release.yml"),
+            ".circleci/release.yml"
+        );
+    }
+
+    #[test]
+    fn normalize_file_rel_collapses_doubled_slashes() {
+        assert_eq!(
+            normalize_file_rel(".circleci//release.yml"),
+            ".circleci/release.yml"
+        );
     }
 
     // -- discover_undeclared_jobs / append_discovered_jobs (jerus-org/jci-audit#171) --
@@ -3552,7 +3804,8 @@ workflows:
     #[test]
     fn discover_undeclared_jobs_synthesizes_a_job_matching_the_real_entry() {
         let lines = lines_of(CONFIG_WITH_UNMARKED_CHECK_JOB);
-        let (discovered, notes) = discover_undeclared_jobs(&lines, &[]);
+        let (discovered, notes) =
+            discover_undeclared_jobs(&lines, &[], ".circleci/config.yml", None);
         assert_eq!(notes.len(), 1, "got: {notes:?}");
         assert!(notes[0].contains("discovered"), "got: {notes:?}");
         // A successful discovery is a plain fact — jci-audit already handled
@@ -3574,21 +3827,58 @@ workflows:
                 context: Vec::new(),
                 attach_workspace: false,
                 persist_to_workspace_paths: Vec::new(),
+                file: None,
             }]
+        );
+    }
+
+    /// Regression guard for a `/code-review` finding on jerus-org/jci-audit#211:
+    /// two files can legitimately share a workflow name, so a discovery
+    /// note must name which physical file it's about, not just the
+    /// (potentially ambiguous) workflow/job name.
+    #[test]
+    fn discover_undeclared_jobs_notes_name_the_file_being_scanned() {
+        let lines = lines_of(CONFIG_WITH_UNMARKED_CHECK_JOB);
+        let (_, notes) = discover_undeclared_jobs(&lines, &[], ".circleci/release.yml", None);
+        assert_eq!(notes.len(), 1, "got: {notes:?}");
+        assert!(notes[0].contains(".circleci/release.yml"), "got: {notes:?}");
+    }
+
+    #[test]
+    fn discover_undeclared_jobs_tags_file_only_when_scanning_a_non_default_file() {
+        let lines = lines_of(CONFIG_WITH_UNMARKED_CHECK_JOB);
+        let (default_scan, _) = discover_undeclared_jobs(&lines, &[], ".circleci/config.yml", None);
+        assert_eq!(default_scan[0].file, None);
+
+        let (release_scan, _) = discover_undeclared_jobs(
+            &lines,
+            &[],
+            ".circleci/release.yml",
+            Some(".circleci/release.yml"),
+        );
+        assert_eq!(
+            release_scan[0].file.as_deref(),
+            Some(".circleci/release.yml")
         );
     }
 
     #[test]
     fn discover_undeclared_jobs_skips_a_job_already_declared() {
         let lines = lines_of(CONFIG_WITH_UNMARKED_CHECK_JOB);
-        let (discovered, _) = discover_undeclared_jobs(&lines, &[check_job_with_one_param()]);
+        let (discovered, _) = discover_undeclared_jobs(
+            &lines,
+            &[check_job_with_one_param()],
+            ".circleci/config.yml",
+            None,
+        );
         assert!(discovered.is_empty(), "got: {discovered:?}");
     }
 
     #[test]
     fn discover_undeclared_jobs_ignores_non_jci_audit_jobs() {
         let lines = lines_of(CONFIG_BASE); // toolkit/common_tests, toolkit/release_crate
-        let (discovered, warnings) = discover_undeclared_jobs(&lines, &[]);
+        let (discovered, warnings) =
+            discover_undeclared_jobs(&lines, &[], ".circleci/config.yml", None);
         assert!(discovered.is_empty(), "got: {discovered:?}");
         assert!(warnings.is_empty(), "got: {warnings:?}");
     }
@@ -3606,7 +3896,8 @@ workflows:
           requires: [toolkit/common_tests] # trailing comment
 ";
         let lines = lines_of(content);
-        let (discovered, warnings) = discover_undeclared_jobs(&lines, &[]);
+        let (discovered, warnings) =
+            discover_undeclared_jobs(&lines, &[], ".circleci/config.yml", None);
         assert!(discovered.is_empty(), "got: {discovered:?}");
         assert_eq!(warnings.len(), 1, "got: {warnings:?}");
         assert!(warnings[0].contains("jci-audit/check"));
@@ -3633,7 +3924,8 @@ workflows:
             - toolkit/common_tests # trailing comment
 ";
         let lines = lines_of(content);
-        let (discovered, warnings) = discover_undeclared_jobs(&lines, &[]);
+        let (discovered, warnings) =
+            discover_undeclared_jobs(&lines, &[], ".circleci/config.yml", None);
         assert!(discovered.is_empty(), "got: {discovered:?}");
         assert_eq!(warnings.len(), 1, "got: {warnings:?}");
         assert!(warnings[0].contains("jci-audit/check"));
@@ -3653,6 +3945,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            file: None,
         }];
         let out = append_discovered_jobs(existing, &discovered).unwrap();
         assert!(out.contains("kept = true"), "got: {out}");
@@ -3670,6 +3963,16 @@ workflows:
         job.context = vec!["github-release-write".to_string()];
         job.attach_workspace = true;
         job.persist_to_workspace_paths = vec![".security".to_string()];
+        let out = append_discovered_jobs("", &[job.clone()]).unwrap();
+        let got = read_ci_file(&out).unwrap();
+        assert_eq!(got.jobs, vec![job]);
+    }
+
+    #[test]
+    fn append_discovered_jobs_roundtrips_file() {
+        let mut job = release_job();
+        job.orb_job = Some("jci-audit/publish_record".to_string());
+        job.file = Some(".circleci/release.yml".to_string());
         let out = append_discovered_jobs("", &[job.clone()]).unwrap();
         let got = read_ci_file(&out).unwrap();
         assert_eq!(got.jobs, vec![job]);
@@ -3715,6 +4018,18 @@ orb_job = \"jci-audit/check_ci_wiring\"
         let config_path = circleci_dir.join("config.yml");
         std::fs::write(&config_path, config_yml).unwrap();
         (dir.join("jci-audit.toml"), config_path)
+    }
+
+    /// Extract the single ci file's outcome — for the many tests here that
+    /// only ever configure one target file (jerus-org/jci-audit#211 made
+    /// `ci_files` a `Vec`; most existing single-file tests just want the
+    /// one entry they know exists).
+    fn only_ci_file_outcome(outcome: &WireCiOutcome) -> WriteOutcome {
+        let WireCiOutcome::Configured { ci_files, .. } = outcome else {
+            panic!("expected Configured, got {outcome:?}");
+        };
+        assert_eq!(ci_files.len(), 1, "got: {ci_files:?}");
+        ci_files[0].1
     }
 
     const CONFIGURED_JOB_TOML: &str = "\
@@ -3803,8 +4118,7 @@ workflows:
             WireCiOutcome::Configured {
                 toml_path: toml_path.clone(),
                 toml: WriteOutcome::InSync,
-                ci_file_path: config_path.clone(),
-                ci_file: WriteOutcome::Wrote,
+                ci_files: vec![(config_path.clone(), WriteOutcome::Wrote)],
                 notes: Vec::new(),
             }
         );
@@ -3828,10 +4142,7 @@ workflows:
         let ci_after_first = std::fs::read_to_string(&config_path).unwrap();
 
         let outcome = wire_ci_at(dir.path(), None, false).unwrap();
-        let WireCiOutcome::Configured { ci_file, .. } = outcome else {
-            panic!("expected Configured, got {outcome:?}");
-        };
-        assert_eq!(ci_file, WriteOutcome::InSync);
+        assert_eq!(only_ci_file_outcome(&outcome), WriteOutcome::InSync);
         assert_eq!(
             std::fs::read_to_string(&config_path).unwrap(),
             ci_after_first
@@ -3850,10 +4161,7 @@ workflows:
         let toml_before = std::fs::read_to_string(&toml_path).unwrap();
 
         let outcome = wire_ci_at(dir.path(), None, true).unwrap();
-        let WireCiOutcome::Configured { ci_file, .. } = outcome else {
-            panic!("expected Configured, got {outcome:?}");
-        };
-        assert_eq!(ci_file, WriteOutcome::Drift);
+        assert_eq!(only_ci_file_outcome(&outcome), WriteOutcome::Drift);
         assert_eq!(std::fs::read_to_string(&config_path).unwrap(), CONFIG_BASE);
         assert_eq!(std::fs::read_to_string(&toml_path).unwrap(), toml_before);
     }
@@ -3948,16 +4256,12 @@ orb_job = \"jci-audit/publish_record\"
         .unwrap();
 
         let outcome = wire_ci_at(dir.path(), Some(&spec_path), false).unwrap();
-        let WireCiOutcome::Configured {
-            ci_file_path,
-            ci_file,
-            ..
-        } = outcome
-        else {
+        let WireCiOutcome::Configured { ci_files, .. } = &outcome else {
             panic!("expected Configured, got {outcome:?}");
         };
-        assert_eq!(ci_file_path, dir.path().join(".circleci-config.yml"));
-        assert_eq!(ci_file, WriteOutcome::Wrote);
+        assert_eq!(ci_files.len(), 1, "got: {ci_files:?}");
+        assert_eq!(ci_files[0].0, dir.path().join(".circleci-config.yml"));
+        assert_eq!(ci_files[0].1, WriteOutcome::Wrote);
     }
 
     #[test]
@@ -3995,11 +4299,15 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         std::fs::write(&toml_path, "").unwrap();
 
         let outcome = wire_ci_at(dir.path(), None, false).unwrap();
-        let WireCiOutcome::Configured { toml, ci_file, .. } = outcome else {
+        let WireCiOutcome::Configured { toml, .. } = &outcome else {
             panic!("expected Configured (discovery found a real job), not Scaffolded");
         };
-        assert_eq!(toml, WriteOutcome::Wrote);
-        assert_eq!(ci_file, WriteOutcome::Wrote, "adopts: adds markers");
+        assert_eq!(*toml, WriteOutcome::Wrote);
+        assert_eq!(
+            only_ci_file_outcome(&outcome),
+            WriteOutcome::Wrote,
+            "adopts: adds markers"
+        );
 
         let toml_text = std::fs::read_to_string(&toml_path).unwrap();
         let got = read_ci_file(&toml_text).unwrap();
@@ -4021,11 +4329,11 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         std::fs::write(&toml_path, "").unwrap();
 
         let outcome = wire_ci_at(dir.path(), None, true).unwrap();
-        let WireCiOutcome::Configured { toml, ci_file, .. } = outcome else {
+        let WireCiOutcome::Configured { toml, .. } = &outcome else {
             panic!("expected Configured");
         };
-        assert_eq!(toml, WriteOutcome::Drift);
-        assert_eq!(ci_file, WriteOutcome::Drift);
+        assert_eq!(*toml, WriteOutcome::Drift);
+        assert_eq!(only_ci_file_outcome(&outcome), WriteOutcome::Drift);
         // check mode: neither file actually touched.
         assert_eq!(std::fs::read_to_string(&toml_path).unwrap(), "");
     }
@@ -4088,5 +4396,385 @@ workflows:
             got.jobs[1].orb_job.as_deref(),
             Some("jci-audit/publish_record")
         );
+    }
+
+    // -- wire_ci_at: multi-file (jerus-org/jci-audit#211) --------------------
+
+    /// Like `write_workspace`, but also writes a second `CircleCI` file
+    /// (`.circleci/release.yml`) — for tests exercising a per-job `file`
+    /// override or `discover_files`.
+    fn write_two_file_workspace(
+        dir: &std::path::Path,
+        config_yml: &str,
+        release_yml: &str,
+    ) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+        let (toml_path, config_path) = write_workspace(dir, config_yml);
+        let release_path = dir.join(".circleci").join("release.yml");
+        std::fs::write(&release_path, release_yml).unwrap();
+        (toml_path, config_path, release_path)
+    }
+
+    #[test]
+    fn wire_ci_at_wires_two_jobs_into_two_different_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, config_path, release_path) = write_two_file_workspace(
+            dir.path(),
+            CONFIG_BASE,
+            "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - toolkit/release_crate
+",
+        );
+        let toml = "\
+[[ci.jobs]]
+workflow = \"validation\"
+orb_job = \"jci-audit/check\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+
+[[ci.jobs]]
+workflow = \"release\"
+orb_job = \"jci-audit/publish_record\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+file = \".circleci/release.yml\"
+";
+        std::fs::write(&toml_path, toml).unwrap();
+
+        wire_ci_at(dir.path(), None, false).unwrap();
+
+        let config_text = std::fs::read_to_string(&config_path).unwrap();
+        assert!(
+            config_text.contains("- jci-audit/check"),
+            "got: {config_text}"
+        );
+        assert!(
+            !config_text.contains("jci-audit/publish_record"),
+            "got: {config_text}"
+        );
+
+        let release_text = std::fs::read_to_string(&release_path).unwrap();
+        assert!(
+            release_text.contains("- jci-audit/publish_record"),
+            "got: {release_text}"
+        );
+        assert!(
+            !release_text.contains("jci-audit/check"),
+            "got: {release_text}"
+        );
+    }
+
+    /// Regression guard for a `/code-review` finding on jerus-org/jci-audit#211:
+    /// two jobs naming the same physical file with different spellings
+    /// (`.circleci/release.yml` vs `./.circleci/release.yml`) must resolve
+    /// to ONE target file — not each get their own independent scan/write,
+    /// where the second would silently clobber the first's wiring.
+    #[test]
+    fn wire_ci_at_treats_differently_spelled_paths_to_the_same_file_as_one_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, _config_path, release_path) = write_two_file_workspace(
+            dir.path(),
+            CONFIG_BASE,
+            "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - toolkit/release_crate
+",
+        );
+        let toml = "\
+[[ci.jobs]]
+workflow = \"release\"
+orb_job = \"jci-audit/release_prep\"
+job_name = \"record-release\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+file = \".circleci/release.yml\"
+
+[[ci.jobs]]
+workflow = \"release\"
+orb_job = \"jci-audit/publish_record\"
+job_name = \"publish-security-record\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+file = \"./.circleci/release.yml\"
+";
+        std::fs::write(&toml_path, toml).unwrap();
+
+        wire_ci_at(dir.path(), None, false).unwrap();
+
+        let release_text = std::fs::read_to_string(&release_path).unwrap();
+        assert!(
+            release_text.contains("- jci-audit/release_prep:"),
+            "got: {release_text}"
+        );
+        assert!(
+            release_text.contains("- jci-audit/publish_record:"),
+            "got: {release_text}"
+        );
+    }
+
+    #[test]
+    fn wire_ci_at_wires_the_same_orb_job_into_two_files_with_different_params() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, config_path, release_path) = write_two_file_workspace(
+            dir.path(),
+            CONFIG_BASE,
+            "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - toolkit/release_crate
+",
+        );
+        let toml = "\
+[[ci.jobs]]
+workflow = \"validation\"
+orb_job = \"jci-audit/check\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+params = { deny_unused_licenses = \"true\" }
+
+[[ci.jobs]]
+workflow = \"release\"
+orb_job = \"jci-audit/check\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+file = \".circleci/release.yml\"
+params = { deny_unused_licenses = \"false\" }
+";
+        std::fs::write(&toml_path, toml).unwrap();
+
+        wire_ci_at(dir.path(), None, false).unwrap();
+
+        let config_text = std::fs::read_to_string(&config_path).unwrap();
+        assert!(
+            config_text.contains("deny_unused_licenses: true"),
+            "got: {config_text}"
+        );
+        assert!(
+            !config_text.contains("deny_unused_licenses: false"),
+            "got: {config_text}"
+        );
+
+        let release_text = std::fs::read_to_string(&release_path).unwrap();
+        assert!(
+            release_text.contains("deny_unused_licenses: false"),
+            "got: {release_text}"
+        );
+        assert!(
+            !release_text.contains("deny_unused_licenses: true"),
+            "got: {release_text}"
+        );
+    }
+
+    #[test]
+    fn wire_ci_at_check_reports_drift_per_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, config_path, release_path) = write_two_file_workspace(
+            dir.path(),
+            CONFIG_BASE,
+            "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - toolkit/release_crate
+",
+        );
+        let toml = "\
+[[ci.jobs]]
+workflow = \"validation\"
+orb_job = \"jci-audit/check\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+
+[[ci.jobs]]
+workflow = \"release\"
+orb_job = \"jci-audit/publish_record\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+file = \".circleci/release.yml\"
+";
+        std::fs::write(&toml_path, toml).unwrap();
+        wire_ci_at(dir.path(), None, false).unwrap();
+
+        // Hand-revert only release.yml.
+        std::fs::write(
+            &release_path,
+            "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - toolkit/release_crate
+",
+        )
+        .unwrap();
+
+        let outcome = wire_ci_at(dir.path(), None, true).unwrap();
+        let WireCiOutcome::Configured { ci_files, .. } = &outcome else {
+            panic!("expected Configured, got {outcome:?}");
+        };
+        assert_eq!(ci_files.len(), 2, "got: {ci_files:?}");
+        let config_outcome = ci_files
+            .iter()
+            .find(|(p, _)| *p == config_path)
+            .map(|(_, o)| *o);
+        let release_outcome = ci_files
+            .iter()
+            .find(|(p, _)| *p == release_path)
+            .map(|(_, o)| *o);
+        assert_eq!(config_outcome, Some(WriteOutcome::InSync));
+        assert_eq!(release_outcome, Some(WriteOutcome::Drift));
+    }
+
+    #[test]
+    fn wire_ci_at_bails_naming_the_specific_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, _config_path) = write_workspace(dir.path(), CONFIG_BASE);
+        let toml = "\
+[[ci.jobs]]
+workflow = \"release\"
+orb_job = \"jci-audit/publish_record\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+file = \".circleci/release.yml\"
+";
+        std::fs::write(&toml_path, toml).unwrap();
+
+        let err = format!("{:?}", wire_ci_at(dir.path(), None, false).unwrap_err());
+        // Names the actually-missing file up front — the generic hint text
+        // that follows mentions config.yml too, which is fine.
+        assert!(
+            err.starts_with("'.circleci/release.yml' not found"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn wire_ci_at_omits_the_default_file_from_ci_files_when_it_has_nothing_to_report() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, config_path, release_path) = write_two_file_workspace(
+            dir.path(),
+            CONFIG_BASE,
+            "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - toolkit/release_crate
+",
+        );
+        let toml = "\
+[[ci.jobs]]
+workflow = \"release\"
+orb_job = \"jci-audit/publish_record\"
+orb_version = \"jerus-org/jci-audit@1.0\"
+file = \".circleci/release.yml\"
+";
+        std::fs::write(&toml_path, toml).unwrap();
+
+        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let WireCiOutcome::Configured { ci_files, .. } = &outcome else {
+            panic!("expected Configured, got {outcome:?}");
+        };
+        assert_eq!(ci_files.len(), 1, "got: {ci_files:?}");
+        assert_eq!(ci_files[0].0, release_path);
+        assert!(
+            !config_path.exists() || std::fs::read_to_string(&config_path).unwrap() == CONFIG_BASE,
+            "the untouched default file must not have been rewritten"
+        );
+    }
+
+    #[test]
+    fn wire_ci_at_discovers_unmanaged_jobs_via_discover_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, _config_path, release_path) = write_two_file_workspace(
+            dir.path(),
+            CONFIG_BASE,
+            "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      - jci-audit/release_prep:
+          name: record-release
+          requires: []
+      - jci-audit/publish_record:
+          name: publish-security-record
+          requires: [record-release]
+",
+        );
+        let toml = "\
+[ci]
+discover_files = [\".circleci/release.yml\"]
+";
+        std::fs::write(&toml_path, toml).unwrap();
+
+        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let WireCiOutcome::Configured { .. } = &outcome else {
+            panic!("expected Configured (discovery found real jobs), got {outcome:?}");
+        };
+
+        let toml_text = std::fs::read_to_string(&toml_path).unwrap();
+        let got = read_ci_file(&toml_text).unwrap();
+        assert_eq!(got.jobs.len(), 2, "got: {got:?}");
+        for job in &got.jobs {
+            assert_eq!(
+                job.file.as_deref(),
+                Some(".circleci/release.yml"),
+                "got: {got:?}"
+            );
+        }
+        assert!(
+            got.jobs
+                .iter()
+                .any(|j| j.orb_job.as_deref() == Some("jci-audit/release_prep"))
+        );
+        assert!(
+            got.jobs
+                .iter()
+                .any(|j| j.orb_job.as_deref() == Some("jci-audit/publish_record"))
+        );
+
+        let release_text = std::fs::read_to_string(&release_path).unwrap();
+        assert!(release_text.contains(MANAGED_BEGIN), "got: {release_text}");
+
+        // Idempotent: a second run is a no-op.
+        let second = wire_ci_at(dir.path(), None, true).unwrap();
+        let WireCiOutcome::Configured { toml, ci_files, .. } = &second else {
+            panic!("expected Configured, got {second:?}");
+        };
+        assert_eq!(*toml, WriteOutcome::InSync);
+        assert!(
+            ci_files.iter().all(|(_, o)| *o == WriteOutcome::InSync),
+            "got: {ci_files:?}"
+        );
+    }
+
+    #[test]
+    fn wire_ci_at_bails_when_a_discover_files_entry_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, _config_path) = write_workspace(dir.path(), CONFIG_BASE);
+        let toml = "\
+[ci]
+discover_files = [\".circleci/release.yml\"]
+";
+        std::fs::write(&toml_path, toml).unwrap();
+
+        let err = format!("{:?}", wire_ci_at(dir.path(), None, false).unwrap_err());
+        assert!(err.contains("release.yml"), "got: {err}");
+        assert!(err.contains("discover_files"), "got: {err}");
     }
 }
