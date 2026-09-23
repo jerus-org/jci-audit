@@ -16,4 +16,4 @@ orb_version = ""
 job_name = ""
 requires = []
 required_by = []
-params = { deny_unused_licenses = "true", deny_stale_exceptions = "true" }
+params = { deny_unused_licenses = "true", deny_stale_exceptions = "true", deny_stale_notices = "true" }

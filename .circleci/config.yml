@@ -82,6 +82,7 @@ workflows:
       - jci-audit/check:
           deny_unused_licenses: true
           deny_stale_exceptions: true
+          deny_stale_notices: true
       # <<< jci-audit wire-ci
       - toolkit/security:
           name: security with sonarcloud
