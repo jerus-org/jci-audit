@@ -5,9 +5,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-09-23
+
+Summary: Added[1], Fixed[1]
+
+### Added
+
+ - feat: wire-ci support for the release workflow
+
+### Fixed
+
+ - fix: name wire-ci sync line comparison targets
+
 ## [0.1.13] - 2026-09-22
 
-Summary: Added[1]
+Summary: Added[1], Chore[1]
 
 ### Added
 
@@ -289,7 +301,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...HEAD
+[0.1.13]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/jerus-org/jci-audit/compare/v0.1.9...v0.1.10
