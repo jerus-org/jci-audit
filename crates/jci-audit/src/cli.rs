@@ -592,11 +592,15 @@ fn run_sync(check: bool) -> Result<()> {
 }
 
 /// Print one wired file's outcome and report whether it drifted. Mirrors
-/// `report_sync_outcome`'s shape.
-fn report_wire_ci_outcome(path: &str, outcome: wire_ci::WriteOutcome) -> bool {
+/// `report_sync_outcome`'s shape. `with` names what `path` is being compared
+/// against — `wire_ci_at` computes two independent, opposite-direction
+/// diffs (jci-audit.toml against jobs discovered in the CI file; the CI
+/// file against jci-audit.toml's params), and a bare "is in sync" reads as
+/// if both were checked against the same thing (jerus-org/jci-audit#207).
+fn report_wire_ci_outcome(path: &str, with: &str, outcome: wire_ci::WriteOutcome) -> bool {
     match outcome {
         wire_ci::WriteOutcome::InSync => {
-            println!("{path} is in sync");
+            println!("{path} is in sync with {with}");
             false
         }
         wire_ci::WriteOutcome::Wrote => {
@@ -606,7 +610,7 @@ fn report_wire_ci_outcome(path: &str, outcome: wire_ci::WriteOutcome) -> bool {
         wire_ci::WriteOutcome::Drift => {
             eprintln!(
                 "{}",
-                diagnostics::action_tag(format!("{path} is out of sync"))
+                diagnostics::action_tag(format!("{path} is out of sync with {with}"))
             );
             true
         }
@@ -649,10 +653,10 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
             for note in &notes {
                 println!("{note}");
             }
-            let toml_out_of_sync =
-                report_wire_ci_outcome(&wire_ci::display_path(&toml_path, &cwd), toml);
-            let ci_out_of_sync =
-                report_wire_ci_outcome(&wire_ci::display_path(&ci_file_path, &cwd), ci_file);
+            let ci_file_display = wire_ci::display_path(&ci_file_path, &cwd);
+            let toml_display = wire_ci::display_path(&toml_path, &cwd);
+            let toml_out_of_sync = report_wire_ci_outcome(&toml_display, &ci_file_display, toml);
+            let ci_out_of_sync = report_wire_ci_outcome(&ci_file_display, &toml_display, ci_file);
             if toml_out_of_sync || ci_out_of_sync {
                 bail!("out of sync — run `jci-audit wire-ci` to apply");
             }
