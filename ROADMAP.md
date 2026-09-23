@@ -94,13 +94,12 @@ version tag itself, and still gate consumer migration.
 
 ## Next: `v0.2.0` — the initial pre-release
 
-Scope set 2026-09-06. `0.2.0` is a **pre-release milestone, not a feature release**: it's the point
-where the still-manual, still-workspace-scoped edges of the tool get closed off before any further
-consumer beyond jci-audit's own dogfooding is asked to adopt it. `jci-audit` is already past `0.1.0`
-as a version number (however incidentally — see Current status above), and `pcu` — a real
-multi-crate workspace in this org — cannot adopt `jci-audit` as its release gate until the
-per-crate item below ships. This is a deliberate minor release, not folded into the routine patch
-releases Phase 0-2 bugfixes have been shipping as.
+Scope set 2026-09-06, completed 2026-09-23. `0.2.0` was a **pre-release milestone, not a feature
+release**: closing off the still-manual, still-workspace-scoped edges of the tool before any
+further consumer beyond jci-audit's own dogfooding is asked to adopt it — in particular `pcu`, a
+real multi-crate workspace in this org, which needed the per-crate item below (#62) before it could
+adopt `jci-audit` as its release gate at all. Every item in scope is now done; the release itself
+(and `pcu` adoption) is the next step, tracked outside this document.
 
 - **[#142 — pin tool versions in `orb/Dockerfile` for traceability.](https://github.com/jerus-org/jci-audit/issues/142)**
   ✅ Done (for real this time) — tracked via [#180](https://github.com/jerus-org/jci-audit/issues/180)
@@ -129,13 +128,13 @@ releases Phase 0-2 bugfixes have been shipping as.
   (`release_prep`/the consumer's own release job/`publish_record`) — is tracked separately as
   #164, below.
 - **[#164 — wire-ci support for the release workflow.](https://github.com/jerus-org/jci-audit/issues/164)**
-  In scope for `0.2.0` (added 2026-09-09). The release workflow is a three-job chain, not a single
-  job — `jci-audit/release_prep` → the consumer's own release job → `jci-audit/publish_record` —
-  with mechanics `wire_job_into`/`CiConfig` don't handle yet: `context:`, `post-steps:
-  [persist_to_workspace]`, `attach_workspace: true`, and new `--tag`/`--owner`/`--repo`/`--version`
-  fields. The middle job is always the consumer's own; `wire-ci` can only wire the first and third
-  around wherever a `--release-job <name>`-style flag says it is. Also open: whether this needs its
-  own `[ci.release]` config table alongside `[ci]`, decided during implementation.
+  ✅ Done — `JobSpec` gained `context`/`attach_workspace`/`persist_to_workspace_paths` so `wire-ci`
+  can wire the three-job release chain (`jci-audit/release_prep` → the consumer's own release job →
+  `jci-audit/publish_record`, per `orb/src/examples/record_release.yml`). Neither of the issue's
+  other two open questions needed new surface: the middle job is named via the existing
+  `requires`/`required_by` fields (no `--release-job` flag), and `version`/`tag`/`owner`/`repo`/etc.
+  are ordinary `params` entries (no `[ci.release]` table). Verified end-to-end against a scratch
+  fixture reproducing the orb's own example, `circleci config validate`d clean.
 - **[#63 — `license_scope`/`about.toml` ignore-build/ignore-transitive-dependencies.](https://github.com/jerus-org/jci-audit/issues/63)**
   ✅ Done — `DependencyScopePolicy` mirrors cargo-about's real
   `ignore-dev-dependencies`/`ignore-build-dependencies`/`ignore-transitive-dependencies` fields
@@ -153,7 +152,7 @@ releases Phase 0-2 bugfixes have been shipping as.
   ✅ Done — every invocation (and version probe) now dispatches through `cargo <sub>`, including
   the one asymmetry discovered along the way (`cargo-audit`'s dispatch reinserts `audit` itself).
 
-**Remaining before `0.2.0` can ship:** #164 only. #142/#180/#101/#62/#63/#36/#138/#136 are all done.
+**Nothing remains before `0.2.0` can ship.** #142/#180/#101/#62/#63/#36/#164/#138/#136 are all done.
 
 ## Backlog (tracked as issues, not yet scheduled)
 
