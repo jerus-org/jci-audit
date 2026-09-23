@@ -4,7 +4,7 @@ All notable pull requests merged into this workspace are recorded here. This log
 tracks workspace-level changes (`v<VERSION>` tags); per-crate code changes are
 tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
-## [Unreleased]
+## [0.1.14] - 2026-09-23
 
 ### Added
 
@@ -525,7 +525,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#207]: https://github.com/jerus-org/jci-audit/pull/207
 [#209]: https://github.com/jerus-org/jci-audit/pull/209
 [#208]: https://github.com/jerus-org/jci-audit/pull/208
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...HEAD
+[0.1.14]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/jerus-org/jci-audit/compare/v0.1.10...v0.1.11
