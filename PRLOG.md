@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- wire-ci support for the release workflow(pr [#209])
+
 ### Changed
 
 - ci-wire deny-stale-notices into check job (#36 phase 2)(pr [#207])
@@ -518,6 +522,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#205]: https://github.com/jerus-org/jci-audit/pull/205
 [#206]: https://github.com/jerus-org/jci-audit/pull/206
 [#207]: https://github.com/jerus-org/jci-audit/pull/207
+[#209]: https://github.com/jerus-org/jci-audit/pull/209
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...HEAD
 [0.1.13]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/jerus-org/jci-audit/compare/v0.1.11...v0.1.12
