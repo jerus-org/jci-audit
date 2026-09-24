@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.14(pr [#210])
+- deps: update rust crate thiserror to 2.0.21(pr [#214])
 
 ## [0.1.14] - 2026-09-23
 
@@ -537,6 +538,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#208]: https://github.com/jerus-org/jci-audit/pull/208
 [#210]: https://github.com/jerus-org/jci-audit/pull/210
 [#213]: https://github.com/jerus-org/jci-audit/pull/213
+[#214]: https://github.com/jerus-org/jci-audit/pull/214
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.14...HEAD
 [0.1.14]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...v0.1.13
