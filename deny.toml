@@ -54,19 +54,11 @@ wildcards = "allow"
 # stale — a skip nobody can account for is one nobody will question later.
 [[bans.skip]]
 crate = "reqwest"
-reason = "0.12 via pcu-release-assets' GitHub API chain (gql_client, octocrate-core); 0.13 used directly by jci-audit"
+reason = "0.12 via pcu-release-assets' GitHub API chain (gql_client, octocrab); 0.13 used directly by jci-audit"
 
 [[bans.skip]]
-crate = "core-foundation"
-reason = "transitive via reqwest's 0.12/0.13 split above, each version pulling its own TLS backend chain"
-
-[[bans.skip]]
-crate = "thiserror"
-reason = "1.0 via octocrate (pcu-release-assets); 2.0 via the jni/rustls-platform-verifier chain"
-
-[[bans.skip]]
-crate = "thiserror-impl"
-reason = "follows thiserror's 1.0/2.0 split above"
+crate = "untrusted"
+reason = "0.7 via aws-lc-rs (octocrab's JWT/rustls chain); 0.9 via ring — same TLS-backend split as getrandom/windows-sys below"
 
 [[bans.skip]]
 crate = "syn"
