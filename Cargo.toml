@@ -20,7 +20,7 @@ clap-verbosity-flag = { version = "3.0.4", default-features = false, features = 
 
 # Error Handling
 anyhow = "1.0.104"
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 
 # Logging
 tracing = "0.1.44"
