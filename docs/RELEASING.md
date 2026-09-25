@@ -31,10 +31,16 @@ Releases run on CircleCI ([`.circleci/release.yml`](../.circleci/release.yml)):
 2. **Manual approval** gate — a reviewer approves the calculated version before anything is
    published.
 3. `build-binary` — builds the release binary from the commit being released.
-4. `record-release` — runs `jci-audit release-prep`: locks validation to a pinned advisory-db commit,
-   writes `.security/release-<version>.json` locally (not committed — see
-   [design.md §5–6](design.md#5-reproducibility-the-release-record)), and stages an unsigned copy on
-   the shared workspace for `release-jci-audit` to sign and upload.
+4. `record-release` — the published `jci-audit/release_prep` orb job (wired via `jci-audit
+   wire-ci`, `jci-audit.toml`), running `jci-audit release-prep`: locks validation to a pinned
+   advisory-db commit, writes `.security/release-<version>.json` locally (not committed — see
+   [design.md §5–6](design.md#5-reproducibility-the-release-record)), and persists it to the
+   shared workspace (`post-steps: persist_to_workspace`) for `release-jci-audit` to sign and
+   upload. The version is resolved at runtime from `calculate-versions`' own output
+   (`version_env_var = "CRATE_VERSION_JCI_AUDIT"`, sourced from the attached workspace's
+   `versions.env`) rather than passed as a literal — see
+   [`orb/src/examples/record_release_runtime_version.yml`](../orb/src/examples/record_release_runtime_version.yml)
+   for the general pattern.
 5. `release-jci-audit` — builds and **GPG-signs** the release commit + tag, generates an
    **ephemeral minisign keypair**, signs both **the tarball** and **the staged security record** with
    it, injects the keypair's public key into `Cargo.toml` (`[package.metadata.binstall.signing]`),
