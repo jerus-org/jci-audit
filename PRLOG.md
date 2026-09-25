@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- add store_artifacts post-step capability to wire-ci(pr [#224])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.17(pr [#223])
@@ -576,6 +580,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#219]: https://github.com/jerus-org/jci-audit/pull/219
 [#221]: https://github.com/jerus-org/jci-audit/pull/221
 [#223]: https://github.com/jerus-org/jci-audit/pull/223
+[#224]: https://github.com/jerus-org/jci-audit/pull/224
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.17...HEAD
 [0.1.17]: https://github.com/jerus-org/jci-audit/compare/v0.1.16...v0.1.17
 [0.1.16]: https://github.com/jerus-org/jci-audit/compare/v0.1.15...v0.1.16
