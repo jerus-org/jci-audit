@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- adopt workspace-sourced version params(pr [#218])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.15(pr [#215])
@@ -552,6 +556,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#215]: https://github.com/jerus-org/jci-audit/pull/215
 [#216]: https://github.com/jerus-org/jci-audit/pull/216
 [#217]: https://github.com/jerus-org/jci-audit/pull/217
+[#218]: https://github.com/jerus-org/jci-audit/pull/218
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.15...HEAD
 [0.1.15]: https://github.com/jerus-org/jci-audit/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...v0.1.14
