@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.15(pr [#215])
+- deps: update dependency gen-circleci-orb to v0.1.26(pr [#216])
 
 ## [0.1.15] - 2026-09-24
 
@@ -548,6 +549,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#214]: https://github.com/jerus-org/jci-audit/pull/214
 [#212]: https://github.com/jerus-org/jci-audit/pull/212
 [#215]: https://github.com/jerus-org/jci-audit/pull/215
+[#216]: https://github.com/jerus-org/jci-audit/pull/216
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.15...HEAD
 [0.1.15]: https://github.com/jerus-org/jci-audit/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...v0.1.14
