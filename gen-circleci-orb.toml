@@ -15,7 +15,10 @@ source_url = "https://github.com/jerus-org/jci-audit"
 cargo_tools = ["cargo-audit@0.22.2", "cargo-deny@0.20.2", "cargo-about@0.9.2", "rsign2:rsign@0.6.6"]
 # Hand-authored orb files the generator does not produce. Without this the prune
 # step would delete them as orphans on the next `generate`.
-custom_files = ["src/examples/record_release.yml"]
+custom_files = [
+    "src/examples/record_release.yml",
+    "src/examples/record_release_runtime_version.yml",
+]
 # Digest-pinned base images for the generated orb/Dockerfile. Pinned here (not
 # left to the generator's moving-tag default) so the @sha256 survives every
 # regeneration — the Dockerfile is rewritten from this config, so a digest
@@ -70,6 +73,19 @@ interactive = true
 branch_patterns = ["renovate/*"]
 workflow = "update_prlog"
 file = "update_prlog.yml"
+
+# A consumer whose pipeline computes its release version at runtime (this
+# repo included — toolkit/calculate_versions writes it to
+# /tmp/workspace/versions.env, only after an earlier job has run) has no way
+# to feed that into `version`, a plain pipeline-compile-time parameter.
+# workspace_sourced (gen-circleci-orb#454) adds a `version_env_var`/
+# `version_source_file` fallback pair to each job instead — see
+# orb/src/examples/record_release_runtime_version.yml.
+[subcommand.release-prep.param.version]
+workspace_sourced = true
+
+[subcommand.publish-record.param.version]
+workspace_sourced = true
 
 [record]
 enabled = true
