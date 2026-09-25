@@ -15,73 +15,6 @@ orbs:
   jci-audit: jerus-org/jci-audit@0.1.16
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.27
 
-# TEMPORARY WORKAROUND — replace with the orb's own release job once an orb
-# carrying the current parameter schema is published.
-#
-# The release workflow should run the PUBLISHED orb job: it is the most critical
-# and least exercised path, and pinning it to a released artefact keeps a bug on
-# the tip from breaking the very pipeline needed to ship the fix.
-#
-# It is hand-rolled only because the published orb can express neither the new
-# flags nor an optional version, and no new orb can be published without a
-# working release — a deadlock that has to be broken once. It also cannot use the
-# orb's executor yet: that image has no cargo toolchain, so cargo-deny cannot run
-# `cargo metadata` (fixed for consumers by basing the orb's runtime on a Rust
-# image, which only reaches us once published). The image below carries cargo,
-# cargo-deny, cargo-audit, git and gnupg, and is what the release and prlog jobs
-# already sign and push from.
-#
-# Consumers use the orb job — see orb/src/examples/record_release.yml.
-jobs:
-  record-release:
-    executor: toolkit/rust_env_rolling
-    steps:
-      - checkout
-      # One attach: the shared workspace holds both the freshly built binary
-      # (from build-binary) and versions.env (from calculate-versions).
-      - attach_workspace:
-          at: /tmp/workspace
-      - run:
-          name: Record the security validation
-          command: |
-            source /tmp/workspace/versions.env
-            # calculate-versions stores each crate as CRATE_VERSION_<NAME>,
-            # uppercased with hyphens replaced; SEMVER is derived later by
-            # release_crate and is NOT in the file.
-            VERSION="${CRATE_VERSION_JCI_AUDIT}"
-            if [ -z "${VERSION}" ]; then
-              echo "ERROR: CRATE_VERSION_JCI_AUDIT not found in versions.env" >&2
-              cat /tmp/workspace/versions.env >&2
-              exit 1
-            fi
-            # The freshly built binary shadows any older one on PATH.
-            export PATH="/tmp/workspace:$PATH"
-            echo "Recording security validation for ${VERSION}"
-            # -v: the tools' full output is opt-in now, and a CI log is exactly
-            # where the detail should stay. The record is written locally only
-            # (.gitignore'd) — no longer committed; see jerus-org/jci-audit#75
-            # for its eventual distribution as a signed release asset.
-            jci-audit release-prep \
-              "${VERSION}" \
-              --verbose
-            # Copy to a version-independent path: store_artifacts can't expand
-            # $VERSION in its `path`, and .security/ also holds the tracked
-            # README and historical records that don't need re-uploading here.
-            cp ".security/release-${VERSION}.json" /tmp/security-record.json
-            # Also stage it under the shared workspace for release-jci-audit's
-            # pre_binary_sign_steps/pre_publish_steps to sign and upload as a
-            # release asset (jerus-org/jci-audit#75 phase 2, path A) — this
-            # keeps the same, still-unsigned filename release-jci-audit reads.
-            mkdir -p /tmp/workspace/release-data
-            cp ".security/release-${VERSION}.json" /tmp/workspace/release-data/
-      - store_artifacts:
-          path: /tmp/security-record.json
-          destination: security-record.json
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - release-data
-
 workflows:
   release:
     jobs:
@@ -103,14 +36,6 @@ workflows:
           name: build-binary
           package: jci-audit
           requires: [approve-release]
-
-      # Record the security validation BEFORE the crate release. The record is
-      # no longer committed (jerus-org/jci-audit#75), so it no longer needs
-      # signing/push credentials — no bot-check/pcu-app context required here.
-      - record-release:
-          requires: [build-binary]
-          context:
-            - release
 
       - toolkit/release_crate:
           name: release-jci-audit
@@ -134,7 +59,7 @@ workflows:
             - attach_workspace:
                 at: /tmp/workspace
             - toolkit/sign_binary:
-                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json
+                asset_path: /tmp/workspace/.security/release-${SEMVER}.json
                 delete_key_after: false
           pre_publish_steps:
             - run:
@@ -147,15 +72,15 @@ workflows:
                     exit 0
                   fi
                   echo "${BINSTALL_SIGNING_PUBKEY}" \
-                    > /tmp/workspace/release-data/release-${VERSION}.json.pub
+                    > /tmp/workspace/.security/release-${VERSION}.json.pub
             - toolkit/upload_release_asset:
-                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json
+                asset_path: /tmp/workspace/.security/release-${SEMVER}.json
                 release_tag: jci-audit-v${SEMVER}
             - toolkit/upload_release_asset:
-                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json.sig
+                asset_path: /tmp/workspace/.security/release-${SEMVER}.json.sig
                 release_tag: jci-audit-v${SEMVER}
             - toolkit/upload_release_asset:
-                asset_path: /tmp/workspace/release-data/release-${SEMVER}.json.pub
+                asset_path: /tmp/workspace/.security/release-${SEMVER}.json.pub
                 release_tag: jci-audit-v${SEMVER}
           context:
             - release
@@ -168,3 +93,17 @@ workflows:
             - release
             - bot-check
             - pcu-app
+      # >>> jci-audit wire-ci (managed — edits overwritten by re-running 'jci-audit wire-ci')
+      - jci-audit/release_prep:
+          name: record-release
+          version_env_var: CRATE_VERSION_JCI_AUDIT
+          log_level: v
+          requires: [build-binary]
+          context: [release]
+          attach_workspace: true
+          post-steps:
+            - persist_to_workspace:
+                root: .
+                paths:
+                  - .security
+      # <<< jci-audit wire-ci

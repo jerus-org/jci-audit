@@ -17,3 +17,16 @@ job_name = ""
 requires = []
 required_by = []
 params = { deny_unused_licenses = "true", deny_stale_exceptions = "true", deny_stale_notices = "true" }
+
+[[ci.jobs]]
+workflow = "release"
+orb_job = "jci-audit/release_prep"
+orb_version = ""
+job_name = "record-release"
+requires = ["build-binary"]
+required_by = []
+file = ".circleci/release.yml"
+context = ["release"]
+attach_workspace = true
+persist_to_workspace = [".security"]
+params = { version_env_var = "CRATE_VERSION_JCI_AUDIT", log_level = "v" }
