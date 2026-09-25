@@ -29,5 +29,4 @@ file = ".circleci/release.yml"
 context = ["release"]
 attach_workspace = true
 persist_to_workspace = [".security"]
-store_artifacts_path = ".security"
 params = { version_env_var = "CRATE_VERSION_JCI_AUDIT", log_level = "v" }
