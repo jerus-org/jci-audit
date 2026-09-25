@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- cut release.yml to jci-audit/release_prep(pr [#221])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.16(pr [#219])
@@ -564,6 +568,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#217]: https://github.com/jerus-org/jci-audit/pull/217
 [#218]: https://github.com/jerus-org/jci-audit/pull/218
 [#219]: https://github.com/jerus-org/jci-audit/pull/219
+[#221]: https://github.com/jerus-org/jci-audit/pull/221
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.16...HEAD
 [0.1.16]: https://github.com/jerus-org/jci-audit/compare/v0.1.15...v0.1.16
 [0.1.15]: https://github.com/jerus-org/jci-audit/compare/v0.1.14...v0.1.15
