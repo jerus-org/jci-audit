@@ -5,9 +5,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.16] - 2026-09-25
+## [0.1.17] - 2026-09-25
 
 Summary: 
+
+## [0.1.16] - 2026-09-25
+
+Summary: Chore[1]
 
 ## [0.1.15] - 2026-09-24
 
@@ -318,7 +322,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.15...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.16...HEAD
+[0.1.16]: https://github.com/jerus-org/jci-audit/compare/v0.1.15...v0.1.16
 [0.1.15]: https://github.com/jerus-org/jci-audit/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/jerus-org/jci-audit/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/jerus-org/jci-audit/compare/v0.1.12...v0.1.13

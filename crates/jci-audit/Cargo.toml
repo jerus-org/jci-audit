@@ -1,6 +1,6 @@
 [package]
 name = "jci-audit"
-version = "0.1.16"
+version = "0.1.17"
 description = "Context-aware Rust security gate orchestrating cargo-audit and cargo-deny with reproducible release-time validation"
 edition.workspace = true
 authors.workspace = true
@@ -91,7 +91,7 @@ bin-dir = "{ bin }{ binary-ext }"
 # pcu has nothing to replace and the signature is published unverifiable.
 [package.metadata.binstall.signing]
 algorithm = "minisign"
-pubkey = "RWRQyDR7Nsf4+ytME1a7Zmw34Fjl798ZRkUXQycjtvhdaHVKWU9AnPY/"
+pubkey = "RWQ0lsi10I09QXbHO27mb1hEp9QJSxrslN4++5z3WUl40Z17T8k+WfLR"
 
 [lints]
 workspace = true
