@@ -102,6 +102,9 @@ workflows:
           context: [release]
           attach_workspace: true
           post-steps:
+            - store_artifacts:
+                path: .security
+                destination: .security
             - persist_to_workspace:
                 root: .
                 paths:
