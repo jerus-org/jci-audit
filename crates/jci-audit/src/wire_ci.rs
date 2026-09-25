@@ -61,8 +61,9 @@
 //! have meant a pile of new/renamed CLI flags to add a second job. A
 //! `[[ci.jobs]]` array needs none of that: `#164` (shipped) added a second
 //! array entry (`workflow = "release"`) plus three new `JobSpec` fields —
-//! `context`, `attach_workspace`, `persist_to_workspace_paths` (the only
-//! `post-steps:` shape in scope) — with no CLI change at all. The release
+//! `context`, `attach_workspace`, `persist_to_workspace_paths` (one of two
+//! `post-steps:` shapes in scope, alongside `store_artifacts_path` added in
+//! #220) — with no CLI change at all. The release
 //! chain's other two apparent gaps turned out to need no new mechanism
 //! either: the consumer's own middle job is named via the existing
 //! `requires`/`required_by` fields (`release_prep` sets `required_by`, and
@@ -166,9 +167,17 @@ pub(crate) struct JobSpec {
     pub(crate) attach_workspace: bool,
     /// `post-steps: [persist_to_workspace: {root: ., paths: [...]}]` —
     /// `release_prep` persists `.security` for `publish_record` to attach.
-    /// Root is always `.` (the job's own working directory); no other
-    /// `post-steps` shape is in scope (jerus-org/jci-audit#164).
+    /// Root is always `.` (the job's own working directory).
     pub(crate) persist_to_workspace_paths: Vec<String>,
+    /// `post-steps: [store_artifacts: {path, destination}]` — makes the
+    /// artifact directly downloadable from the CI run regardless of what
+    /// happens to the rest of the workflow afterward (jerus-org/jci-audit#220).
+    /// `destination` is always the path's own basename. Combined with
+    /// `persist_to_workspace_paths` in one `post-steps:` list — the only two
+    /// `post-steps:` shapes in scope (jerus-org/jci-audit#164, #220), always
+    /// rendered `store_artifacts` first, matching the record's original
+    /// hand-rolled job.
+    pub(crate) store_artifacts_path: Option<String>,
     /// Overrides `[ci].file` for this job only — lets one `jci-audit.toml`
     /// wire jobs into more than one `CircleCI` file (e.g. `release.yml`'s
     /// release chain alongside `config.yml`'s validation jobs,
@@ -261,6 +270,7 @@ pub(crate) fn read_ci_file(jci_audit_toml: &str) -> Result<CiFile> {
                     })?,
                 },
                 persist_to_workspace_paths: string_list(table.get("persist_to_workspace")),
+                store_artifacts_path: str_field("store_artifacts_path"),
                 file: str_field("file"),
             });
         }
@@ -376,6 +386,9 @@ fn job_spec_to_table(job: &JobSpec) -> Table {
         table["persist_to_workspace"] = Item::Value(Value::Array(sync::multiline_array(
             job.persist_to_workspace_paths.iter().cloned(),
         )));
+    }
+    if let Some(path) = &job.store_artifacts_path {
+        table["store_artifacts_path"] = toml_edit::value(path.as_str());
     }
     // Same "only when set" convention as params/context/etc. — most jobs
     // inherit [ci].file and should carry no per-job file line at all
@@ -811,18 +824,57 @@ fn entry_current_attach_workspace(lines: &[String], entry: &JobEntry) -> bool {
     entry_scalar_line(lines, entry, "attach_workspace:").is_some_and(|value| value == "true")
 }
 
-/// An entry's own current `post-steps: [persist_to_workspace: {paths}]`
-/// paths, if present — the only `post-steps:` shape this tool ever renders
-/// (see [`render_job_body`]).
-fn entry_current_persist_to_workspace_paths(lines: &[String], entry: &JobEntry) -> Vec<String> {
-    let has_post_steps = lines[entry.start..entry.end]
+/// The `post-steps:` list's own line range (start..end, both within
+/// `entry`), if a `post-steps:` key is present — each list item (`-
+/// store_artifacts:`/`- persist_to_workspace:`) sits at `JOB_PARAM_INDENT +
+/// 2` inside it (jerus-org/jci-audit#220 added the second shape alongside
+/// #164's `persist_to_workspace`).
+fn post_steps_range(lines: &[String], entry: &JobEntry) -> Option<std::ops::Range<usize>> {
+    let post_steps_idx = lines[entry.start..entry.end]
         .iter()
-        .any(|line| indent_of(line) == JOB_PARAM_INDENT && line.trim() == "post-steps:");
-    if !has_post_steps {
-        return Vec::new();
+        .position(|line| indent_of(line) == JOB_PARAM_INDENT && line.trim() == "post-steps:")?
+        + entry.start;
+    let post_step_indent = JOB_PARAM_INDENT + 2;
+    let start = post_steps_idx + 1;
+    let mut end = start;
+    while end < entry.end && indent_of(&lines[end]) >= post_step_indent {
+        end += 1;
     }
+    Some(start..end)
+}
+
+/// One `post-steps:` list item's own line range (start..end, both within
+/// `range`), given its own `- <marker>` line's index — up to (not including)
+/// the next list item at the same indent, or the end of the whole list.
+fn post_step_item_range(
+    lines: &[String],
+    range: std::ops::Range<usize>,
+    marker: &str,
+) -> Option<std::ops::Range<usize>> {
+    let post_step_indent = JOB_PARAM_INDENT + 2;
+    let item_start = lines[range.clone()]
+        .iter()
+        .position(|line| indent_of(line) == post_step_indent && line.trim() == marker)
+        .map(|i| i + range.start)?;
+    let item_end = lines[item_start + 1..range.end]
+        .iter()
+        .position(|line| indent_of(line) == post_step_indent)
+        .map_or(range.end, |i| item_start + 1 + i);
+    Some(item_start..item_end)
+}
+
+/// An entry's own current `post-steps: [persist_to_workspace: {paths}]`
+/// paths, if present — one of two `post-steps:` shapes this tool ever
+/// renders (see [`render_job_body`]).
+fn entry_current_persist_to_workspace_paths(lines: &[String], entry: &JobEntry) -> Vec<String> {
+    let Some(range) = post_steps_range(lines, entry) else {
+        return Vec::new();
+    };
+    let Some(item) = post_step_item_range(lines, range, "- persist_to_workspace:") else {
+        return Vec::new();
+    };
     let path_indent = JOB_PARAM_INDENT + 8;
-    lines[entry.start..entry.end]
+    lines[item]
         .iter()
         .filter(|line| indent_of(line) == path_indent && line.trim_start().starts_with("- "))
         .map(|line| {
@@ -832,6 +884,21 @@ fn entry_current_persist_to_workspace_paths(lines: &[String], entry: &JobEntry) 
                 .to_string()
         })
         .collect()
+}
+
+/// An entry's own current `post-steps: [store_artifacts: {path, ...}]`
+/// path, if present — the other of the two `post-steps:` shapes this tool
+/// ever renders (jerus-org/jci-audit#220).
+fn entry_current_store_artifacts_path(lines: &[String], entry: &JobEntry) -> Option<String> {
+    let range = post_steps_range(lines, entry)?;
+    let item = post_step_item_range(lines, range, "- store_artifacts:")?;
+    let field_indent = JOB_PARAM_INDENT + 6;
+    lines[item].iter().find_map(|line| {
+        (indent_of(line) == field_indent)
+            .then(|| line.trim().strip_prefix("path:"))
+            .flatten()
+            .map(|v| strip_trailing_comment(v.trim()).to_string())
+    })
 }
 
 /// Strip a trailing ` # comment` from a YAML scalar, if one is present
@@ -922,7 +989,8 @@ fn render_job_body(job: &JobSpec, existing_name: Option<&str>) -> Vec<String> {
         || !job.params.is_empty()
         || !job.context.is_empty()
         || job.attach_workspace
-        || !job.persist_to_workspace_paths.is_empty();
+        || !job.persist_to_workspace_paths.is_empty()
+        || job.store_artifacts_path.is_some();
 
     let mut lines = Vec::new();
     if has_params {
@@ -948,16 +1016,26 @@ fn render_job_body(job: &JobSpec, existing_name: Option<&str>) -> Vec<String> {
         if job.attach_workspace {
             lines.push(format!("{param_indent}attach_workspace: true"));
         }
-        if !job.persist_to_workspace_paths.is_empty() {
+        if job.store_artifacts_path.is_some() || !job.persist_to_workspace_paths.is_empty() {
             let post_step_indent = " ".repeat(JOB_PARAM_INDENT + 2);
-            let root_indent = " ".repeat(JOB_PARAM_INDENT + 6);
+            let field_indent = " ".repeat(JOB_PARAM_INDENT + 6);
             let path_indent = " ".repeat(JOB_PARAM_INDENT + 8);
             lines.push(format!("{param_indent}post-steps:"));
-            lines.push(format!("{post_step_indent}- persist_to_workspace:"));
-            lines.push(format!("{root_indent}root: ."));
-            lines.push(format!("{root_indent}paths:"));
-            for path in &job.persist_to_workspace_paths {
-                lines.push(format!("{path_indent}- {path}"));
+            if let Some(path) = &job.store_artifacts_path {
+                let destination = Path::new(path)
+                    .file_name()
+                    .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
+                lines.push(format!("{post_step_indent}- store_artifacts:"));
+                lines.push(format!("{field_indent}path: {path}"));
+                lines.push(format!("{field_indent}destination: {destination}"));
+            }
+            if !job.persist_to_workspace_paths.is_empty() {
+                lines.push(format!("{post_step_indent}- persist_to_workspace:"));
+                lines.push(format!("{field_indent}root: ."));
+                lines.push(format!("{field_indent}paths:"));
+                for path in &job.persist_to_workspace_paths {
+                    lines.push(format!("{path_indent}- {path}"));
+                }
             }
         }
     } else {
@@ -1304,6 +1382,33 @@ fn diff_attach_workspace_note(job_label: &str, existing: bool, desired: bool) ->
     )))
 }
 
+/// Same as [`diff_list_field_note`] but for `store_artifacts_path`'s
+/// `Option<String>`.
+fn diff_store_artifacts_path_note(
+    job_label: &str,
+    existing: Option<&str>,
+    desired: Option<&str>,
+) -> Option<String> {
+    if existing == desired {
+        return None;
+    }
+    let message = match (existing, desired) {
+        (Some(existing), None) => format!(
+            "{job_label}: removing store_artifacts_path {existing:?} — not declared in \
+             jci-audit.toml; add it there to keep it"
+        ),
+        (None, Some(desired)) => {
+            format!("{job_label}: adding store_artifacts_path {desired:?} from jci-audit.toml")
+        }
+        (Some(existing), Some(desired)) => format!(
+            "{job_label}: store_artifacts_path changing from {existing:?} to {desired:?} to \
+             match jci-audit.toml"
+        ),
+        (None, None) => unreachable!("existing == desired handled above"),
+    };
+    Some(diagnostics::warn_tag(message))
+}
+
 /// Resync an existing job entry (matched by effective name) against `job`'s
 /// declared spec — the counterpart to a fresh insert for a job that's
 /// already there, marked or not (jerus-org/jci-audit#171). `params` and
@@ -1336,6 +1441,7 @@ fn resync_job_entry(
     let existing_context = entry_current_context(lines, entry);
     let existing_attach_workspace = entry_current_attach_workspace(lines, entry);
     let existing_persist_paths = entry_current_persist_to_workspace_paths(lines, entry);
+    let existing_store_artifacts_path = entry_current_store_artifacts_path(lines, entry);
     let is_marked = entry_is_marked(lines, entry);
 
     let desired_body = render_job_body(job, existing_name.as_deref());
@@ -1367,6 +1473,11 @@ fn resync_job_entry(
         "persist_to_workspace",
         &existing_persist_paths,
         &job.persist_to_workspace_paths,
+    ));
+    notes.extend(diff_store_artifacts_path_note(
+        job_label,
+        existing_store_artifacts_path.as_deref(),
+        job.store_artifacts_path.as_deref(),
     ));
     if !is_marked {
         notes.push(format!(
@@ -1713,6 +1824,7 @@ fn discover_undeclared_jobs(
                 context: Vec::new(),
                 attach_workspace: false,
                 persist_to_workspace_paths: Vec::new(),
+                store_artifacts_path: None,
                 file: file_tag.map(str::to_string),
             });
         }
@@ -2072,6 +2184,7 @@ mod tests {
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            store_artifacts_path: None,
             file: None,
         }
     }
@@ -2131,6 +2244,32 @@ persist_to_workspace = [".security"]
             got.jobs[0].persist_to_workspace_paths,
             vec![".security".to_string()]
         );
+    }
+
+    #[test]
+    fn read_ci_file_parses_store_artifacts_path() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "release"
+orb_job = "jci-audit/release_prep"
+store_artifacts_path = "/tmp/security-record.json"
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(
+            got.jobs[0].store_artifacts_path.as_deref(),
+            Some("/tmp/security-record.json")
+        );
+    }
+
+    #[test]
+    fn read_ci_file_defaults_store_artifacts_path_to_none_when_absent() {
+        let toml = r#"
+[[ci.jobs]]
+workflow = "validation"
+orb_job = "jci-audit/check"
+"#;
+        let got = read_ci_file(toml).unwrap();
+        assert_eq!(got.jobs[0].store_artifacts_path, None);
     }
 
     #[test]
@@ -2521,6 +2660,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            store_artifacts_path: None,
             file: None,
         }
     }
@@ -2915,6 +3055,52 @@ workflows:
         );
     }
 
+    #[test]
+    fn render_new_job_block_emits_store_artifacts_post_step() {
+        let mut job = base_job();
+        job.store_artifacts_path = Some("/tmp/security-record.json".to_string());
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          post-steps:".to_string(),
+                "            - store_artifacts:".to_string(),
+                "                path: /tmp/security-record.json".to_string(),
+                "                destination: security-record.json".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
+    /// jerus-org/jci-audit#220: the two `post-steps:` shapes combine in one
+    /// list, `store_artifacts` always first — matching the original
+    /// hand-rolled `record-release` job's own step order.
+    #[test]
+    fn render_new_job_block_combines_store_artifacts_and_persist_to_workspace() {
+        let mut job = base_job();
+        job.store_artifacts_path = Some("/tmp/security-record.json".to_string());
+        job.persist_to_workspace_paths = vec![".security".to_string()];
+        let block = render_new_job_block(&job);
+        assert_eq!(
+            block,
+            vec![
+                format!("      {MANAGED_BEGIN}"),
+                "      - jci-audit/check:".to_string(),
+                "          post-steps:".to_string(),
+                "            - store_artifacts:".to_string(),
+                "                path: /tmp/security-record.json".to_string(),
+                "                destination: security-record.json".to_string(),
+                "            - persist_to_workspace:".to_string(),
+                "                root: .".to_string(),
+                "                paths:".to_string(),
+                "                  - .security".to_string(),
+                format!("      {MANAGED_END}"),
+            ]
+        );
+    }
+
     /// Field order matches `orb/src/examples/record_release.yml`'s
     /// `publish_record` entry: name, params, requires, `context`,
     /// `attach_workspace`, `post-steps`.
@@ -3265,6 +3451,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            store_artifacts_path: None,
             file: None,
         };
         release_job.orb_version = Some("jerus-org/jci-audit@1.0".to_string());
@@ -3445,6 +3632,94 @@ workflows:
         assert!(out.contains("- .security"), "got: {out}");
     }
 
+    const CONFIG_WITH_MARKED_STORE_ARTIFACTS_JOB: &str = "\
+version: 2.1
+orbs:
+  jci-audit: jerus-org/jci-audit@1.0
+workflows:
+  release:
+    jobs:
+      # >>> jci-audit wire-ci (managed — edits overwritten by re-running 'jci-audit wire-ci')
+      - jci-audit/check:
+          name: publish-security-record
+          post-steps:
+            - store_artifacts:
+                path: .security # keep in sync
+                destination: .security
+      # <<< jci-audit wire-ci
+";
+
+    /// A hand-added trailing comment on the `path:` line must not be read as
+    /// part of the value — matching `strip_trailing_comment`'s existing
+    /// guarantee for every other scalar field this module resyncs. Without
+    /// it, `diff_store_artifacts_path_note` would spuriously report the
+    /// value itself as "changing from ... to ..." on every single `wire-ci`
+    /// run even though the declared value never actually changed (a
+    /// misleading note, distinct from the pre-existing, expected "reordering"
+    /// note every resync emits when a managed block's raw text differs at
+    /// all from its freshly rendered form — comments included).
+    #[test]
+    fn wire_jobs_into_resync_ignores_a_trailing_comment_on_store_artifacts_path() {
+        let mut job = release_job();
+        job.job_name = Some("publish-security-record".to_string());
+        job.store_artifacts_path = Some(".security".to_string());
+        let mut notes = Vec::new();
+        wire_jobs_into_with_notes(CONFIG_WITH_MARKED_STORE_ARTIFACTS_JOB, &[job], &mut notes)
+            .unwrap();
+        assert!(
+            notes
+                .iter()
+                .all(|n| !n.contains("store_artifacts_path changing")),
+            "got: {notes:?}"
+        );
+    }
+
+    #[test]
+    fn wire_jobs_into_resync_detects_store_artifacts_path_drift() {
+        let mut job = release_job();
+        job.job_name = Some("publish-security-record".to_string());
+        job.store_artifacts_path = Some("/tmp/security-record.json".to_string());
+        let mut notes = Vec::new();
+        let out =
+            wire_jobs_into_with_notes(CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB, &[job], &mut notes)
+                .unwrap();
+        assert!(out.contains("- store_artifacts:"), "got: {out}");
+        assert!(
+            out.contains("path: /tmp/security-record.json"),
+            "got: {out}"
+        );
+        assert!(
+            out.contains("destination: security-record.json"),
+            "got: {out}"
+        );
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("adding store_artifacts_path")),
+            "got: {notes:?}"
+        );
+    }
+
+    #[test]
+    fn wire_jobs_into_resync_with_both_post_steps_shapes_is_idempotent_once_wired() {
+        let mut job = release_job();
+        job.job_name = Some("publish-security-record".to_string());
+        job.store_artifacts_path = Some("/tmp/security-record.json".to_string());
+        job.persist_to_workspace_paths = vec![".security".to_string()];
+        let mut first_notes = Vec::new();
+        let wired = wire_jobs_into_with_notes(
+            CONFIG_WITH_MARKED_PUBLISH_RECORD_JOB,
+            &[job.clone()],
+            &mut first_notes,
+        )
+        .unwrap();
+
+        let mut second_notes = Vec::new();
+        let rewired = wire_jobs_into_with_notes(&wired, &[job], &mut second_notes).unwrap();
+        assert_eq!(wired, rewired);
+        assert!(second_notes.is_empty(), "got: {second_notes:?}");
+    }
+
     /// The full `orb/src/examples/record_release.yml` shape: `release_prep`
     /// persists `.security` for the consumer's own already-existing
     /// `your-draft-release-job` to require, and `publish_record` requires
@@ -3476,6 +3751,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: vec![".security".to_string()],
+            store_artifacts_path: None,
             file: None,
         };
         let publish_record = JobSpec {
@@ -3492,6 +3768,7 @@ workflows:
             context: vec!["github-release-write".to_string()],
             attach_workspace: true,
             persist_to_workspace_paths: Vec::new(),
+            store_artifacts_path: None,
             file: None,
         };
         let mut notes = Vec::new();
@@ -3827,6 +4104,7 @@ workflows:
                 context: Vec::new(),
                 attach_workspace: false,
                 persist_to_workspace_paths: Vec::new(),
+                store_artifacts_path: None,
                 file: None,
             }]
         );
@@ -3945,6 +4223,7 @@ workflows:
             context: Vec::new(),
             attach_workspace: false,
             persist_to_workspace_paths: Vec::new(),
+            store_artifacts_path: None,
             file: None,
         }];
         let out = append_discovered_jobs(existing, &discovered).unwrap();
