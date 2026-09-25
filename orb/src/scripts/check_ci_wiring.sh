@@ -6,5 +6,5 @@ case "${GCO_LOG_LEVEL:-default}" in
   vvv) set -- "$@" --verbose --verbose --verbose ;;
   vvvv) set -- "$@" --verbose --verbose --verbose --verbose ;;
 esac
-[[ -n "${GCO_CONFIG:-}" ]] && set -- "$@" --config "${GCO_CONFIG}"
+[[ ! "${GCO_CONFIG:-}" =~ ^[[:space:]]*$ ]] && set -- "$@" --config "${GCO_CONFIG}"
 "$@"

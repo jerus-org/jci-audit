@@ -1,0 +1,60 @@
+description: >
+  Same as `record_release.yml`, but for a pipeline that computes its release
+  version at runtime (e.g. via circleci-toolkit's `calculate_versions`, which
+  persists it to `/tmp/workspace/versions.env` as
+  `CRATE_VERSION_<CRATE_UPPERCASED>`) instead of knowing it at
+  pipeline-compile time — the shape `version` (a plain CircleCI parameter,
+  resolved before any job runs) can't express on its own.
+
+  Omit `version` and set `version_env_var` (plus `attach_workspace: true`)
+  instead — the job sources the named variable from the attached workspace
+  file before invoking the command. `version_source_file` defaults to
+  `<workspace_root>/versions.env`; override it only if your own version
+  producer writes somewhere else. If `version` IS also set, it always wins —
+  `version_env_var` is purely a fallback for when it's empty.
+usage:
+  version: 2.1
+  orbs:
+    jci-audit: jerus-org/jci-audit@0.1
+  workflows:
+    release:
+      jobs:
+        - toolkit/calculate_versions:
+            name: calculate-versions
+            crates: "myapp:myapp-v"
+
+        - approve-release:
+            type: approval
+            requires: [calculate-versions]
+
+        - jci-audit/release_prep:
+            name: record-release
+            requires: [approve-release]
+            attach_workspace: true
+            version_env_var: "CRATE_VERSION_MYAPP"
+            post-steps:
+              - persist_to_workspace:
+                  root: .
+                  paths:
+                    - .security
+
+        # Creates the draft release however your pipeline normally does.
+        - your-draft-release-job:
+            requires: [record-release]
+
+        - jci-audit/publish_record:
+            name: publish-security-record
+            requires: [your-draft-release-job]
+            context: [github-release-write]
+            attach_workspace: true
+            version_env_var: "CRATE_VERSION_MYAPP"
+            # tag/record_path still need the real resolved version — they're
+            # not sourced from version_env_var (that only fills the CLI's
+            # own `version` argument). Illustrated here as a literal; a real
+            # pipeline substitutes its own resolved value the same way it
+            # already does for its draft-release job's own tag.
+            tag: "myapp-v1.2.0"
+            owner: "your-org"
+            repo: "your-repo"
+            record_path: "/tmp/workspace/.security/release-1.2.0.json"
+            publish: true

@@ -4,6 +4,7 @@ parameters:
   version:
     type: string
     description: The release version being validated (e.g. "1.2.0")
+    default: ''
   log_level:
     type: enum
     description: 'Logging verbosity: consolidates this tool''s clap-verbosity-flag -q/--quiet and -v/--verbose repeat-counters (its own linked pair) into one selector, so they can''t be set independently and cancel out. clap-verbosity-flag escalates off -> error -> warn -> info -> debug -> trace, typically starting at error: `quiet` is a single -q (one step quieter); `default` is this tool''s own starting point on that scale; `v` / `vv` / `vvv` / `vvvv` are -v / -vv / -vvv / -vvvv (one to four steps louder).'
@@ -35,6 +36,14 @@ parameters:
     type: string
     description: Path at which to attach the workspace; also prepended to PATH (only used when attach_workspace is true).
     default: /tmp/workspace
+  version_env_var:
+    type: string
+    description: Name of the variable inside <workspace_root>/versions.env-shaped source file holding version's real value (e.g. "CRATE_VERSION_MYAPP", as written by circleci-toolkit's calculate_versions). Leave empty (default) to use the version parameter's own literal value instead. Requires attach_workspace.
+    default: ''
+  version_source_file:
+    type: string
+    description: Path to the env-style file to resolve version_env_var from. Empty (default) resolves to '<workspace_root>/versions.env' — calculate_versions' own output path. Only used when version_env_var is set.
+    default: ''
 steps:
 - checkout
 - when:
@@ -47,6 +56,17 @@ steps:
         command: <<include(scripts/add-workspace-to-path.sh)>>
         environment:
           WORKSPACE_ROOT: << parameters.workspace_root >>
+- when:
+    condition: << parameters.version_env_var >>
+    steps:
+    - run:
+        name: Resolve version from attached workspace
+        command: <<include(scripts/resolve_workspace_param.sh)>>
+        environment:
+          GCO_TARGET_ENV_VAR: << parameters.version_env_var >>
+          GCO_SOURCE_FILE: << parameters.version_source_file >>
+          GCO_WORKSPACE_ROOT: << parameters.workspace_root >>
+          GCO_OVERRIDE_VAR: GCO_VERSION_RESOLVED
 - release_prep:
     version: << parameters.version >>
     log_level: << parameters.log_level >>
