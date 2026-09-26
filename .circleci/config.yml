@@ -3,7 +3,7 @@ version: 2.1
 parameters:
   min_rust_version:
     type: string
-    default: "1.89"
+    default: "1.91"
 
 orbs:
   toolkit: jerus-org/circleci-toolkit@8.0.1
@@ -64,6 +64,16 @@ workflows:
 
       - toolkit/common_tests:
           min_rust_version: << pipeline.parameters.min_rust_version >>
+
+      # Unfiltered: validates the DECLARED rust-version, not a rolling proxy
+      # (jerus-org/jci-audit#222) — common_tests above runs on the nearest
+      # available rolling toolchain, which can be newer than the declared
+      # floor and stays green even after a dependency silently raises it.
+      # manifest_path targets the crate manifest directly: the workspace root
+      # Cargo.toml has no [package] table (rust-version lives under
+      # [workspace.package]), which cargo-msrv can't read.
+      - toolkit/msrv_verify:
+          manifest_path: crates/jci-audit/Cargo.toml
 
       # Unfiltered, like the other correctness gates: a dependency arrives with
       # its licence and advisory status on whatever branch it lands on. Runs

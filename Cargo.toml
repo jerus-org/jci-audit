@@ -7,7 +7,7 @@ edition = "2024"
 authors = ["Jeremiah Russell <jrussell@jerus.ie>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jerus-org/jci-audit"
-rust-version = "1.89"
+rust-version = "1.91"
 keywords = ["security", "audit", "cargo-deny", "circleci", "orb"]
 categories = ["development-tools", "command-line-utilities"]
 
