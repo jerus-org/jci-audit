@@ -8,6 +8,8 @@ strengths of each and validating security **reproducibly at release time**.
 [![Crates.io](https://img.shields.io/crates/v/jci-audit.svg)](https://crates.io/crates/jci-audit)
 [![License](https://img.shields.io/crates/l/jci-audit.svg)](https://github.com/jerus-org/jci-audit#license)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14065/badge)](https://www.bestpractices.dev/projects/14065)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/jerus-org/jci-audit/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/jerus-org/jci-audit/tree/main)
+[![Rust 1.91+](https://img.shields.io/badge/rust-1.91+-orange.svg)](https://www.rust-lang.org)
 
 ## Why
 
