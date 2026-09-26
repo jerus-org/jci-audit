@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- store_artifacts the release record in CI(pr [#226])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.18(pr [#225])
@@ -588,6 +592,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#223]: https://github.com/jerus-org/jci-audit/pull/223
 [#224]: https://github.com/jerus-org/jci-audit/pull/224
 [#225]: https://github.com/jerus-org/jci-audit/pull/225
+[#226]: https://github.com/jerus-org/jci-audit/pull/226
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...HEAD
 [0.1.18]: https://github.com/jerus-org/jci-audit/compare/v0.1.17...v0.1.18
 [0.1.17]: https://github.com/jerus-org/jci-audit/compare/v0.1.16...v0.1.17
