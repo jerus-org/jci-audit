@@ -71,10 +71,12 @@ version tag itself, and still gate consumer migration.
   to be both installable and verifiable — closing the gap `0.1.0`'s yanking exposed. That damage is
   now historical: `0.1.0`'s own record fell through every available path (no commit, no release
   asset, and the CI build-artifact copy expired) and can never be reconstructed, so **`0.1.0` stays
-  yanked from crates.io** — not a verifiable release, and not retroactively fixable. This isn't
-  jci-audit's first release with a record, though: `0.0.4`–`0.0.7` each carry a real, GPG-signed,
-  git-committed record and are still independently verifiable from a checkout — they're separately
-  yanked, for the unrelated #90 reason.
+  yanked from crates.io** — not a verifiable release, and not retroactively fixable. This wasn't
+  jci-audit's first release with a record, though: `0.0.4`–`0.0.7` each carried a real, GPG-signed,
+  git-committed record — separately yanked, for the unrelated #90 reason. Those records (and
+  `0.0.1`–`0.0.3`'s GitHub releases) have since been deleted along with the yanked releases
+  themselves; the committed `.security/release-0.0.{4..7}.json` files were removed as dead weight
+  for releases that no longer exist anywhere to verify against.
 - **Project hardening / OpenSSF Best Practices badge.** ✅ Done — the project has reached
   [Silver](https://www.bestpractices.dev/projects/14065) (confirmed 2026-08-25; 100% of Silver's
   55 criteria met, Gold at 35%).
