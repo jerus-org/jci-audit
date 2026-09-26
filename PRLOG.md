@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.20(pr [#232])
+- deps: update rust:1-slim-trixie docker digest to 4cd8294(pr [#233])
 
 ## [0.1.20] - 2026-09-26
 
@@ -616,6 +617,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#229]: https://github.com/jerus-org/jci-audit/pull/229
 [#230]: https://github.com/jerus-org/jci-audit/pull/230
 [#232]: https://github.com/jerus-org/jci-audit/pull/232
+[#233]: https://github.com/jerus-org/jci-audit/pull/233
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...HEAD
 [0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
