@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - revert-drop store_artifacts on record-release(pr [#228])
+- chore-remove stale pre-0.1.0 security records(pr [#229])
 
 ### Fixed
 
@@ -605,6 +606,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#226]: https://github.com/jerus-org/jci-audit/pull/226
 [#227]: https://github.com/jerus-org/jci-audit/pull/227
 [#228]: https://github.com/jerus-org/jci-audit/pull/228
+[#229]: https://github.com/jerus-org/jci-audit/pull/229
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...HEAD
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
 [0.1.18]: https://github.com/jerus-org/jci-audit/compare/v0.1.17...v0.1.18
