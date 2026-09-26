@@ -36,10 +36,7 @@ Releases run on CircleCI ([`.circleci/release.yml`](../.circleci/release.yml)):
    advisory-db commit, writes `.security/release-<version>.json` locally (not committed — see
    [design.md §5–6](design.md#5-reproducibility-the-release-record)), and persists it to the
    shared workspace (`post-steps: persist_to_workspace`) for `release-jci-audit` to sign and
-   upload, and separately `store_artifacts`-uploads the unsigned `.security/` directory to the
-   CI run itself — recoverable straight from the run's Artifacts tab even if the pipeline fails
-   or is abandoned before the signed copy is ever uploaded as a release asset
-   (jerus-org/jci-audit#220). The version is resolved at runtime from `calculate-versions`' own output
+   upload. The version is resolved at runtime from `calculate-versions`' own output
    (`version_env_var = "CRATE_VERSION_JCI_AUDIT"`, sourced from the attached workspace's
    `versions.env`) rather than passed as a literal — see
    [`orb/src/examples/record_release_runtime_version.yml`](../orb/src/examples/record_release_runtime_version.yml)
