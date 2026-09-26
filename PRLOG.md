@@ -14,6 +14,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.19(pr [#227])
+- bump MSRV to 1.91, wire msrv_verify gate(pr [#230])
 
 ## [0.1.19] - 2026-09-26
 
@@ -607,6 +608,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#227]: https://github.com/jerus-org/jci-audit/pull/227
 [#228]: https://github.com/jerus-org/jci-audit/pull/228
 [#229]: https://github.com/jerus-org/jci-audit/pull/229
+[#230]: https://github.com/jerus-org/jci-audit/pull/230
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...HEAD
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
 [0.1.18]: https://github.com/jerus-org/jci-audit/compare/v0.1.17...v0.1.18
