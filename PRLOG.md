@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- docs-add CircleCI and MSRV badges to READMEs(pr [#234])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.20(pr [#232])
@@ -618,6 +622,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#230]: https://github.com/jerus-org/jci-audit/pull/230
 [#232]: https://github.com/jerus-org/jci-audit/pull/232
 [#233]: https://github.com/jerus-org/jci-audit/pull/233
+[#234]: https://github.com/jerus-org/jci-audit/pull/234
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...HEAD
 [0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
