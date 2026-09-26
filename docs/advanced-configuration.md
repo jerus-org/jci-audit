@@ -23,9 +23,10 @@ flags are now rejected by clap rather than silently accepted as no-ops. `.securi
 `.gitignore`'d, so `cargo-release`'s dirty-tree check is unaffected by the write.
 
 Distributing the record as a signed GitHub release asset (attached to the draft release before
-publish, verified via `rsign` in `verify`'s remote-fetch path) is tracked as #75's remaining
-phase and not yet shipped — see [`.security/README.md`](../.security/README.md) for the current
-state and [design.md §3.2](design.md#32-release-gate) for the write-time flow.
+publish, verified via `rsign` in `verify`'s remote-fetch path) has since shipped
+([jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) phase 2) — see
+[RELEASING.md](RELEASING.md#what-is-signed) for the current state and [design.md
+§3.2](design.md#32-release-gate) for the write-time flow.
 
 ## Overriding the advisory-db location
 
