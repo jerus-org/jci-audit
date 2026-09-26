@@ -12,7 +12,7 @@ parameters:
 
 orbs:
   toolkit: jerus-org/circleci-toolkit@8.0.1
-  jci-audit: jerus-org/jci-audit@0.1.17
+  jci-audit: jerus-org/jci-audit@0.1.18
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.27
 
 workflows:
