@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- revert-drop store_artifacts on record-release(pr [#228])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.19(pr [#227])
@@ -600,6 +604,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#225]: https://github.com/jerus-org/jci-audit/pull/225
 [#226]: https://github.com/jerus-org/jci-audit/pull/226
 [#227]: https://github.com/jerus-org/jci-audit/pull/227
+[#228]: https://github.com/jerus-org/jci-audit/pull/228
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...HEAD
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
 [0.1.18]: https://github.com/jerus-org/jci-audit/compare/v0.1.17...v0.1.18
