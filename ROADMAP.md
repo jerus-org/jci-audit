@@ -75,8 +75,17 @@ version tag itself, and still gate consumer migration.
   jci-audit's first release with a record, though: `0.0.4`–`0.0.7` each carried a real, GPG-signed,
   git-committed record — separately yanked, for the unrelated #90 reason. Those records (and
   `0.0.1`–`0.0.3`'s GitHub releases) have since been deleted along with the yanked releases
-  themselves; the committed `.security/release-0.0.{4..7}.json` files were removed as dead weight
-  for releases that no longer exist anywhere to verify against.
+  themselves; the committed `.security/release-0.0.{4..7}.json` files (and the README documenting
+  them) were removed as dead weight for releases that no longer exist anywhere to verify against.
+  `0.0.3` itself never had a record to begin with: the gate ran and passed, but the step that
+  committed it passed git an absolute path, and a pathspec matching nothing is not an error, so the
+  commit was empty and reported success. Two commits on `main` claim to record it and both are
+  empty — `0bf4e36`/`d153a57` — and can neither be reverted (nothing to revert) nor removed (they're
+  ancestors of the published `jci-audit-v0.0.3` tag); they're void, not evidence of anything. The fix
+  landed in #37 (relative paths, refuse to commit nothing staged) — `0.0.4` is the first release with
+  a real record. Back-filling `0.0.3`'s was never attempted: a record written now would attest to a
+  validation run that isn't the one the release passed through, and a reconstruction indistinguishable
+  from the genuine artifact while carrying none of its meaning would be a worse failure than the gap.
 - **Project hardening / OpenSSF Best Practices badge.** ✅ Done — the project has reached
   [Silver](https://www.bestpractices.dev/projects/14065) (confirmed 2026-08-25; 100% of Silver's
   55 criteria met, Gold at 35%).
