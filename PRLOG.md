@@ -12,6 +12,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - refactor-dedupe single-thread-runtime idiom(pr [#242])
 - refactor-split wire_ci_at into named phases(pr [#243])
 - refactor-dedupe cargo-metadata --no-deps call(pr [#244])
+- refactor-dedupe cargo-metadata graph extraction(pr [#245])
 
 ### Fixed
 
@@ -629,6 +630,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#242]: https://github.com/jerus-org/jci-audit/pull/242
 [#243]: https://github.com/jerus-org/jci-audit/pull/243
 [#244]: https://github.com/jerus-org/jci-audit/pull/244
+[#245]: https://github.com/jerus-org/jci-audit/pull/245
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...HEAD
 [0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
