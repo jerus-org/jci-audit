@@ -1959,90 +1959,16 @@ pub(crate) fn wire_ci_at(
     };
     let spec = read_ci_file(&existing_toml_text)?;
 
-    let default_file = normalize_file_rel(spec.file.as_deref().unwrap_or(".circleci/config.yml"));
+    let (default_file, target_files) = resolve_target_files(&spec, spec_dir, start)?;
 
-    // Every distinct target file, in scope order: the default (always),
-    // then `discover_files` (bootstraps discovery on a file with no
-    // declared jobs yet — jerus-org/jci-audit#211), then any additional
-    // per-job `file` override not already covered. Normalized before
-    // dedup/comparison — two differently-spelled references to the same
-    // physical file (`.circleci/release.yml` vs `./.circleci/release.yml`)
-    // must resolve to one target, not each get their own independent,
-    // disk-clobbering scan and write.
-    let mut candidate_files = vec![default_file.clone()];
-    candidate_files.extend(spec.discover_files.iter().map(|f| normalize_file_rel(f)));
-    candidate_files.extend(
-        spec.jobs
-            .iter()
-            .filter_map(|job| job.file.as_deref())
-            .map(normalize_file_rel),
-    );
-    let target_files = dedupe_preserving_order(&candidate_files);
-
-    // discover_files names an explicit ask — a missing entry is a loud
-    // error, not a silent skip (unlike a file only ever reached implicitly
-    // via a job's own `file`, handled per-file below).
-    for f in &spec.discover_files {
-        let f = normalize_file_rel(f);
-        let path = spec_dir.join(&f);
-        if !path.is_file() {
-            bail!(
-                "'{}' (declared in [ci].discover_files) not found",
-                display_path(&path, start)
-            );
-        }
-    }
-
-    let mut scans: Vec<FileScan> = Vec::new();
-    let mut notes: Vec<String> = Vec::new();
-
-    for rel in &target_files {
-        let path = spec_dir.join(rel);
-        let file_jobs: Vec<JobSpec> = spec
-            .jobs
-            .iter()
-            .filter(|j| {
-                let jf = j
-                    .file
-                    .as_deref()
-                    .map_or_else(|| default_file.clone(), normalize_file_rel);
-                jf == *rel
-            })
-            .cloned()
-            .collect();
-
-        if !path.is_file() {
-            if file_jobs.is_empty() {
-                // Nothing declared for it and it isn't there — a no-op,
-                // not an error: this file simply never entered scope.
-                continue;
-            }
-            bail!(
-                "'{}' not found — run from a repo with .circleci/config.yml, or set [ci].file \
-                 (or a job's own `file`) in '{}'",
-                display_path(&path, start),
-                display_path(&config_path, start)
-            );
-        }
-
-        let existing_text = std::fs::read_to_string(&path)
-            .with_context(|| format!("failed to read '{}'", display_path(&path, start)))?;
-        let lines: Vec<String> = existing_text.lines().map(str::to_string).collect();
-        let file_tag = if rel == &default_file {
-            None
-        } else {
-            Some(rel.as_str())
-        };
-        let (discovered, file_notes) = discover_undeclared_jobs(&lines, &file_jobs, rel, file_tag);
-        notes.extend(file_notes);
-
-        scans.push(FileScan {
-            path,
-            existing_text,
-            file_jobs,
-            discovered,
-        });
-    }
+    let (scans, mut notes) = scan_target_files(
+        &target_files,
+        &default_file,
+        &spec,
+        spec_dir,
+        &config_path,
+        start,
+    )?;
 
     let total_discovered: usize = scans.iter().map(|s| s.discovered.len()).sum();
     if spec.jobs.is_empty() && total_discovered == 0 {
@@ -2063,36 +1989,7 @@ pub(crate) fn wire_ci_at(
         return Ok(WireCiOutcome::Scaffolded { notes });
     }
 
-    // Phase 1: compute every in-scope file's desired text (the only
-    // fallible step — an unrecognized `requires:` shape on some other
-    // already-declared job, say) before any file is touched on disk.
-    // Mirrors the original single-file atomicity guarantee
-    // (jerus-org/jci-audit#171) across N files instead of one: nothing
-    // reaches disk unless every file's desired content computes cleanly.
-    let mut computed: Vec<Computed> = Vec::new();
-    let mut all_discovered: Vec<JobSpec> = Vec::new();
-    // Consumed by value — `scans` is never read again after this loop, so
-    // `existing_text` (a full file's content) moves into `Computed` rather
-    // than being cloned.
-    for scan in scans {
-        if scan.file_jobs.is_empty() && scan.discovered.is_empty() {
-            // Nothing to report for this file — e.g. the default file when
-            // every real job targets a different one.
-            continue;
-        }
-        let all_jobs: Vec<JobSpec> = scan
-            .file_jobs
-            .into_iter()
-            .chain(scan.discovered.iter().cloned())
-            .collect();
-        all_discovered.extend(scan.discovered);
-        let desired = wire_jobs_into_with_notes(&scan.existing_text, &all_jobs, &mut notes)?;
-        computed.push(Computed {
-            path: scan.path,
-            existing: scan.existing_text,
-            desired,
-        });
-    }
+    let (computed, all_discovered) = compute_desired(scans, &mut notes)?;
 
     let desired_toml_text = if all_discovered.is_empty() {
         existing_toml_text.clone()
@@ -2115,6 +2012,153 @@ pub(crate) fn wire_ci_at(
         ci_files,
         notes,
     })
+}
+
+/// The default target file plus every distinct in-scope target file, in
+/// scope order: the default (always), then `discover_files` (bootstraps
+/// discovery on a file with no declared jobs yet — jerus-org/jci-audit#211),
+/// then any additional per-job `file` override not already covered.
+/// Normalized before dedup/comparison — two differently-spelled references
+/// to the same physical file (`.circleci/release.yml` vs
+/// `./.circleci/release.yml`) must resolve to one target, not each get
+/// their own independent, disk-clobbering scan and write. Also validates
+/// every `[ci].discover_files` entry actually exists on disk: it names an
+/// explicit ask — a missing entry is a loud error, not a silent skip
+/// (unlike a file only ever reached implicitly via a job's own `file`,
+/// handled per-file by [`scan_target_files`]).
+fn resolve_target_files(
+    spec: &CiFile,
+    spec_dir: &Path,
+    start: &Path,
+) -> Result<(String, Vec<String>)> {
+    let default_file = normalize_file_rel(spec.file.as_deref().unwrap_or(".circleci/config.yml"));
+
+    let mut candidate_files = vec![default_file.clone()];
+    candidate_files.extend(spec.discover_files.iter().map(|f| normalize_file_rel(f)));
+    candidate_files.extend(
+        spec.jobs
+            .iter()
+            .filter_map(|job| job.file.as_deref())
+            .map(normalize_file_rel),
+    );
+    let target_files = dedupe_preserving_order(&candidate_files);
+
+    for f in &spec.discover_files {
+        let f = normalize_file_rel(f);
+        let path = spec_dir.join(&f);
+        if !path.is_file() {
+            bail!(
+                "'{}' (declared in [ci].discover_files) not found",
+                display_path(&path, start)
+            );
+        }
+    }
+
+    Ok((default_file, target_files))
+}
+
+/// Read and scan every in-scope target file — existence check, undeclared
+/// `jci-audit/*` job discovery ([`discover_undeclared_jobs`]) — building the
+/// per-file [`FileScan`]s [`compute_desired`] then turns into desired
+/// content, plus every note surfaced along the way.
+fn scan_target_files(
+    target_files: &[String],
+    default_file: &str,
+    spec: &CiFile,
+    spec_dir: &Path,
+    config_path: &Path,
+    start: &Path,
+) -> Result<(Vec<FileScan>, Vec<String>)> {
+    let mut scans: Vec<FileScan> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+
+    for rel in target_files {
+        let path = spec_dir.join(rel);
+        let file_jobs: Vec<JobSpec> = spec
+            .jobs
+            .iter()
+            .filter(|j| {
+                let jf = j
+                    .file
+                    .as_deref()
+                    .map_or_else(|| default_file.to_string(), normalize_file_rel);
+                jf == *rel
+            })
+            .cloned()
+            .collect();
+
+        if !path.is_file() {
+            if file_jobs.is_empty() {
+                // Nothing declared for it and it isn't there — a no-op,
+                // not an error: this file simply never entered scope.
+                continue;
+            }
+            bail!(
+                "'{}' not found — run from a repo with .circleci/config.yml, or set [ci].file \
+                 (or a job's own `file`) in '{}'",
+                display_path(&path, start),
+                display_path(config_path, start)
+            );
+        }
+
+        let existing_text = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read '{}'", display_path(&path, start)))?;
+        let lines: Vec<String> = existing_text.lines().map(str::to_string).collect();
+        let file_tag = if rel == default_file {
+            None
+        } else {
+            Some(rel.as_str())
+        };
+        let (discovered, file_notes) = discover_undeclared_jobs(&lines, &file_jobs, rel, file_tag);
+        notes.extend(file_notes);
+
+        scans.push(FileScan {
+            path,
+            existing_text,
+            file_jobs,
+            discovered,
+        });
+    }
+
+    Ok((scans, notes))
+}
+
+/// Phase 1: compute every in-scope file's desired text (the only fallible
+/// step — an unrecognized `requires:` shape on some other already-declared
+/// job, say) before any file is touched on disk. Mirrors the original
+/// single-file atomicity guarantee (jerus-org/jci-audit#171) across N files
+/// instead of one: nothing reaches disk unless every file's desired content
+/// computes cleanly.
+fn compute_desired(
+    scans: Vec<FileScan>,
+    notes: &mut Vec<String>,
+) -> Result<(Vec<Computed>, Vec<JobSpec>)> {
+    let mut computed: Vec<Computed> = Vec::new();
+    let mut all_discovered: Vec<JobSpec> = Vec::new();
+    // Consumed by value — `scans` is never read again after this loop, so
+    // `existing_text` (a full file's content) moves into `Computed` rather
+    // than being cloned.
+    for scan in scans {
+        if scan.file_jobs.is_empty() && scan.discovered.is_empty() {
+            // Nothing to report for this file — e.g. the default file when
+            // every real job targets a different one.
+            continue;
+        }
+        let all_jobs: Vec<JobSpec> = scan
+            .file_jobs
+            .into_iter()
+            .chain(scan.discovered.iter().cloned())
+            .collect();
+        all_discovered.extend(scan.discovered);
+        let desired = wire_jobs_into_with_notes(&scan.existing_text, &all_jobs, notes)?;
+        computed.push(Computed {
+            path: scan.path,
+            existing: scan.existing_text,
+            desired,
+        });
+    }
+
+    Ok((computed, all_discovered))
 }
 
 /// The shared "does the desired content match what's on disk, and if not,
@@ -4068,6 +4112,65 @@ workflows:
             normalize_file_rel(".circleci//release.yml"),
             ".circleci/release.yml"
         );
+    }
+
+    // -- resolve_target_files (jerus-org/jci-audit#236) -----------------------
+
+    #[test]
+    fn resolve_target_files_defaults_to_circleci_config_yml_when_ci_file_is_unset() {
+        let spec = CiFile {
+            file: None,
+            discover_files: Vec::new(),
+            jobs: Vec::new(),
+        };
+        let tmp = tempfile::tempdir().unwrap();
+
+        let (default_file, target_files) =
+            resolve_target_files(&spec, tmp.path(), tmp.path()).unwrap();
+
+        assert_eq!(default_file, ".circleci/config.yml");
+        assert_eq!(target_files, vec![".circleci/config.yml".to_string()]);
+    }
+
+    #[test]
+    fn resolve_target_files_dedupes_discover_files_and_per_job_file_overrides() {
+        let mut job_on_release = base_job();
+        job_on_release.file = Some("./.circleci/release.yml".to_string());
+        let spec = CiFile {
+            file: None,
+            discover_files: vec![".circleci/release.yml".to_string()],
+            jobs: vec![job_on_release],
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".circleci")).unwrap();
+        std::fs::write(tmp.path().join(".circleci/release.yml"), "version: 2.1\n").unwrap();
+
+        let (default_file, target_files) =
+            resolve_target_files(&spec, tmp.path(), tmp.path()).unwrap();
+
+        assert_eq!(default_file, ".circleci/config.yml");
+        assert_eq!(
+            target_files,
+            vec![
+                ".circleci/config.yml".to_string(),
+                ".circleci/release.yml".to_string(),
+            ],
+            "differently-spelled references to release.yml must collapse to one entry"
+        );
+    }
+
+    #[test]
+    fn resolve_target_files_errs_when_a_declared_discover_file_is_missing() {
+        let spec = CiFile {
+            file: None,
+            discover_files: vec![".circleci/release.yml".to_string()],
+            jobs: Vec::new(),
+        };
+        let tmp = tempfile::tempdir().unwrap();
+
+        let err = resolve_target_files(&spec, tmp.path(), tmp.path()).unwrap_err();
+
+        assert!(err.to_string().contains("discover_files"), "got: {err}");
     }
 
     // -- discover_undeclared_jobs / append_discovered_jobs (jerus-org/jci-audit#171) --
