@@ -396,16 +396,16 @@ pub(crate) fn member_manifest_path_from_metadata(
         .with_context(|| format!("package '{package}' not found in the workspace"))
 }
 
-/// Resolve `package`'s own manifest path from the workspace rooted at
-/// `workspace_root` — used by `release.rs`/`verify.rs` to scope the
-/// dependency digest to one crate (jerus-org/jci-audit#62). `--no-deps` is
-/// enough: locating a member's own manifest needs no dependency resolution,
-/// same rationale as [`find_about_toml_paths`]'s identical invocation shape.
-pub(crate) fn resolve_member_manifest_path<R: crate::check::CommandRunner>(
+/// Run `cargo metadata --no-deps` against `workspace_root`'s `Cargo.toml`
+/// and return its stdout — the shared step behind both
+/// [`resolve_member_manifest_path`] and [`find_about_toml_paths`], which
+/// otherwise only differ in which parser consumes this JSON. `--no-deps` is
+/// enough for both: neither needs dependency resolution, only the
+/// workspace's own member list.
+fn run_workspace_metadata_no_deps<R: crate::check::CommandRunner>(
     runner: &R,
     workspace_root: &Path,
-    package: &str,
-) -> Result<PathBuf> {
+) -> Result<String> {
     let manifest = workspace_root.join("Cargo.toml");
     let manifest_str = manifest.to_string_lossy();
     let out = runner.run(
@@ -423,7 +423,19 @@ pub(crate) fn resolve_member_manifest_path<R: crate::check::CommandRunner>(
     if !out.success {
         bail!("cargo metadata failed for '{manifest_str}': {}", out.stderr);
     }
-    member_manifest_path_from_metadata(&out.stdout, package)
+    Ok(out.stdout)
+}
+
+/// Resolve `package`'s own manifest path from the workspace rooted at
+/// `workspace_root` — used by `release.rs`/`verify.rs` to scope the
+/// dependency digest to one crate (jerus-org/jci-audit#62).
+pub(crate) fn resolve_member_manifest_path<R: crate::check::CommandRunner>(
+    runner: &R,
+    workspace_root: &Path,
+    package: &str,
+) -> Result<PathBuf> {
+    let stdout = run_workspace_metadata_no_deps(runner, workspace_root)?;
+    member_manifest_path_from_metadata(&stdout, package)
 }
 
 /// Every workspace member's `about.toml` under `workspace_root` — the single
@@ -433,24 +445,8 @@ pub(crate) fn find_about_toml_paths<R: crate::check::CommandRunner>(
     runner: &R,
     workspace_root: &Path,
 ) -> Result<Vec<PathBuf>> {
-    let manifest = workspace_root.join("Cargo.toml");
-    let manifest_str = manifest.to_string_lossy();
-    let out = runner.run(
-        "cargo",
-        &[
-            "metadata",
-            "--manifest-path",
-            &manifest_str,
-            "--no-deps",
-            "--format-version",
-            "1",
-        ],
-        workspace_root,
-    )?;
-    if !out.success {
-        bail!("cargo metadata failed for '{manifest_str}': {}", out.stderr);
-    }
-    about_toml_paths_from_metadata(&out.stdout)
+    let stdout = run_workspace_metadata_no_deps(runner, workspace_root)?;
+    about_toml_paths_from_metadata(&stdout)
 }
 
 /// The result of syncing one crate's `about.toml`.
@@ -921,6 +917,14 @@ accepted = ["MPL-2.0"]
         }
     }
 
+    fn fail(stderr: &str) -> ToolOutput {
+        ToolOutput {
+            success: false,
+            stdout: String::new(),
+            stderr: stderr.to_string(),
+        }
+    }
+
     fn metadata_json(root_id: &str, dep_name: &str, dep_id: &str, dep_license: &str) -> String {
         format!(
             r#"{{
@@ -1067,6 +1071,16 @@ accepted = ["MPL-2.0"]
         let runner = MockRunner::new(vec![ok(json)]);
         let found = resolve_member_manifest_path(&runner, dir.path(), "crate0").unwrap();
         assert_eq!(found, crate_dir.join("Cargo.toml"));
+    }
+
+    #[test]
+    fn run_workspace_metadata_no_deps_surfaces_cargo_metadata_stderr_on_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = MockRunner::new(vec![fail("no such workspace")]);
+
+        let err = run_workspace_metadata_no_deps(&runner, dir.path()).unwrap_err();
+
+        assert!(err.to_string().contains("no such workspace"), "got: {err}");
     }
 
     #[test]
