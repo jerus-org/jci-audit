@@ -161,18 +161,12 @@ pub(crate) fn crate_metadata<R: CommandRunner>(runner: &R, manifest_path: &Path)
     Ok(out.stdout)
 }
 
-/// Parse `cargo metadata --format-version 1` JSON and compute the license
-/// scope. Split from [`scope_for_crate`] so tests can inject captured JSON
-/// directly rather than mocking a subprocess call.
-pub(crate) fn scope_from_metadata(
-    metadata_json: &str,
-    allow: &BTreeSet<String>,
-    exception_crates: &BTreeSet<String>,
-    policy: DependencyScopePolicy,
-) -> Result<CrateLicenseScope> {
-    let doc: Value =
-        serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
-
+/// Extract `packages`, `resolve.root`, and `resolve.nodes` from an already-
+/// parsed `cargo metadata --format-version 1` document — the shared shape
+/// behind both [`scope_from_metadata`] and [`reachable_dependency_versions`],
+/// which otherwise only diverge in which [`DependencyScopePolicy`] and
+/// post-processing they apply to the resulting reachable set.
+fn parse_metadata_graph(doc: &Value) -> Result<(&[Value], &str, &[Value])> {
     let packages = doc
         .get("packages")
         .and_then(Value::as_array)
@@ -188,6 +182,21 @@ pub(crate) fn scope_from_metadata(
         .get("nodes")
         .and_then(Value::as_array)
         .context("cargo metadata JSON has no 'resolve.nodes'")?;
+    Ok((packages, root, nodes))
+}
+
+/// Parse `cargo metadata --format-version 1` JSON and compute the license
+/// scope. Split from [`scope_for_crate`] so tests can inject captured JSON
+/// directly rather than mocking a subprocess call.
+pub(crate) fn scope_from_metadata(
+    metadata_json: &str,
+    allow: &BTreeSet<String>,
+    exception_crates: &BTreeSet<String>,
+    policy: DependencyScopePolicy,
+) -> Result<CrateLicenseScope> {
+    let doc: Value =
+        serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
+    let (packages, root, nodes) = parse_metadata_graph(&doc)?;
 
     let reachable = reachable_shipped_ids(root, nodes, policy);
 
@@ -246,22 +255,7 @@ pub(crate) fn reachable_dependency_versions(
 ) -> Result<BTreeSet<(String, String, Option<String>)>> {
     let doc: Value =
         serde_json::from_str(metadata_json).context("failed to parse cargo metadata JSON")?;
-
-    let packages = doc
-        .get("packages")
-        .and_then(Value::as_array)
-        .context("cargo metadata JSON has no 'packages' array")?;
-    let resolve = doc.get("resolve").context(
-        "cargo metadata JSON has no 'resolve' (run with --format-version 1, not --no-deps)",
-    )?;
-    let root = resolve
-        .get("root")
-        .and_then(Value::as_str)
-        .context("cargo metadata JSON has no 'resolve.root'")?;
-    let nodes = resolve
-        .get("nodes")
-        .and_then(Value::as_array)
-        .context("cargo metadata JSON has no 'resolve.nodes'")?;
+    let (packages, root, nodes) = parse_metadata_graph(&doc)?;
 
     let reachable = reachable_shipped_ids(root, nodes, DependencyScopePolicy::shipped());
     let id_to_pkg = index_by_id(packages);
@@ -353,6 +347,36 @@ fn edge_ships(dep: &Value, policy: DependencyScopePolicy) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- parse_metadata_graph (jerus-org/jci-audit#238) ----------------------
+
+    #[test]
+    fn parse_metadata_graph_errs_when_packages_is_missing() {
+        let doc: Value = serde_json::from_str(r#"{"resolve":{"root":"a","nodes":[]}}"#).unwrap();
+        let err = parse_metadata_graph(&doc).unwrap_err();
+        assert!(err.to_string().contains("packages"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_metadata_graph_errs_when_resolve_is_missing() {
+        let doc: Value = serde_json::from_str(r#"{"packages":[]}"#).unwrap();
+        let err = parse_metadata_graph(&doc).unwrap_err();
+        assert!(err.to_string().contains("resolve"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_metadata_graph_errs_when_resolve_root_is_missing() {
+        let doc: Value = serde_json::from_str(r#"{"packages":[],"resolve":{"nodes":[]}}"#).unwrap();
+        let err = parse_metadata_graph(&doc).unwrap_err();
+        assert!(err.to_string().contains("resolve.root"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_metadata_graph_errs_when_resolve_nodes_is_missing() {
+        let doc: Value = serde_json::from_str(r#"{"packages":[],"resolve":{"root":"a"}}"#).unwrap();
+        let err = parse_metadata_graph(&doc).unwrap_err();
+        assert!(err.to_string().contains("resolve.nodes"), "got: {err}");
+    }
 
     // Trimmed from a real `cargo metadata --format-version 1 --all-features`
     // run against jci-audit's own crate: real field names/shapes for
