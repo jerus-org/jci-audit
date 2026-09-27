@@ -35,6 +35,7 @@ mod prune;
 mod publish_record;
 mod release;
 mod remote;
+mod runtime;
 mod sync;
 mod verify;
 mod wire_ci;

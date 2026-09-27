@@ -189,12 +189,11 @@ pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
 /// write-capable client (jerus-org/pcu#1059).
 pub(crate) struct PcuAssetWriter {
     writer: pcu_release_assets::ReleaseAssetWriter,
-    // One runtime per instance, built once here and reused by every
-    // `block_on` call below — jerus-org/jci-audit#111. A fresh
-    // `publish_record_with` run makes up to 4 calls (3 uploads + an
-    // optional publish), and used to pay a full runtime setup/teardown on
-    // each one.
-    runtime: tokio::runtime::Runtime,
+    // One runtime per instance, reused by every `block_on` call below —
+    // jerus-org/jci-audit#111. A fresh `publish_record_with` run makes up
+    // to 4 calls (3 uploads + an optional publish), and used to pay a full
+    // runtime setup/teardown on each one.
+    runtime: crate::runtime::SingleThreadRuntime,
 }
 
 impl PcuAssetWriter {
@@ -205,26 +204,21 @@ impl PcuAssetWriter {
     ) -> Result<Self> {
         Ok(Self {
             writer: pcu_release_assets::ReleaseAssetWriter::new(owner, repo, github_token),
-            runtime: tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .context("failed to start an async runtime for the release-asset upload")?,
+            runtime: crate::runtime::SingleThreadRuntime::new("the release-asset upload")?,
         })
-    }
-
-    fn block_on<F: std::future::Future>(&self, fut: F) -> F::Output {
-        self.runtime.block_on(fut)
     }
 }
 
 impl AssetPublisher for PcuAssetWriter {
     fn upload_asset(&self, tag: &str, path: &Path, asset_name: &str) -> Result<()> {
-        self.block_on(self.writer.upload_release_asset(tag, path, asset_name))
+        self.runtime
+            .block_on(self.writer.upload_release_asset(tag, path, asset_name))
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     fn publish_release(&self, tag: &str) -> Result<()> {
-        self.block_on(self.writer.publish_release(tag))
+        self.runtime
+            .block_on(self.writer.publish_release(tag))
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
 }
@@ -253,8 +247,12 @@ mod tests {
     fn pcu_asset_writer_reuses_its_runtime_across_calls() {
         let writer = PcuAssetWriter::new("jerus-org", "jci-audit", "token")
             .expect("runtime construction should not fail");
-        let id1 = writer.block_on(async { tokio::runtime::Handle::current().id() });
-        let id2 = writer.block_on(async { tokio::runtime::Handle::current().id() });
+        let id1 = writer
+            .runtime
+            .block_on(async { tokio::runtime::Handle::current().id() });
+        let id2 = writer
+            .runtime
+            .block_on(async { tokio::runtime::Handle::current().id() });
         assert_eq!(id1, id2, "block_on should reuse one runtime per instance");
     }
 
