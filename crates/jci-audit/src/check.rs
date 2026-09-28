@@ -149,7 +149,23 @@ fn deny_dispatch_args<'a>(deny_args: &[&'a str]) -> Vec<&'a str> {
 /// up from `cwd`, but each crate's `cargo metadata` call runs with *that
 /// crate's own directory* as its working directory (resolved from its
 /// `about.toml`'s path — see [`crate::license_scope::scope_for_crate`]), not
-/// `cwd` itself, since a workspace can hold more than one crate.
+/// `cwd` itself, since a workspace can hold more than one crate. `detail`
+/// controls how much of each tool's own output is echoed alongside the
+/// aggregated report (see [`crate::diagnostics::Detail`]).
+///
+/// Illustrative call shape (this crate has no `[lib]` target, jerus-org/
+/// jci-audit#90, so this snippet is documentation only — it is never
+/// compiled or run by any tool):
+///
+/// ```text
+/// let report = check_with(&SystemRunner, cwd, Detail::Summary, false)?;
+/// if !report.warnings.is_empty() {
+///     // a --deny-warnings caller would exit non-zero here
+/// }
+/// ```
+///
+/// See `tests::about_toml_in_sync_and_resolvable_all_steps_pass` for a
+/// real, currently-passing exercise of this function.
 pub(crate) fn check_with<R: CommandRunner>(
     runner: &R,
     cwd: &Path,
@@ -549,13 +565,12 @@ const NOTICES_TEMPLATE: &str = "about.hbs";
 /// keeps this runnable through the same [`CommandRunner`] abstraction
 /// every other step here uses, with no temp-file bookkeeping. Unlike
 /// [`resolve_license_policy`]'s discarded-output resolution check, this
-/// needs cargo-about to actually render the notices — which used to depend
-/// on the local cargo registry cache, so a CI job comparing bytes would
-/// have flapped on a correct tree. Fixed upstream in cargo-about 0.9.2
-/// (EmbarkStudios/cargo-about#312, closing #309); confirmed deterministic
-/// against a cold cache before this was wired into CI
-/// (jerus-org/jci-audit#36). Cost is opt-in — [`crate::cli`] only calls
-/// this when `--deny-stale-notices` is set.
+/// needs cargo-about to actually render the notices; cargo-about 0.9.2+
+/// (EmbarkStudios/cargo-about#312) renders deterministically even against a
+/// cold cache, so byte comparison here is reliable — confirmed against a
+/// cold cache before wiring into CI (jerus-org/jci-audit#36). Cost is
+/// opt-in — [`crate::cli`] only calls this when `--deny-stale-notices` is
+/// set.
 pub(crate) fn stale_notices<R: CommandRunner>(
     runner: &R,
     about_results: &[sync::AboutSyncResult],
