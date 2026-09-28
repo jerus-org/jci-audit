@@ -242,6 +242,9 @@ pub(crate) struct RecordInputs<'a> {
 /// Deterministic by construction: no timestamps, and no live-audit results (the
 /// live database moves, so including it would break byte-identical re-runs).
 /// `serde_json` maps are sorted, so key order is stable too.
+///
+/// See `tests::record_is_deterministic_and_omits_volatile_data` for a real,
+/// currently-passing exercise of this guarantee.
 pub(crate) fn build_record(inputs: &RecordInputs<'_>) -> Value {
     // The in-force `[[bans.skip]]` exceptions at release time — what was
     // actually known and tolerated, not the full configured list (which may
@@ -321,14 +324,36 @@ fn about_toml_paths_for_package(
 
 /// Run the release gate.
 ///
-/// `db_root` is cargo-deny's `db-path` (it clones/refreshes its checkout
-/// beneath it); `work_dir` holds the ephemeral derived config. The record is
-/// written only when the blocking gate passes — it attests a good release.
-/// `package` scopes the dependency digest and the record's own path to one
-/// crate's reachable graph instead of the whole workspace `Cargo.lock`, for
-/// this org's per-crate multi-crate release sequence (jerus-org/jci-audit#62)
-/// — the advisory policy gate itself (`deny.toml`, cargo-deny) stays
+/// `start` is the directory `deny.toml` discovery walks up from. `db_root`
+/// is cargo-deny's `db-path` (it clones/refreshes its checkout beneath it);
+/// `work_dir` holds the ephemeral derived config. `detail` controls how
+/// much of each tool's own output is echoed alongside the outcome (see
+/// [`crate::diagnostics::Detail`]). The record is written only when the
+/// blocking gate passes — it attests a good release. `package` scopes the
+/// dependency digest and the record's own path to one crate's reachable
+/// graph instead of the whole workspace `Cargo.lock`, for this org's
+/// per-crate multi-crate release sequence (jerus-org/jci-audit#62) — the
+/// advisory policy gate itself (`deny.toml`, cargo-deny) stays
 /// workspace-wide either way, matching cargo-deny's own model.
+///
+/// Illustrative call shape (this crate has no `[lib]` target, jerus-org/
+/// jci-audit#90, so this snippet is documentation only — `ignore` means
+/// rustdoc would skip it even if a doctest runner existed here):
+///
+/// ```rust,ignore
+/// let outcome = release_with(
+///     &SystemRunner,
+///     &workspace_root,
+///     "1.2.0",
+///     &db_root,
+///     &work_dir,
+///     Detail::Summary,
+///     None, // whole-workspace release; Some("crate-name") to scope it
+/// )?;
+/// ```
+///
+/// See `tests::release_writes_the_record_and_locks_the_commit` for a real,
+/// currently-passing exercise of this function.
 pub(crate) fn release_with<R: CommandRunner>(
     runner: &R,
     start: &Path,

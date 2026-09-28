@@ -619,10 +619,8 @@ fn report_wire_ci_outcome(path: &str, with: &str, outcome: wire_ci::WriteOutcome
 
 /// Shells out to nothing — no `preflight::ensure_available` call, unlike
 /// every other subcommand here. Path resolution (the spec file itself, and
-/// `[ci].file` relative to it) lives in `wire_ci::wire_ci_at` — there is
-/// only one path to resolve here now, unlike the two independent ones
-/// before jerus-org/jci-audit#163's design was reworked around a
-/// config-file-is-authoritative model.
+/// `[ci].file` relative to it) is a single path, resolved entirely inside
+/// `wire_ci::wire_ci_at` (jerus-org/jci-audit#163).
 fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
     let cwd = std::env::current_dir()?;
     tracing::info!(check, "wire-ci");
@@ -657,9 +655,9 @@ fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
                 .iter()
                 .map(|(path, _)| wire_ci::display_path(path, &cwd))
                 .collect();
-            // Joined even for the single-file case — renders identically to
-            // the one path it used to be, so existing single-file output is
-            // unaffected (jerus-org/jci-audit#211).
+            // Joined even for the single-file case, so the display format is
+            // the same whether one or several CI files are wired
+            // (jerus-org/jci-audit#211).
             let ci_files_display = ci_file_displays.join(", ");
             let toml_out_of_sync = report_wire_ci_outcome(&toml_display, &ci_files_display, toml);
             let mut ci_out_of_sync = false;
@@ -1286,8 +1284,9 @@ mod tests {
 
     #[test]
     fn commit_and_push_flags_are_gone() {
-        // The record is no longer committed to git (jerus-org/jci-audit#75);
-        // these flags must not silently resurrect as unused no-ops.
+        // The record is written locally only, never committed to git
+        // (jerus-org/jci-audit#75); these flags must stay rejected, not
+        // silently resurrect as unused no-ops.
         for args in [
             vec!["jci-audit", "release-prep", "--commit"],
             vec!["jci-audit", "release-prep", "--push"],
