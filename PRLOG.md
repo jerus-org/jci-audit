@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- diff license set in stale-notices, not text(pr [#267])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.22(pr [#264])
@@ -659,6 +663,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#263]: https://github.com/jerus-org/jci-audit/pull/263
 [#264]: https://github.com/jerus-org/jci-audit/pull/264
 [#265]: https://github.com/jerus-org/jci-audit/pull/265
+[#267]: https://github.com/jerus-org/jci-audit/pull/267
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...HEAD
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...v0.1.21
