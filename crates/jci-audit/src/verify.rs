@@ -121,6 +121,10 @@ pub(crate) fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
 /// `package` field (schema 6+) so a scoping mismatch is reported plainly
 /// rather than surfacing only as a confusing dependency-digest mismatch
 /// (jerus-org/jci-audit#62).
+///
+/// See `tests::v1_record_cannot_verify_policy_but_still_checks_the_lockfile`
+/// for a real, currently-passing exercise showing both `mismatches` and
+/// `unverified` firing together.
 pub(crate) fn compare_inputs(
     record: &Value,
     digests: &CheckoutDigests,
@@ -218,9 +222,34 @@ pub(crate) fn compare_inputs(
     (mismatches, unverified)
 }
 
-/// Re-verify the release named by `version`. `package` must match whatever
+/// Re-verify the release named by `version`. `start` is the directory
+/// `deny.toml` discovery walks up from. `db_root` is cargo-deny's `db-path`
+/// (the shared advisory-db checkout this pins/restores around the gate);
+/// `work_dir` holds the ephemeral derived offline config. `detail` controls
+/// how much of the gate's own output is echoed alongside the outcome (see
+/// [`crate::diagnostics::Detail`]). `package` must match whatever
 /// `release-prep --package` (if any) the record was written under — see
 /// [`compare_inputs`] (jerus-org/jci-audit#62).
+///
+/// Illustrative call shape (this crate has no `[lib]` target, jerus-org/
+/// jci-audit#90, so this snippet is documentation only — `ignore` means
+/// rustdoc would skip it even if a doctest runner existed here):
+///
+/// ```rust,ignore
+/// let outcome = verify_with(
+///     &SystemRunner,
+///     &checkout_root,
+///     "1.2.0",
+///     &db_root,
+///     &work_dir,
+///     Detail::Summary,
+///     None, // whole-workspace release; Some("crate-name") to scope it
+/// )?;
+/// assert!(outcome.is_ok());
+/// ```
+///
+/// See `tests::verify_reproduces_a_good_release` for a real,
+/// currently-passing exercise of this function.
 pub(crate) fn verify_with<R: CommandRunner>(
     runner: &R,
     start: &Path,
@@ -348,13 +377,13 @@ fn compute_checkout_digests<R: CommandRunner>(
     })
 }
 
-/// Pin the shared advisory-db checkout to `db_commit`, fetching first (only
-/// unshallowing if the clone is actually shallow — git rejects `--unshallow`
-/// outright on a complete repository, and asking for it unconditionally
-/// broke every run after the first clone completed). Returns the checkout's
-/// path (as a string, for reuse in further `git -C` calls) and the commit it
-/// was on before, so the caller can restore it via [`restore_advisory_db`]
-/// once the gate no longer needs the pin.
+/// Pin the shared advisory-db checkout to `db_commit`, fetching first —
+/// unshallowing only when the clone is actually shallow (checked via
+/// `--is-shallow-repository`), since git rejects `--unshallow` on a
+/// complete repository. Returns the checkout's path (as a string, for
+/// reuse in further `git -C` calls) and the commit it was on before, so the
+/// caller can restore it via [`restore_advisory_db`] once the gate no
+/// longer needs the pin.
 fn pin_advisory_db<R: CommandRunner>(
     runner: &R,
     db_root: &Path,
@@ -1168,11 +1197,9 @@ checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
     #[test]
     fn a_complete_checkout_is_fetched_without_unshallow() {
-        // git refuses --unshallow once the clone is complete, and cargo-deny's
-        // checkout becomes complete the first time verify unshallows it. Asking
-        // for it unconditionally meant every later run fetched nothing, so a
-        // record naming a newer commit could not be verified at all — which is
-        // every release after the first.
+        // A complete clone must be fetched without --unshallow (git rejects
+        // it); only a genuinely shallow clone needs unshallowing to reach a
+        // historical commit.
         let rec = record_v2(
             &lockfile_digest(LOCK.as_bytes()),
             &lockfile_digest(DENY.as_bytes()),
