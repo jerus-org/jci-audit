@@ -88,7 +88,7 @@ pub(crate) fn load_record(path: &Path) -> Result<Value> {
 }
 
 /// Walk `path` through nested `serde_json::Value::get` calls, erroring with
-/// "release record has no '<path>'" the moment a segment is missing — the
+/// `"release record has no '<path>'"` the moment a segment is missing — the
 /// shared step behind both [`field`] (string leaf) and
 /// [`crate::remote`]'s `bool_field` (boolean leaf), which otherwise only
 /// diverge in how they coerce the leaf value.
