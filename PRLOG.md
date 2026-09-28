@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - docs-current-tense comments in check.rs(pr [#260])
+- docs-current-tense comments in wire_ci.rs(pr [#261])
 
 ## [0.1.21] - 2026-09-28
 
@@ -644,6 +645,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#247]: https://github.com/jerus-org/jci-audit/pull/247
 [#248]: https://github.com/jerus-org/jci-audit/pull/248
 [#260]: https://github.com/jerus-org/jci-audit/pull/260
+[#261]: https://github.com/jerus-org/jci-audit/pull/261
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...HEAD
 [0.1.21]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20
