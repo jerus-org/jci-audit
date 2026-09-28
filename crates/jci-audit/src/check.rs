@@ -258,11 +258,23 @@ pub(crate) fn check_with<R: CommandRunner>(
 
             if deny_stale_notices {
                 println!("$ third-party license notices");
-                let stale = stale_notices(runner, &about_results);
+                let notices = stale_notices(runner, &about_results);
                 steps.push(CheckStep {
                     label: "third-party license notices".to_string(),
-                    success: stale.is_empty(),
+                    success: notices.failing.is_empty(),
                 });
+                let reduced_count: usize = notices
+                    .reduced
+                    .iter()
+                    .map(|(_, removed)| removed.len())
+                    .sum();
+                if reduced_count > 0 {
+                    warnings.push((
+                        crate::diagnostics::Severity::Warning,
+                        "license-set-reduced".to_string(),
+                        reduced_count,
+                    ));
+                }
             }
         }
         Err(e) => {
@@ -552,12 +564,73 @@ const THIRD_PARTY_NOTICES: &str = "THIRD-PARTY-LICENSES.md";
 /// The handlebars template `cargo about generate` renders against.
 const NOTICES_TEMPLATE: &str = "about.hbs";
 
-/// Names every crate in `about_results` whose committed
-/// [`THIRD_PARTY_NOTICES`] no longer matches a fresh `cargo about generate`
-/// render (empty when every crate's notices are current). Skips a crate
-/// that doesn't carry both [`NOTICES_TEMPLATE`] and [`THIRD_PARTY_NOTICES`]
-/// — not every crate in a workspace renders notices, and a crate with
-/// neither has nothing this check can compare.
+/// Heading `about.hbs` (`crates/*/about.hbs`) renders the license-name
+/// summary under, e.g. `- **Apache License 2.0** — 193 crate(s)`.
+const OVERVIEW_HEADING: &str = "## Overview";
+
+/// The set of license names under a rendered notices file's
+/// [`OVERVIEW_HEADING`] section, or `None` if the heading isn't present or
+/// yields no entries — the signal [`stale_notices`] uses to fall back to a
+/// full-text comparison rather than silently treating an unparseable file
+/// as license-unchanged.
+fn overview_licenses(text: &str) -> Option<std::collections::BTreeSet<String>> {
+    let after_heading = text.split_once(OVERVIEW_HEADING)?.1;
+    let section = after_heading.split("\n## ").next().unwrap_or(after_heading);
+    let names: std::collections::BTreeSet<String> = section
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let rest = line.strip_prefix("- **")?;
+            let (name, _) = rest.split_once("**")?;
+            Some(name.to_string())
+        })
+        .collect();
+    if names.is_empty() { None } else { Some(names) }
+}
+
+/// [`stale_notices`]'s verdict for one crate's committed
+/// [`THIRD_PARTY_NOTICES`] against a fresh render.
+enum NoticesVerdict {
+    /// No difference this check cares about — a version-only bump renders
+    /// different "Used by" text but the same license overview.
+    Current,
+    /// The overview's license set shrank with nothing added — non-blocking.
+    Reduced(Vec<String>),
+    /// The license set gained an entry (new or substituted), or the
+    /// overview couldn't be parsed on either side, so the full text was
+    /// compared and differs — blocking, same as this check has always been.
+    Stale,
+}
+
+/// The outcome of [`stale_notices`] across every crate in `about_results`:
+/// which crates need `just licenses` run and committed ([`Self::failing`],
+/// blocking), and which lost a license from their overview without gaining
+/// one ([`Self::reduced`], a non-blocking early warning — see
+/// jerus-org/jci-audit#266).
+#[derive(Default)]
+pub(crate) struct NoticesOutcome {
+    pub(crate) failing: Vec<String>,
+    pub(crate) reduced: Vec<(String, Vec<String>)>,
+}
+
+/// Compares every crate in `about_results`' committed [`THIRD_PARTY_NOTICES`]
+/// against a fresh `cargo about generate` render, classifying each crate's
+/// [`NoticesVerdict`] into a [`NoticesOutcome`]. Skips a crate that doesn't
+/// carry both [`NOTICES_TEMPLATE`] and [`THIRD_PARTY_NOTICES`] — not every
+/// crate in a workspace renders notices, and a crate with neither has
+/// nothing this check can compare.
+///
+/// This check exists to give early warning that a dependency's *licensing*
+/// changed — a license substituted, or a new one entered the graph — not to
+/// keep the file byte-current (that's `just licenses` at release time). So
+/// it compares the rendered [`OVERVIEW_HEADING`] section's license names,
+/// not the full text: a version-only dependency bump changes "Used by"
+/// lines without touching which licenses appear, and must not fail this
+/// check (jerus-org/jci-audit#266). A license disappearing from the
+/// overview is reported but doesn't block; a license appearing — whether
+/// new or substituted — does, as does either side failing to parse an
+/// overview at all (falls back to the original full-text comparison, so a
+/// future `about.hbs` template change can't silently defeat this check).
 ///
 /// Compares against captured stdout rather than `--output-file`: confirmed
 /// byte-identical to `--output-file` modulo one trailing newline `cargo
@@ -573,8 +646,8 @@ const NOTICES_TEMPLATE: &str = "about.hbs";
 pub(crate) fn stale_notices<R: CommandRunner>(
     runner: &R,
     about_results: &[sync::AboutSyncResult],
-) -> Vec<String> {
-    let mut stale = Vec::new();
+) -> NoticesOutcome {
+    let mut outcome = NoticesOutcome::default();
     for result in about_results {
         let Some(crate_dir) = result.about_toml_path.parent() else {
             continue;
@@ -589,7 +662,7 @@ pub(crate) fn stale_notices<R: CommandRunner>(
                 "  {}: failed to read {THIRD_PARTY_NOTICES}",
                 crate_dir.display()
             );
-            stale.push(format!(
+            outcome.failing.push(format!(
                 "{}: failed to read {THIRD_PARTY_NOTICES}",
                 crate_dir.display()
             ));
@@ -601,15 +674,46 @@ pub(crate) fn stale_notices<R: CommandRunner>(
             crate_dir,
         ) {
             Ok(rendered) if rendered.success => {
-                if rendered.stdout.trim_end_matches('\n') != existing.trim_end_matches('\n') {
-                    println!(
-                        "  {}",
-                        crate::diagnostics::action_tag(format!(
-                            "{}/{THIRD_PARTY_NOTICES} does not match the current dependency graph — run 'just licenses' and commit the result",
-                            crate_dir.display()
-                        ))
-                    );
-                    stale.push(crate_dir.display().to_string());
+                let verdict =
+                    if rendered.stdout.trim_end_matches('\n') == existing.trim_end_matches('\n') {
+                        NoticesVerdict::Current
+                    } else {
+                        match (
+                            overview_licenses(&existing),
+                            overview_licenses(&rendered.stdout),
+                        ) {
+                            (Some(old), Some(new)) if old == new => NoticesVerdict::Current,
+                            (Some(old), Some(new)) if new.is_subset(&old) => {
+                                NoticesVerdict::Reduced(old.difference(&new).cloned().collect())
+                            }
+                            _ => NoticesVerdict::Stale,
+                        }
+                    };
+                match verdict {
+                    NoticesVerdict::Current => {}
+                    NoticesVerdict::Reduced(removed) => {
+                        println!(
+                            "  {}",
+                            crate::diagnostics::warn_tag(format!(
+                                "{}/{THIRD_PARTY_NOTICES}: license(s) no longer used: {} — run 'just licenses' and commit the result",
+                                crate_dir.display(),
+                                removed.join(", ")
+                            ))
+                        );
+                        outcome
+                            .reduced
+                            .push((crate_dir.display().to_string(), removed));
+                    }
+                    NoticesVerdict::Stale => {
+                        println!(
+                            "  {}",
+                            crate::diagnostics::action_tag(format!(
+                                "{}/{THIRD_PARTY_NOTICES} does not match the current dependency graph — run 'just licenses' and commit the result",
+                                crate_dir.display()
+                            ))
+                        );
+                        outcome.failing.push(crate_dir.display().to_string());
+                    }
                 }
             }
             Ok(rendered) => {
@@ -617,7 +721,7 @@ pub(crate) fn stale_notices<R: CommandRunner>(
                     "  {}: cargo-about could not resolve licences",
                     crate_dir.display()
                 );
-                stale.push(format!(
+                outcome.failing.push(format!(
                     "{}: {}",
                     crate_dir.display(),
                     rendered.stderr.trim()
@@ -625,11 +729,13 @@ pub(crate) fn stale_notices<R: CommandRunner>(
             }
             Err(e) => {
                 println!("  {}: {e:#}", crate_dir.display());
-                stale.push(format!("{}: {e:#}", crate_dir.display()));
+                outcome
+                    .failing
+                    .push(format!("{}: {e:#}", crate_dir.display()));
             }
         }
     }
-    stale
+    outcome
 }
 
 /// Print a tool's output under a labelled command header, returning its warnings.
@@ -1239,6 +1345,175 @@ mod tests {
             "a trailing-newline-only difference must not count as stale: {:?}",
             report.steps
         );
+    }
+
+    const OVERVIEW_APACHE_MIT_OLD: &str = "# Notices\n\n\
+## Overview\n\n\
+- **Apache License 2.0** — 193 crate(s)\n\
+- **MIT License** — 42 crate(s)\n\n\
+## Apache License 2.0\n\n\
+Used by:\n\n\
+- foo 0.1.3\n";
+
+    const OVERVIEW_APACHE_MIT_NEW_VERSION_BUMP: &str = "# Notices\n\n\
+## Overview\n\n\
+- **Apache License 2.0** — 193 crate(s)\n\
+- **MIT License** — 42 crate(s)\n\n\
+## Apache License 2.0\n\n\
+Used by:\n\n\
+- foo 0.1.4\n";
+
+    const OVERVIEW_APACHE_ONLY: &str = "# Notices\n\n\
+## Overview\n\n\
+- **Apache License 2.0** — 193 crate(s)\n\n\
+## Apache License 2.0\n\n\
+Used by:\n\n\
+- foo 0.1.4\n";
+
+    const OVERVIEW_APACHE_PLUS_BSD: &str = "# Notices\n\n\
+## Overview\n\n\
+- **Apache License 2.0** — 193 crate(s)\n\
+- **BSD 3-Clause \"New\" or \"Revised\" License** — 1 crate(s)\n\n\
+## Apache License 2.0\n\n\
+Used by:\n\n\
+- foo 0.1.4\n";
+
+    #[test]
+    fn deny_stale_notices_passes_on_version_only_bump_with_unchanged_overview() {
+        let (dir, crate_dir) = workspace_with_notices(OVERVIEW_APACHE_MIT_OLD);
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: OVERVIEW_APACHE_MIT_NEW_VERSION_BUMP.to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(
+            report.success(),
+            "a version-only bump with an unchanged license overview must pass: {:?}",
+            report.steps
+        );
+        assert!(
+            report.warnings.is_empty(),
+            "an unchanged overview must not warn either: {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn deny_stale_notices_warns_when_a_license_drops_out_of_the_overview() {
+        let (dir, crate_dir) = workspace_with_notices(OVERVIEW_APACHE_MIT_OLD);
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: OVERVIEW_APACHE_ONLY.to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(
+            report.success(),
+            "a shrunk license set must warn, not fail: {:?}",
+            report.steps
+        );
+        assert!(
+            report.warnings.iter().any(|(sev, code, _)| *sev
+                == crate::diagnostics::Severity::Warning
+                && code == "license-set-reduced"),
+            "expected a license-set-reduced warning: {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn deny_stale_notices_fails_when_a_new_license_enters_the_overview() {
+        let (dir, crate_dir) = workspace_with_notices(OVERVIEW_APACHE_ONLY);
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: OVERVIEW_APACHE_MIT_OLD.to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(!report.success());
+        assert_eq!(report.failures(), vec!["third-party license notices"]);
+    }
+
+    #[test]
+    fn deny_stale_notices_fails_when_a_license_is_substituted() {
+        let (dir, crate_dir) = workspace_with_notices(OVERVIEW_APACHE_ONLY);
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: OVERVIEW_APACHE_PLUS_BSD.to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(!report.success());
+        assert_eq!(report.failures(), vec!["third-party license notices"]);
     }
 
     #[test]
