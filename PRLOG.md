@@ -14,6 +14,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - refactor-dedupe cargo-metadata --no-deps call(pr [#244])
 - refactor-dedupe cargo-metadata graph extraction(pr [#245])
 - refactor-dedupe JSON-path-walk logic(pr [#246])
+- refactor-split verify_with into named phases(pr [#247])
 
 ### Fixed
 
@@ -633,6 +634,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#244]: https://github.com/jerus-org/jci-audit/pull/244
 [#245]: https://github.com/jerus-org/jci-audit/pull/245
 [#246]: https://github.com/jerus-org/jci-audit/pull/246
+[#247]: https://github.com/jerus-org/jci-audit/pull/247
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...HEAD
 [0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
