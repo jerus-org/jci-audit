@@ -360,11 +360,62 @@ pub(crate) fn release_with<R: CommandRunner>(
         None => dependency_set_digest(&lock_text)?,
     };
 
-    // License-policy checks, before the expensive advisory-db refresh below —
-    // the same "catch it before the expensive part" pattern this org uses for
-    // release version calculation. Pure derivation first (cheap, no
-    // cargo-about needed): does every crate's about.toml still match
-    // deny.toml's policy?
+    let about_toml_sha256 =
+        validate_license_policy(runner, start, &root, package_manifest.as_deref())?;
+
+    // Derived config: only db-path is overridden, so the repo's deny.toml stays
+    // the single source of truth for every actual policy decision.
+    let deny_toml = std::fs::read_to_string(&deny_path)
+        .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
+    let deny_toml_sha256 = lockfile_digest(deny_toml.as_bytes());
+
+    let gate = run_deny_gate(runner, &deny_toml, db_root, work_dir, &root, detail)?;
+
+    let live_findings = run_live_currency_check(runner, &lockfile, &root)?;
+
+    gate.ensure_passed()?;
+
+    let record_inputs = RecordInputs {
+        version,
+        db_commit: &gate.db_commit,
+        deny_version: &gate.deny_version,
+        audit_version: &gate.audit_version,
+        dependencies_sha256: &dependencies_sha256,
+        deny_toml_sha256: &deny_toml_sha256,
+        about_toml_sha256: about_toml_sha256.as_deref(),
+        accepted_duplicates: &gate.accepted_warnings.in_force,
+        package,
+    };
+    let path = write_release_record(&root, &record_inputs)?;
+
+    Ok(ReleaseOutcome {
+        record_path: path,
+        warnings: gate.warnings,
+        db_commit: gate.db_commit,
+        deny_passed: gate.deny_passed,
+        live_findings,
+        accepted_warnings: gate.accepted_warnings,
+    })
+}
+
+/// About.toml drift check (bail) and license-resolvability check (bail),
+/// then the scoped about.toml digest — pure derivation first (cheap, no
+/// cargo-about needed): does every crate's about.toml still match
+/// deny.toml's policy? Then policy resolvability: can cargo-about actually
+/// attribute every reachable dependency's license, not just is about.toml
+/// internally consistent with deny.toml? Shared with `check`'s identical
+/// PR-time step. Aggregated across every crate before bailing, matching the
+/// drift check — one release attempt should surface every unresolvable
+/// crate, not just whichever happened to sort first. Callers run this
+/// before [`run_deny_gate`]'s expensive advisory-db refresh — the same
+/// "catch it before the expensive part" pattern this org uses for release
+/// version calculation.
+fn validate_license_policy<R: CommandRunner>(
+    runner: &R,
+    start: &Path,
+    root: &Path,
+    package_manifest: Option<&Path>,
+) -> Result<Option<String>> {
     let about_sync = sync_about_toml_at(runner, start, true)?;
     let drifted: Vec<String> = about_sync
         .iter()
@@ -379,12 +430,6 @@ pub(crate) fn release_with<R: CommandRunner>(
         );
     }
 
-    // Then policy resolvability: can cargo-about actually attribute every
-    // reachable dependency's license, not just is about.toml internally
-    // consistent with deny.toml? Shared with `check`'s identical PR-time
-    // step. Aggregated across every crate before bailing, matching the drift
-    // check above — one release attempt should surface every unresolvable
-    // crate, not just whichever happened to sort first.
     let unresolved = crate::check::resolve_license_policy(runner, &about_sync);
     if !unresolved.is_empty() {
         bail!(
@@ -395,16 +440,53 @@ pub(crate) fn release_with<R: CommandRunner>(
         );
     }
     // Scoped to just the released crate's own about.toml when --package is
-    // given — see the comment on `package_manifest` above.
-    let about_toml_paths = about_toml_paths_for_package(&about_sync, package_manifest.as_deref());
-    let about_toml_sha256 = crate::sync::about_toml_digest_from_paths(&about_toml_paths, &root)?;
+    // given.
+    let about_toml_paths = about_toml_paths_for_package(&about_sync, package_manifest);
+    crate::sync::about_toml_digest_from_paths(&about_toml_paths, root)
+}
 
-    // Derived config: only db-path is overridden, so the repo's deny.toml stays
-    // the single source of truth for every actual policy decision.
-    let deny_toml = std::fs::read_to_string(&deny_path)
-        .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
-    let deny_toml_sha256 = lockfile_digest(deny_toml.as_bytes());
-    let derived = with_db_path(&deny_toml, db_root)?;
+/// Outcome of the blocking cargo-deny gate run, plus everything discovered
+/// alongside it — the advisory-db commit it ran against and both tools'
+/// versions, for the release record.
+struct DenyGateOutcome {
+    deny_passed: bool,
+    warnings: Vec<crate::diagnostics::WarningCount>,
+    accepted_warnings: crate::exceptions::AcceptedWarnings,
+    db_commit: String,
+    deny_version: String,
+    audit_version: String,
+}
+
+impl DenyGateOutcome {
+    /// The one required checkpoint between running the gate and writing a
+    /// release record: `deny_passed` alone is a plain `bool` a caller could
+    /// silently forget to inspect, so this is the actual call site every
+    /// caller reaches for instead — a `Result` an unused return triggers
+    /// `#[must_use]` on, matching the "record only reaches disk once the
+    /// gate is proven to have passed" invariant this type exists to hold.
+    fn ensure_passed(&self) -> Result<()> {
+        if self.deny_passed {
+            Ok(())
+        } else {
+            bail!("release gate failed: cargo-deny reported findings (no record written)")
+        }
+    }
+}
+
+/// Derive the ephemeral db-path-overridden config, run the blocking
+/// `cargo deny check` against it (fetching is allowed here: refreshing the
+/// local copy is what makes the snapshot current at release time), then
+/// (after the gate, so it reflects the refreshed copy) discover and read
+/// the advisory-db commit and capture both tools' versions.
+fn run_deny_gate<R: CommandRunner>(
+    runner: &R,
+    deny_toml: &str,
+    db_root: &Path,
+    work_dir: &Path,
+    root: &Path,
+    detail: crate::diagnostics::Detail,
+) -> Result<DenyGateOutcome> {
+    let derived = with_db_path(deny_toml, db_root)?;
     std::fs::create_dir_all(work_dir)
         .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
     let config_path = work_dir.join("deny.toml");
@@ -412,8 +494,6 @@ pub(crate) fn release_with<R: CommandRunner>(
         .with_context(|| format!("failed to write '{}'", config_path.display()))?;
     tracing::info!(db_path = %db_root.display(), "release gate: cargo-deny against the local advisory-db copy");
 
-    // Blocking gate. Fetching is allowed here: refreshing the local copy is what
-    // makes the snapshot current at release time.
     let mut deny_args = vec![
         "deny",
         "--config",
@@ -421,13 +501,14 @@ pub(crate) fn release_with<R: CommandRunner>(
         "check",
     ];
     deny_args.extend_from_slice(DENY_CHECKS);
-    let deny = runner.run("cargo", &deny_args, &root)?;
+    let deny = runner.run("cargo", &deny_args, root)?;
     let warnings = crate::diagnostics::emit(&deny.stdout, &deny.stderr, detail);
     // Visibility on top of deny.toml's own [[bans.skip]] exceptions — cargo-deny
     // itself is silent about one that's actively suppressing a real duplicate.
-    // Read from the same `deny_toml` string already digested above, not the
-    // derived/ephemeral config, since only db-path differs between them.
-    let configured_skips = crate::exceptions::extract_bans_skips(&deny_toml)?;
+    // Read from the same `deny_toml` string already digested by the caller,
+    // not the derived/ephemeral config, since only db-path differs between
+    // them.
+    let configured_skips = crate::exceptions::extract_bans_skips(deny_toml)?;
     let accepted_warnings = crate::exceptions::accepted_warnings(configured_skips, &deny.stderr);
 
     // Read the commit AFTER the gate, so it reflects the refreshed copy.
@@ -440,7 +521,7 @@ pub(crate) fn release_with<R: CommandRunner>(
             "rev-parse",
             "HEAD",
         ],
-        &root,
+        root,
     )?;
     if !rev.success {
         bail!(
@@ -458,11 +539,27 @@ pub(crate) fn release_with<R: CommandRunner>(
     // `cargo <sub>` dispatch every other invocation here uses — so an auditor
     // reproducing the release by running the exact command jci-audit ran gets
     // a version string that matches the record byte for byte.
-    let deny_version = first_line(&runner.run("cargo", &["deny", "--version"], &root)?.stdout);
-    let audit_version = first_line(&runner.run("cargo", &["audit", "--version"], &root)?.stdout);
+    let deny_version = first_line(&runner.run("cargo", &["deny", "--version"], root)?.stdout);
+    let audit_version = first_line(&runner.run("cargo", &["audit", "--version"], root)?.stdout);
 
-    // Currency check — informational only. PRs already gate on the live audit, so
-    // a fresh advisory here is a warning, not a release blocker.
+    Ok(DenyGateOutcome {
+        deny_passed: deny.success,
+        warnings,
+        accepted_warnings,
+        db_commit,
+        deny_version,
+        audit_version,
+    })
+}
+
+/// The non-blocking, informational live-audit currency check — PRs already
+/// gate on the live audit, so a fresh advisory here is a warning, not a
+/// release blocker.
+fn run_live_currency_check<R: CommandRunner>(
+    runner: &R,
+    lockfile: &Path,
+    root: &Path,
+) -> Result<Vec<String>> {
     let live = runner.run(
         "cargo",
         &[
@@ -471,41 +568,23 @@ pub(crate) fn release_with<R: CommandRunner>(
             lockfile.to_str().unwrap_or_default(),
             "--json",
         ],
-        &root,
+        root,
     )?;
-    let live_findings = crate::prune::parse_firing_ids(&live.stdout).unwrap_or_default();
+    Ok(crate::prune::parse_firing_ids(&live.stdout).unwrap_or_default())
+}
 
-    if !deny.success {
-        bail!("release gate failed: cargo-deny reported findings (no record written)");
-    }
-
-    let record = build_record(&RecordInputs {
-        version,
-        db_commit: &db_commit,
-        deny_version: &deny_version,
-        audit_version: &audit_version,
-        dependencies_sha256: &dependencies_sha256,
-        deny_toml_sha256: &deny_toml_sha256,
-        about_toml_sha256: about_toml_sha256.as_deref(),
-        accepted_duplicates: &accepted_warnings.in_force,
-        package,
-    });
-    let path = record_path(&root, version, package);
+/// Build the release record from `inputs` and write it to its
+/// version/package-scoped path, creating the parent directory first.
+fn write_release_record(root: &Path, inputs: &RecordInputs<'_>) -> Result<PathBuf> {
+    let record = build_record(inputs);
+    let path = record_path(root, inputs.version, inputs.package);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create '{}'", parent.display()))?;
     }
     std::fs::write(&path, render_record(&record)?)
         .with_context(|| format!("failed to write '{}'", path.display()))?;
-
-    Ok(ReleaseOutcome {
-        record_path: path,
-        warnings,
-        db_commit,
-        deny_passed: deny.success,
-        live_findings,
-        accepted_warnings,
-    })
+    Ok(path)
 }
 
 /// Ephemeral directory for the derived cargo-deny config. Process-scoped so
