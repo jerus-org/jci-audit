@@ -66,7 +66,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
 use crate::check::CommandRunner;
-use crate::verify::field;
+use crate::verify::{field, walk};
 
 /// Where the remote fetch path gets its bytes from — a published release's
 /// named assets. A trait so [`verify_remote_with`] is testable without real
@@ -140,13 +140,8 @@ pub(crate) struct RemoteVerifyOutcome {
 /// freshly re-run gate — this mode never re-runs the gate, so a wrong
 /// default here would be the final, unchecked answer. Fail closed instead.
 fn bool_field(record: &Value, path: &[&str]) -> Result<bool> {
-    let mut cur = record;
-    for key in path {
-        cur = cur
-            .get(key)
-            .with_context(|| format!("release record has no '{}'", path.join(".")))?;
-    }
-    cur.as_bool()
+    walk(record, path)?
+        .as_bool()
         .with_context(|| format!("release record '{}' is not a boolean", path.join(".")))
 }
 

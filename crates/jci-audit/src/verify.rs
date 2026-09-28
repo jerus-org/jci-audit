@@ -87,18 +87,28 @@ pub(crate) fn load_record(path: &Path) -> Result<Value> {
         .with_context(|| format!("failed to parse release record '{}'", path.display()))
 }
 
-/// A required string field, erroring rather than silently verifying nothing.
-///
-/// Shared with [`crate::remote`], which re-verifies the same record schema
-/// from a fetched copy rather than a checked-out one.
-pub(crate) fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
+/// Walk `path` through nested `serde_json::Value::get` calls, erroring with
+/// "release record has no '<path>'" the moment a segment is missing — the
+/// shared step behind both [`field`] (string leaf) and
+/// [`crate::remote`]'s `bool_field` (boolean leaf), which otherwise only
+/// diverge in how they coerce the leaf value.
+pub(crate) fn walk<'a>(record: &'a Value, path: &[&str]) -> Result<&'a Value> {
     let mut cur = record;
     for key in path {
         cur = cur
             .get(key)
             .with_context(|| format!("release record has no '{}'", path.join(".")))?;
     }
-    cur.as_str()
+    Ok(cur)
+}
+
+/// A required string field, erroring rather than silently verifying nothing.
+///
+/// Shared with [`crate::remote`], which re-verifies the same record schema
+/// from a fetched copy rather than a checked-out one.
+pub(crate) fn field<'a>(record: &'a Value, path: &[&str]) -> Result<&'a str> {
+    walk(record, path)?
+        .as_str()
         .with_context(|| format!("release record '{}' is not a string", path.join(".")))
 }
 
@@ -406,6 +416,26 @@ mod tests {
 
     use super::*;
     use crate::check::ToolOutput;
+
+    // -- walk (jerus-org/jci-audit#239) ---------------------------------------
+
+    #[test]
+    fn walk_returns_the_value_at_a_nested_path() {
+        let record = json!({"checks": {"deny": {"passed": true}}});
+
+        let value = walk(&record, &["checks", "deny", "passed"]).unwrap();
+
+        assert_eq!(value, &json!(true));
+    }
+
+    #[test]
+    fn walk_errs_naming_the_full_path_when_a_segment_is_missing() {
+        let record = json!({"checks": {}});
+
+        let err = walk(&record, &["checks", "deny", "passed"]).unwrap_err();
+
+        assert!(err.to_string().contains("checks.deny.passed"), "got: {err}");
+    }
 
     /// Current schema: also digests each crate's about.toml.
     fn record_v4(deps: &str, policy: &str, about: Option<&str>) -> Value {
