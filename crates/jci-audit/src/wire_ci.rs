@@ -974,6 +974,11 @@ fn render_new_job_block(job: &JobSpec) -> Vec<String> {
 /// inline (`requires: [a, b]`) when non-empty — this tool never emits the
 /// block-list form itself, only recognises it on an existing job it's not
 /// touching.
+///
+/// See `tests::render_new_job_block_with_name_params_and_requires` for the
+/// base field ordering, or
+/// `tests::render_new_job_block_orders_all_new_fields_together` for the
+/// full field set.
 fn render_job_body(job: &JobSpec, existing_name: Option<&str>) -> Vec<String> {
     let orb_job = job.orb_job.as_deref().unwrap_or_default();
     let entry_indent = " ".repeat(JOB_ENTRY_INDENT);
@@ -1422,6 +1427,9 @@ fn diff_store_artifacts_path_note(
 /// A job's own identity (`name:`) is preserved when toml doesn't declare
 /// one, never cleared — unlike a custom param, it may be referenced by
 /// other jobs' `requires:` elsewhere in the workflow.
+///
+/// See `tests::wire_jobs_into_resyncs_a_marked_entrys_drifted_params` for a
+/// real, currently-passing exercise of this function.
 fn resync_job_entry(
     lines: &mut Vec<String>,
     job: &JobSpec,
@@ -1590,15 +1598,16 @@ fn is_declared_job(workflow: &str, name: &str, all_jobs: &[JobSpec]) -> bool {
 /// Every other job in `all_jobs` (same workflow) whose own `required_by`
 /// names `job` — the effective names to merge into `job`'s own desired
 /// `requires:` so the relationship survives even when `job` is itself
-/// resynced on its own turn, regardless of declaration order. Without this,
-/// a required-by contribution applied via the old in-place
-/// [`append_requires`] mechanism would be silently discarded the moment its
-/// target's own `[[ci.jobs]]` entry is next resynced — resync's "toml is a
-/// full mirror" rule (jerus-org/jci-audit#171) only knows about `job`'s own
-/// declared `requires`, not a sibling job's `required_by`, unless it's
-/// folded in here first. Only relevant when the *source* names a target
-/// that's itself declared — [`wire_one_job`] keeps using the in-place
-/// append for a target that's some other, unmanaged job in the config
+/// resynced on its own turn, regardless of declaration order. A sibling
+/// job's `required_by` must be folded into `job`'s own desired `requires:`
+/// here, not left to [`append_requires`]'s in-place edit alone —
+/// `append_requires` only ever mutates an *external*, undeclared target in
+/// place, so a target that is itself a declared `[[ci.jobs]]` entry would
+/// otherwise see its own resync (which treats toml as a full mirror,
+/// jerus-org/jci-audit#171) discard that contribution the next time it
+/// runs. Only relevant when the *source* names a target that's itself
+/// declared — [`wire_one_job`] keeps using the in-place append for a
+/// target that's some other, unmanaged job in the config
 /// (never resynced, so there's nothing to discard it).
 fn required_by_contributors(job: &JobSpec, all_jobs: &[JobSpec]) -> Vec<String> {
     let Some(workflow) = job.workflow.as_deref() else {
@@ -1619,6 +1628,11 @@ fn required_by_contributors(job: &JobSpec, all_jobs: &[JobSpec]) -> Vec<String> 
 /// `required_by` targets (bail with zero mutation to `lines` on any
 /// failure); skip-or-insert the `orbs:` pin; skip-or-insert or resync the
 /// job entry; apply each validated external `required_by` append.
+///
+/// Has no direct unit test of its own — exercised indirectly through
+/// `wire_jobs_into`/[`wire_jobs_into_with_notes`]. See
+/// `tests::wire_jobs_into_resyncs_a_marked_entrys_drifted_params` for the
+/// closest realistic single-job exercise of its resync path.
 fn wire_one_job(
     lines: &mut Vec<String>,
     job: &JobSpec,
@@ -1772,6 +1786,9 @@ fn normalize_file_rel(rel: &str) -> String {
 /// keeping the file it was found in explicit rather than silently
 /// defaulting; the default file itself needs no per-job override since
 /// every job already inherits it.
+///
+/// See `tests::discover_undeclared_jobs_synthesizes_a_job_matching_the_real_entry`
+/// for a real, currently-passing exercise of this function.
 fn discover_undeclared_jobs(
     lines: &[String],
     declared: &[JobSpec],
@@ -1934,7 +1951,24 @@ struct Computed {
 /// [`discover_undeclared_jobs`]). Only when there's truly nothing on either
 /// side — no declared jobs, nothing discoverable — does this fall back to
 /// scaffolding the one canned example. Under `check`, nothing is ever
-/// written, on any path.
+/// written, on any path. `start` is the directory `deny.toml`/
+/// `jci-audit.toml` discovery begins from, and the root every reported path
+/// is shown relative to (see [`display_path`]).
+///
+/// Illustrative call shape (this crate has no `[lib]` target, jerus-org/
+/// jci-audit#90, so this snippet is documentation only — `ignore` means
+/// rustdoc would skip it even if a doctest runner existed here):
+///
+/// ```rust,ignore
+/// // `wire-ci`: apply, writing jci-audit.toml/the CI file if either drifted.
+/// let outcome = wire_ci_at(&workspace_root, None, false)?;
+/// // `check-ci-wiring`: same reconciliation, never writes, errs on drift.
+/// let outcome = wire_ci_at(&workspace_root, None, true)?;
+/// ```
+///
+/// See `tests::wire_ci_at_applies_configured_jobs_and_never_rewrites_the_spec`
+/// (apply mode) and `tests::wire_ci_at_check_detects_drift_without_writing_anything`
+/// (check mode) for real, currently-passing exercises of both paths.
 pub(crate) fn wire_ci_at(
     start: &Path,
     config_override: Option<&Path>,
@@ -3033,8 +3067,10 @@ workflows:
 
     #[test]
     fn render_new_job_block_omits_context_attach_workspace_and_post_steps_when_unset() {
-        // Regression guard: an ordinary job like jci-audit/check must render
-        // byte-identical to before #164's fields existed.
+        // Invariant: a job with none of `context`/`attach_workspace`/
+        // `persist_to_workspace_paths`/`store_artifacts_path` set renders
+        // with none of those lines at all — the optional fields introduced
+        // in #164/#220 must never leak into a plain job's rendering.
         let job = base_job();
         let block = render_new_job_block(&job);
         assert_eq!(
@@ -3363,16 +3399,16 @@ workflows:
         let mut target = base_job();
         target.orb_job = Some("jci-audit/publish_record".to_string());
 
-        // Source (with the required_by) declared BEFORE its target — the
-        // exact ordering that silently discarded the contribution before
-        // this fix, since the target's own resync ran after the append and
-        // overwrote it.
+        // Source (with the required_by) declared BEFORE its target: proves
+        // the contribution survives regardless of declaration order, since
+        // the target's own resync must not overwrite a required-by
+        // contribution merged in ahead of it.
         let out = wire_jobs_into(content, &[source, target]).unwrap();
         assert!(out.contains("requires: [jci-audit/check]"), "got: {out}");
     }
 
-    /// Same relationship, target declared first — must work either way,
-    /// proving the fix isn't just reordering the bug.
+    /// Same relationship, target declared first — the outcome must be
+    /// independent of declaration order.
     #[test]
     fn wire_jobs_into_required_by_survives_the_targets_own_resync_reverse_order() {
         let content = "\
