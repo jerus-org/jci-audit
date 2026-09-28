@@ -5,9 +5,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.23] - 2026-09-28
+
+Summary: Added[1], Chore[1], Fixed[2]
+
+### Added
+
+ - feat: diff license set in stale-notices, not text
+
+### Fixed
+
+ - fix: widen stale-notices drift to always warn
+ - fix(deps): update rust crate pcu-release-assets to 0.1.4
+
 ## [0.1.22] - 2026-09-28
 
-Summary: Documentation[5]
+Summary: Chore[1], Documentation[5]
 
 ## [0.1.21] - 2026-09-28
 
@@ -360,7 +373,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...HEAD
+[0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
