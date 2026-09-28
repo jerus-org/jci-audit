@@ -264,7 +264,7 @@ pub(crate) fn check_with<R: CommandRunner>(
                     success: notices.failing.is_empty(),
                 });
                 let reduced_count: usize = notices
-                    .reduced
+                    .drifted
                     .iter()
                     .map(|(_, removed)| removed.len())
                     .sum();
@@ -273,6 +273,18 @@ pub(crate) fn check_with<R: CommandRunner>(
                         crate::diagnostics::Severity::Warning,
                         "license-set-reduced".to_string(),
                         reduced_count,
+                    ));
+                }
+                let drifted_count = notices
+                    .drifted
+                    .iter()
+                    .filter(|(_, removed)| removed.is_empty())
+                    .count();
+                if drifted_count > 0 {
+                    warnings.push((
+                        crate::diagnostics::Severity::Warning,
+                        "license-notices-drifted".to_string(),
+                        drifted_count,
                     ));
                 }
             }
@@ -591,11 +603,15 @@ fn overview_licenses(text: &str) -> Option<std::collections::BTreeSet<String>> {
 /// [`stale_notices`]'s verdict for one crate's committed
 /// [`THIRD_PARTY_NOTICES`] against a fresh render.
 enum NoticesVerdict {
-    /// No difference this check cares about — a version-only bump renders
-    /// different "Used by" text but the same license overview.
+    /// Byte-identical — nothing to say.
     Current,
-    /// The overview's license set shrank with nothing added — non-blocking.
-    Reduced(Vec<String>),
+    /// The rendered text differs but the license overview's set of names
+    /// didn't grow — a version bump, a new dependency under an
+    /// already-accepted license, or (if non-empty) a license dropping out
+    /// entirely. Never blocks: the file only needs to be current at
+    /// release time, but every such drift still gets a visible nudge
+    /// rather than passing silently.
+    Drifted { removed: Vec<String> },
     /// The license set gained an entry (new or substituted), or the
     /// overview couldn't be parsed on either side, so the full text was
     /// compared and differs — blocking, same as this check has always been.
@@ -603,14 +619,16 @@ enum NoticesVerdict {
 }
 
 /// The outcome of [`stale_notices`] across every crate in `about_results`:
-/// which crates need `just licenses` run and committed ([`Self::failing`],
-/// blocking), and which lost a license from their overview without gaining
-/// one ([`Self::reduced`], a non-blocking early warning — see
-/// jerus-org/jci-audit#266).
+/// which crates need `just licenses` run and committed before the build can
+/// pass ([`Self::failing`] — an actual licensing change), and which merely
+/// drifted from their committed notices without one ([`Self::drifted`] — a
+/// non-blocking early warning — see jerus-org/jci-audit#266).
 #[derive(Default)]
 pub(crate) struct NoticesOutcome {
     pub(crate) failing: Vec<String>,
-    pub(crate) reduced: Vec<(String, Vec<String>)>,
+    /// Crate dir, and any license names that dropped out of its overview
+    /// (empty when the drift was a same-license-set text change only).
+    pub(crate) drifted: Vec<(String, Vec<String>)>,
 }
 
 /// Compares every crate in `about_results`' committed [`THIRD_PARTY_NOTICES`]
@@ -623,14 +641,14 @@ pub(crate) struct NoticesOutcome {
 /// This check exists to give early warning that a dependency's *licensing*
 /// changed — a license substituted, or a new one entered the graph — not to
 /// keep the file byte-current (that's `just licenses` at release time). So
-/// it compares the rendered [`OVERVIEW_HEADING`] section's license names,
-/// not the full text: a version-only dependency bump changes "Used by"
-/// lines without touching which licenses appear, and must not fail this
-/// check (jerus-org/jci-audit#266). A license disappearing from the
-/// overview is reported but doesn't block; a license appearing — whether
-/// new or substituted — does, as does either side failing to parse an
-/// overview at all (falls back to the original full-text comparison, so a
-/// future `about.hbs` template change can't silently defeat this check).
+/// only a growing license set — a substitution or an addition — blocks the
+/// build; every other kind of drift (a version bump, a new dependency under
+/// an already-accepted license, or a license dropping out entirely) is
+/// reported as a non-blocking warning instead of either failing the build
+/// or passing it silently (jerus-org/jci-audit#266). Either side failing to
+/// parse an [`OVERVIEW_HEADING`] section falls back to the original
+/// full-text comparison (blocking), so a future `about.hbs` template change
+/// can't silently defeat this check.
 ///
 /// Compares against captured stdout rather than `--output-file`: confirmed
 /// byte-identical to `--output-file` modulo one trailing newline `cargo
@@ -674,24 +692,36 @@ pub(crate) fn stale_notices<R: CommandRunner>(
             crate_dir,
         ) {
             Ok(rendered) if rendered.success => {
-                let verdict =
-                    if rendered.stdout.trim_end_matches('\n') == existing.trim_end_matches('\n') {
-                        NoticesVerdict::Current
-                    } else {
-                        match (
-                            overview_licenses(&existing),
-                            overview_licenses(&rendered.stdout),
-                        ) {
-                            (Some(old), Some(new)) if old == new => NoticesVerdict::Current,
-                            (Some(old), Some(new)) if new.is_subset(&old) => {
-                                NoticesVerdict::Reduced(old.difference(&new).cloned().collect())
-                            }
-                            _ => NoticesVerdict::Stale,
-                        }
-                    };
+                let verdict = if rendered.stdout.trim_end_matches('\n')
+                    == existing.trim_end_matches('\n')
+                {
+                    NoticesVerdict::Current
+                } else {
+                    match (
+                        overview_licenses(&existing),
+                        overview_licenses(&rendered.stdout),
+                    ) {
+                        (Some(old), Some(new)) if new.is_subset(&old) => NoticesVerdict::Drifted {
+                            removed: old.difference(&new).cloned().collect(),
+                        },
+                        _ => NoticesVerdict::Stale,
+                    }
+                };
                 match verdict {
                     NoticesVerdict::Current => {}
-                    NoticesVerdict::Reduced(removed) => {
+                    NoticesVerdict::Drifted { removed } if removed.is_empty() => {
+                        println!(
+                            "  {}",
+                            crate::diagnostics::warn_tag(format!(
+                                "{}/{THIRD_PARTY_NOTICES} no longer matches the current dependency graph (license set unchanged) — run 'just licenses' and commit the result",
+                                crate_dir.display()
+                            ))
+                        );
+                        outcome
+                            .drifted
+                            .push((crate_dir.display().to_string(), removed));
+                    }
+                    NoticesVerdict::Drifted { removed } => {
                         println!(
                             "  {}",
                             crate::diagnostics::warn_tag(format!(
@@ -701,7 +731,7 @@ pub(crate) fn stale_notices<R: CommandRunner>(
                             ))
                         );
                         outcome
-                            .reduced
+                            .drifted
                             .push((crate_dir.display().to_string(), removed));
                     }
                     NoticesVerdict::Stale => {
@@ -1378,8 +1408,17 @@ Used by:\n\n\
 Used by:\n\n\
 - foo 0.1.4\n";
 
+    const OVERVIEW_APACHE_MIT_NEW_DEPENDENCY: &str = "# Notices\n\n\
+## Overview\n\n\
+- **Apache License 2.0** — 194 crate(s)\n\
+- **MIT License** — 42 crate(s)\n\n\
+## Apache License 2.0\n\n\
+Used by:\n\n\
+- bar 1.0.0\n\
+- foo 0.1.3\n";
+
     #[test]
-    fn deny_stale_notices_passes_on_version_only_bump_with_unchanged_overview() {
+    fn deny_stale_notices_warns_on_version_only_bump_with_unchanged_overview() {
         let (dir, crate_dir) = workspace_with_notices(OVERVIEW_APACHE_MIT_OLD);
         let runner = MockRunner::new(vec![
             ok(),
@@ -1406,12 +1445,54 @@ Used by:\n\n\
         .unwrap();
         assert!(
             report.success(),
-            "a version-only bump with an unchanged license overview must pass: {:?}",
+            "a version-only bump with an unchanged license overview must not fail the build: {:?}",
             report.steps
         );
         assert!(
-            report.warnings.is_empty(),
-            "an unchanged overview must not warn either: {:?}",
+            report.warnings.iter().any(|(sev, code, _)| *sev
+                == crate::diagnostics::Severity::Warning
+                && code == "license-notices-drifted"),
+            "a same-license-set text drift must still be surfaced as a warning: {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn deny_stale_notices_warns_when_a_new_dependency_joins_under_an_existing_license() {
+        let (dir, crate_dir) = workspace_with_notices(OVERVIEW_APACHE_MIT_OLD);
+        let runner = MockRunner::new(vec![
+            ok(),
+            ok(),
+            workspace_metadata(&[&crate_dir.join("Cargo.toml")]),
+            ToolOutput {
+                success: true,
+                stdout: NOTICES_METADATA.to_string(),
+                stderr: String::new(),
+            },
+            ok(), // cargo-about resolution
+            ToolOutput {
+                success: true,
+                stdout: OVERVIEW_APACHE_MIT_NEW_DEPENDENCY.to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let report = check_with(
+            &runner,
+            dir.path(),
+            crate::diagnostics::Detail::Summary,
+            true,
+        )
+        .unwrap();
+        assert!(
+            report.success(),
+            "a new dependency under an already-accepted license must not fail the build: {:?}",
+            report.steps
+        );
+        assert!(
+            report.warnings.iter().any(|(sev, code, _)| *sev
+                == crate::diagnostics::Severity::Warning
+                && code == "license-notices-drifted"),
+            "it must still be surfaced as a warning, not pass silently: {:?}",
             report.warnings
         );
     }
