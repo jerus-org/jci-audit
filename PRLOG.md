@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.22(pr [#264])
+- deps: update rust crate pcu-release-assets to 0.1.4(pr [#265])
 
 ## [0.1.22] - 2026-09-28
 
@@ -657,6 +658,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#262]: https://github.com/jerus-org/jci-audit/pull/262
 [#263]: https://github.com/jerus-org/jci-audit/pull/263
 [#264]: https://github.com/jerus-org/jci-audit/pull/264
+[#265]: https://github.com/jerus-org/jci-audit/pull/265
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...HEAD
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...v0.1.21
