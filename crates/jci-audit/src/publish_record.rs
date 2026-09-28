@@ -64,14 +64,22 @@ fn path_str(path: &Path) -> Result<&str> {
 
 /// Sign `record_path` with a freshly generated, one-use minisign keypair and
 /// upload the record, its signature, and its pubkey to the release for
-/// `tag`. `record_path` must already exist — this never re-runs the gate,
-/// only distributes an already-produced record. `version` must be the
-/// version `record_path` was actually written for — checked against its file
-/// name before anything is signed, so a stale or mismatched `--record-path`
-/// override fails loudly here instead of uploading the record under the
-/// wrong asset name (silently making `verify <version>` find nothing,
-/// later, with no clue why — the exact unverifiable-record failure mode
-/// jerus-org/jci-audit#75 exists to prevent).
+/// `tag`. `runner` shells out to generate the signing key; `publisher`
+/// uploads the three assets (and, when `should_publish` is set, publishes
+/// the — until then draft — release itself; a real [`AssetPublisher`] in
+/// production, a fake in tests). `record_path` must already exist — this
+/// never re-runs the gate, only distributes an already-produced record.
+/// `version` must be the version `record_path` was actually written for —
+/// checked against its file name before anything is signed, so a stale or
+/// mismatched `--record-path` override fails loudly here instead of
+/// uploading the record under the wrong asset name (silently making
+/// `verify <version>` find nothing, later, with no clue why — the exact
+/// unverifiable-record failure mode jerus-org/jci-audit#75 exists to
+/// prevent). `work_dir` holds the ephemeral generated keypair and pubkey
+/// file.
+///
+/// See `tests::signs_and_uploads_the_record_signature_and_pubkey` for a
+/// real, currently-passing exercise of this function.
 pub(crate) fn publish_record_with<R: CommandRunner, P: AssetPublisher>(
     runner: &R,
     publisher: &P,
@@ -191,12 +199,16 @@ pub(crate) struct PcuAssetWriter {
     writer: pcu_release_assets::ReleaseAssetWriter,
     // One runtime per instance, reused by every `block_on` call below —
     // jerus-org/jci-audit#111. A fresh `publish_record_with` run makes up
-    // to 4 calls (3 uploads + an optional publish), and used to pay a full
-    // runtime setup/teardown on each one.
+    // to 4 calls (3 uploads + an optional publish), so a per-call runtime
+    // would mean repeated setup/teardown for one instance.
     runtime: crate::runtime::SingleThreadRuntime,
 }
 
 impl PcuAssetWriter {
+    /// `owner`/`repo` name the GitHub repository to publish to.
+    /// `github_token` is required (unlike the read-only sources in
+    /// `remote.rs`, which accept `None` for an anonymous fetch) — uploading
+    /// assets and publishing a release both need write authentication.
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
@@ -238,11 +250,10 @@ mod tests {
             .expect("runtime construction should not fail");
     }
 
-    /// jerus-org/jci-audit#111: `block_on` used to build a brand-new tokio
-    /// runtime on every call — two calls on the same instance would run on
-    /// two different runtimes. Comparing `Handle::current().id()` (stable,
-    /// distinct per `Runtime::build()`) across two calls proves the fix:
-    /// same instance, same runtime, both times.
+    /// jerus-org/jci-audit#111: one instance must reuse one runtime across
+    /// every `block_on` call. Comparing `Handle::current().id()` (stable,
+    /// distinct per `Runtime::build()`) across two calls proves it: same
+    /// instance, same runtime, both times.
     #[test]
     fn pcu_asset_writer_reuses_its_runtime_across_calls() {
         let writer = PcuAssetWriter::new("jerus-org", "jci-audit", "token")

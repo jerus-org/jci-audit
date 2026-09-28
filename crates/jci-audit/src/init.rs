@@ -62,6 +62,9 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 /// Write the `deny.toml` template and derived `.cargo/audit.toml` into `dir`.
 /// Refuses to overwrite an existing `deny.toml` unless `force` is set.
+///
+/// See `tests::init_creates_deny_and_derived_audit` for a real,
+/// currently-passing exercise of this function.
 pub(crate) fn init_at(dir: &Path, force: bool) -> Result<()> {
     let deny_path = dir.join("deny.toml");
     if deny_path.exists() && !force {

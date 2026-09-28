@@ -139,6 +139,8 @@ pub(crate) struct RemoteVerifyOutcome {
 /// malformed `checks.deny.passed` still gets caught by comparing against a
 /// freshly re-run gate — this mode never re-runs the gate, so a wrong
 /// default here would be the final, unchecked answer. Fail closed instead.
+/// Uses the same field-lookup ([`walk`]) [`crate::verify::field`] does, so a
+/// malformed/missing path is reported identically in both places.
 fn bool_field(record: &Value, path: &[&str]) -> Result<bool> {
     walk(record, path)?
         .as_bool()
@@ -262,14 +264,43 @@ fn resolve_package_manifest(
 }
 
 /// Re-verify a published release's record from its release assets alone, no
-/// checkout required. `tag` is the full release tag (e.g. `jci-audit-v1.2.0`).
-/// `pubkey_sources` are tried in the order given — the caller decides that
-/// order, deliberately: this function has no built-in opinion on which
-/// source to prefer. `cli.rs::run_verify_remote` puts [`AssetPubkeySource`]
-/// first, since it depends on nothing about how the release was published,
-/// then [`ManifestPubkeySource`] when the caller opted into it — see the
-/// module docs; neither is independently stronger for jci-audit's own
-/// releases (`docs/assurance-case.md` T9 has the full accounting).
+/// checkout required. `runner` shells out for signature verification;
+/// `source` fetches the record/`.sig`/`.pub` assets (a real
+/// [`PcuAssetSource`] in production, a fake in tests). `pubkey_sources` are
+/// tried in the order given — the caller decides that order, deliberately:
+/// this function has no built-in opinion on which source to prefer.
+/// `cli.rs::run_verify_remote` puts [`AssetPubkeySource`] first, since it
+/// depends on nothing about how the release was published, then
+/// [`ManifestPubkeySource`] when the caller opted into it — see the module
+/// docs; neither is independently stronger for jci-audit's own releases
+/// (`docs/assurance-case.md` T9 has the full accounting). `version` names
+/// the release (e.g. `1.2.0`); `tag` is the full release tag (e.g.
+/// `jci-audit-v1.2.0`). `work_dir` holds the fetched record/signature/pubkey
+/// files. `local_checkout` reports whether `deny.toml`/`Cargo.lock` are also
+/// present locally — it only changes which "not checked" reason the
+/// outcome's own `unchecked` list reports, never which verification path
+/// runs.
+///
+/// Illustrative call shape (this crate has no `[lib]` target, jerus-org/
+/// jci-audit#90, so this snippet is documentation only — `ignore` means
+/// rustdoc would skip it even if a doctest runner existed here):
+///
+/// ```rust,ignore
+/// let source = PcuAssetSource::new("jerus-org", "jci-audit", None)?;
+/// let asset_pubkey = AssetPubkeySource::new(&source);
+/// let outcome = verify_remote_with(
+///     &SystemRunner,
+///     &source,
+///     &[&asset_pubkey],
+///     "1.2.0",
+///     "jci-audit-v1.2.0",
+///     &work_dir,
+///     LocalCheckoutState { deny_toml: false, cargo_lock: false },
+/// )?;
+/// ```
+///
+/// See `tests::a_valid_signature_reproduces_the_recorded_verdict` for a
+/// real, currently-passing exercise of this function.
 pub(crate) fn verify_remote_with<R: CommandRunner, S: ReleaseAssetSource>(
     runner: &R,
     source: &S,
@@ -421,12 +452,17 @@ pub(crate) struct ManifestPubkeySource {
     github_token: Option<String>,
     // One runtime per instance, reused by every `block_on` call below —
     // jerus-org/jci-audit#111. `fetch_pubkey` can call `fetch_raw` more
-    // than once (the root manifest, then a workspace member's), and used
-    // to pay a full runtime setup/teardown each time.
+    // than once (the root manifest, then a workspace member's), so a
+    // per-call runtime would mean repeated setup/teardown for one instance.
     runtime: crate::runtime::SingleThreadRuntime,
 }
 
 impl ManifestPubkeySource {
+    /// `owner`/`repo` name the GitHub repository the release tag lives in;
+    /// `package` scopes the manifest lookup to one workspace member (see
+    /// [`resolve_package_manifest`]). `github_token: None` sends no
+    /// `Authorization` header at all (jerus-org/jci-audit#103) — pass a
+    /// token only when the repository is private.
     pub(crate) fn new(
         owner: impl Into<String>,
         repo: impl Into<String>,
@@ -496,8 +532,8 @@ pub(crate) struct PcuAssetSource {
     client: pcu_release_assets::ReleaseAssetClient,
     // One runtime per instance, reused by every `block_on` call below —
     // jerus-org/jci-audit#111. `verify`'s remote path fetches multiple
-    // assets (record, `.sig`, `.pub`) from the same instance, and used to
-    // pay a full runtime setup/teardown each time.
+    // assets (record, `.sig`, `.pub`) from the same instance, so a per-call
+    // runtime would mean repeated setup/teardown for one instance.
     runtime: crate::runtime::SingleThreadRuntime,
 }
 
@@ -556,11 +592,10 @@ mod tests {
             .expect("runtime construction should not fail");
     }
 
-    /// jerus-org/jci-audit#111: `block_on` used to build a brand-new tokio
-    /// runtime on every call — two calls on the same instance would run on
-    /// two different runtimes. Comparing `Handle::current().id()` (stable,
-    /// distinct per `Runtime::build()`) across two calls proves the fix:
-    /// same instance, same runtime, both times.
+    /// jerus-org/jci-audit#111: one instance must reuse one runtime across
+    /// every `block_on` call. Comparing `Handle::current().id()` (stable,
+    /// distinct per `Runtime::build()`) across two calls proves it: same
+    /// instance, same runtime, both times.
     #[test]
     fn manifest_pubkey_source_reuses_its_runtime_across_calls() {
         let source = ManifestPubkeySource::new("jerus-org", "jci-audit", "jci-audit", None)

@@ -55,9 +55,8 @@ pub(crate) struct CrateLicenseScope {
 /// `ignore-transitive-dependencies` config fields
 /// (jerus-org/jci-audit#63). cargo-about's real default for all three is
 /// `false` (nothing excluded, full transitive walk) — the `Default` impl
-/// here matches that, rather than the fixed "dev excluded, everything else
-/// included" assumption this derivation used to hardcode regardless of what
-/// a crate's own `about.toml` actually declared.
+/// matches that; each flag is instead read from a crate's own `about.toml`,
+/// not assumed workspace-wide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct DependencyScopePolicy {
     pub(crate) ignore_dev_dependencies: bool,
@@ -120,7 +119,13 @@ pub(crate) fn dependency_scope_policy_from_about_toml(
 /// subprocess runs with the crate's own directory (`manifest_path`'s parent)
 /// as its working directory, matching how `release.rs` invokes `cargo-about`
 /// per crate, rather than the caller's own directory (which need not have
-/// any relationship to the crate being resolved).
+/// any relationship to the crate being resolved). `policy` is this crate's
+/// own `about.toml`-declared dev/build/transitive-dependency inclusion
+/// flags (see [`DependencyScopePolicy`]), scoping which reachable edges
+/// count toward the license set at all.
+///
+/// See `tests::scope_for_crate_runs_cargo_metadata_in_the_crates_own_directory`
+/// for a real, currently-passing exercise of this function.
 pub(crate) fn scope_for_crate<R: CommandRunner>(
     runner: &R,
     manifest_path: &Path,
@@ -187,7 +192,14 @@ fn parse_metadata_graph(doc: &Value) -> Result<(&[Value], &str, &[Value])> {
 
 /// Parse `cargo metadata --format-version 1` JSON and compute the license
 /// scope. Split from [`scope_for_crate`] so tests can inject captured JSON
-/// directly rather than mocking a subprocess call.
+/// directly rather than mocking a subprocess call. `metadata_json` is that
+/// captured (or live) output; `allow` is `deny.toml`'s global license allow
+/// set; `exception_crates` is the full (workspace-wide) set of exception
+/// crate names; `policy` scopes which reachable edges count (see
+/// [`DependencyScopePolicy`]).
+///
+/// See `tests::compound_expression_resolves_to_the_one_allowed_arm` for a
+/// real, currently-passing exercise of this function.
 pub(crate) fn scope_from_metadata(
     metadata_json: &str,
     allow: &BTreeSet<String>,
