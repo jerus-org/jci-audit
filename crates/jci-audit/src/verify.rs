@@ -243,40 +243,7 @@ pub(crate) fn verify_with<R: CommandRunner>(
         .with_context(|| format!("no Cargo.lock at '{}'", root.display()))?;
     let deny_toml = std::fs::read_to_string(&deny_path)
         .with_context(|| format!("failed to read '{}'", deny_path.display()))?;
-    // Resolved once, reused below to also scope the about.toml digest to just
-    // this crate's own notices — not the whole workspace's (a sibling crate's
-    // unrelated about.toml change must not cause a false MISMATCH here).
-    let package_manifest = package
-        .map(|name| crate::sync::resolve_member_manifest_path(runner, &root, name))
-        .transpose()?;
-    let dependencies = match &package_manifest {
-        Some(manifest_path) => {
-            let metadata_json = crate::license_scope::crate_metadata(runner, manifest_path)?;
-            crate::release::dependency_set_digest_for_package(&lock_text, &metadata_json)?
-        }
-        None => dependency_set_digest(&lock_text)?,
-    };
-    let about_toml = match &package_manifest {
-        Some(manifest_path) => {
-            let about_path = manifest_path
-                .parent()
-                .context("manifest_path has no parent directory")?
-                .join("about.toml");
-            let paths: Vec<PathBuf> = if about_path.is_file() {
-                vec![about_path]
-            } else {
-                Vec::new()
-            };
-            crate::sync::about_toml_digest_from_paths(&paths, &root)?
-        }
-        None => about_toml_digest(runner, &root)?,
-    };
-    let digests = CheckoutDigests {
-        dependencies,
-        lockfile_raw: lockfile_digest(lock_text.as_bytes()),
-        deny_toml: lockfile_digest(deny_toml.as_bytes()),
-        about_toml,
-    };
+    let digests = compute_checkout_digests(runner, &root, &lock_text, &deny_toml, package)?;
     let (mismatches, unverified) = compare_inputs(&record, &digests, package);
 
     // The tool's semantics can change between versions, so a difference is worth
@@ -295,85 +262,13 @@ pub(crate) fn verify_with<R: CommandRunner>(
         }
     }
 
-    // Pin the advisory database to the recorded commit.
-    let checkout = discover_db_checkout(db_root)?;
-    let checkout_str = checkout.to_str().unwrap_or_default().to_string();
+    let (checkout_str, previous_head) = pin_advisory_db(runner, db_root, &db_commit, &root)?;
 
-    // Note where the checkout was, so it can be put back. cargo-deny and
-    // cargo-audit share it; leaving it on a historical commit would silently give
-    // a later scan an old snapshot of the advisories.
-    let previous_head = runner
-        .run("git", &["-C", &checkout_str, "rev-parse", "HEAD"], &root)
-        .ok()
-        .filter(|o| o.success)
-        .map(|o| o.stdout.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    // Only a shallow clone can be unshallowed — git rejects the flag outright on a
-    // complete repository ("--unshallow on a complete repository does not make
-    // sense"). Asking for it unconditionally meant the fetch failed on every run
-    // after the first, so no commit newer than the local clone could ever be
-    // reached, and verification failed with an unhelpful "reference is not a tree".
-    let shallow = runner
-        .run(
-            "git",
-            &["-C", &checkout_str, "rev-parse", "--is-shallow-repository"],
-            &root,
-        )
-        .is_ok_and(|o| o.stdout.trim() == "true");
-    let fetch_args: Vec<&str> = if shallow {
-        vec!["-C", &checkout_str, "fetch", "--unshallow", "origin"]
-    } else {
-        vec!["-C", &checkout_str, "fetch", "origin"]
-    };
-    let fetched = runner.run("git", &fetch_args, &root)?;
-
-    let co = runner.run(
-        "git",
-        &["-C", &checkout_str, "checkout", "--quiet", &db_commit],
-        &root,
-    )?;
-    if !co.success {
-        // A failed fetch is only worth reporting once it has cost something, but
-        // then it is usually the real cause.
-        let cause = if fetched.success {
-            String::new()
-        } else {
-            format!("\n\nfetching it first failed: {}", fetched.stderr.trim())
-        };
-        bail!(
-            "could not check the advisory-db out at {db_commit}: {}{cause}",
-            co.stderr.trim()
-        );
-    }
-
-    // Re-run the gate with the historical policy, offline so it cannot drift.
-    let derived = with_db_path(&deny_toml, db_root)?;
-    std::fs::create_dir_all(work_dir)
-        .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
-    let config_path = work_dir.join("deny.toml");
-    std::fs::write(&config_path, derived)
-        .with_context(|| format!("failed to write '{}'", config_path.display()))?;
-
-    let mut args = vec![
-        "deny",
-        "--offline",
-        "--config",
-        config_path.to_str().unwrap_or_default(),
-        "check",
-    ];
-    args.extend_from_slice(DENY_CHECKS);
-    let gate = runner.run("cargo", &args, &root);
+    let gate = run_gate(runner, &deny_toml, db_root, work_dir, &root);
 
     // The gate is the last thing that needs the database pinned, so put the shared
     // checkout back now — before propagating any failure from it.
-    if let Some(head) = &previous_head {
-        let _ = runner.run(
-            "git",
-            &["-C", &checkout_str, "checkout", "--quiet", head],
-            &root,
-        );
-    }
+    restore_advisory_db(runner, &checkout_str, previous_head.as_deref(), &root);
 
     let gate = gate?;
     let warnings = crate::diagnostics::emit(&gate.stdout, &gate.stderr, detail);
@@ -406,6 +301,162 @@ pub(crate) fn verify_with<R: CommandRunner>(
         warnings,
         stale_exceptions,
     })
+}
+
+/// Compute the checked-out tree's digests, scoping the dependency/about.toml
+/// digests to `package` when given — resolved once so the about.toml digest
+/// scopes to just that crate's own notices, not the whole workspace's (a
+/// sibling crate's unrelated about.toml change must not cause a false
+/// MISMATCH here).
+fn compute_checkout_digests<R: CommandRunner>(
+    runner: &R,
+    root: &Path,
+    lock_text: &str,
+    deny_toml: &str,
+    package: Option<&str>,
+) -> Result<CheckoutDigests> {
+    let package_manifest = package
+        .map(|name| crate::sync::resolve_member_manifest_path(runner, root, name))
+        .transpose()?;
+    let dependencies = match &package_manifest {
+        Some(manifest_path) => {
+            let metadata_json = crate::license_scope::crate_metadata(runner, manifest_path)?;
+            crate::release::dependency_set_digest_for_package(lock_text, &metadata_json)?
+        }
+        None => dependency_set_digest(lock_text)?,
+    };
+    let about_toml = match &package_manifest {
+        Some(manifest_path) => {
+            let about_path = manifest_path
+                .parent()
+                .context("manifest_path has no parent directory")?
+                .join("about.toml");
+            let paths: Vec<PathBuf> = if about_path.is_file() {
+                vec![about_path]
+            } else {
+                Vec::new()
+            };
+            crate::sync::about_toml_digest_from_paths(&paths, root)?
+        }
+        None => about_toml_digest(runner, root)?,
+    };
+    Ok(CheckoutDigests {
+        dependencies,
+        lockfile_raw: lockfile_digest(lock_text.as_bytes()),
+        deny_toml: lockfile_digest(deny_toml.as_bytes()),
+        about_toml,
+    })
+}
+
+/// Pin the shared advisory-db checkout to `db_commit`, fetching first (only
+/// unshallowing if the clone is actually shallow — git rejects `--unshallow`
+/// outright on a complete repository, and asking for it unconditionally
+/// broke every run after the first clone completed). Returns the checkout's
+/// path (as a string, for reuse in further `git -C` calls) and the commit it
+/// was on before, so the caller can restore it via [`restore_advisory_db`]
+/// once the gate no longer needs the pin.
+fn pin_advisory_db<R: CommandRunner>(
+    runner: &R,
+    db_root: &Path,
+    db_commit: &str,
+    root: &Path,
+) -> Result<(String, Option<String>)> {
+    let checkout = discover_db_checkout(db_root)?;
+    let checkout_str = checkout.to_str().unwrap_or_default().to_string();
+
+    // Note where the checkout was, so it can be put back. cargo-deny and
+    // cargo-audit share it; leaving it on a historical commit would silently give
+    // a later scan an old snapshot of the advisories.
+    let previous_head = runner
+        .run("git", &["-C", &checkout_str, "rev-parse", "HEAD"], root)
+        .ok()
+        .filter(|o| o.success)
+        .map(|o| o.stdout.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let shallow = runner
+        .run(
+            "git",
+            &["-C", &checkout_str, "rev-parse", "--is-shallow-repository"],
+            root,
+        )
+        .is_ok_and(|o| o.stdout.trim() == "true");
+    let fetch_args: Vec<&str> = if shallow {
+        vec!["-C", &checkout_str, "fetch", "--unshallow", "origin"]
+    } else {
+        vec!["-C", &checkout_str, "fetch", "origin"]
+    };
+    let fetched = runner.run("git", &fetch_args, root)?;
+
+    let co = runner.run(
+        "git",
+        &["-C", &checkout_str, "checkout", "--quiet", db_commit],
+        root,
+    )?;
+    if !co.success {
+        // A failed fetch is only worth reporting once it has cost something, but
+        // then it is usually the real cause.
+        let cause = if fetched.success {
+            String::new()
+        } else {
+            format!("\n\nfetching it first failed: {}", fetched.stderr.trim())
+        };
+        bail!(
+            "could not check the advisory-db out at {db_commit}: {}{cause}",
+            co.stderr.trim()
+        );
+    }
+
+    Ok((checkout_str, previous_head))
+}
+
+/// Best-effort restore of the shared advisory-db checkout to `previous_head`
+/// — a failure here is swallowed, matching [`verify_with`]'s existing
+/// semantics: it runs before propagating any error the gate itself raised,
+/// and a failed restore is not this verification's failure to report.
+fn restore_advisory_db<R: CommandRunner>(
+    runner: &R,
+    checkout_str: &str,
+    previous_head: Option<&str>,
+    root: &Path,
+) {
+    if let Some(head) = previous_head {
+        let _ = runner.run(
+            "git",
+            &["-C", checkout_str, "checkout", "--quiet", head],
+            root,
+        );
+    }
+}
+
+/// Derive an offline `deny.toml` pointed at `db_root` and run `cargo deny
+/// check` against it — the "re-run the gate with the historical policy,
+/// offline so it cannot drift" step, independent of whether the advisory-db
+/// is actually pinned to the recorded commit (the caller's job, via
+/// [`pin_advisory_db`]).
+fn run_gate<R: CommandRunner>(
+    runner: &R,
+    deny_toml: &str,
+    db_root: &Path,
+    work_dir: &Path,
+    root: &Path,
+) -> Result<crate::check::ToolOutput> {
+    let derived = with_db_path(deny_toml, db_root)?;
+    std::fs::create_dir_all(work_dir)
+        .with_context(|| format!("failed to create '{}'", work_dir.display()))?;
+    let config_path = work_dir.join("deny.toml");
+    std::fs::write(&config_path, derived)
+        .with_context(|| format!("failed to write '{}'", config_path.display()))?;
+
+    let mut args = vec![
+        "deny",
+        "--offline",
+        "--config",
+        config_path.to_str().unwrap_or_default(),
+        "check",
+    ];
+    args.extend_from_slice(DENY_CHECKS);
+    runner.run("cargo", &args, root)
 }
 
 #[cfg(test)]
