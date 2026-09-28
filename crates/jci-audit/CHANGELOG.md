@@ -5,9 +5,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21] - 2026-09-28
+
+Summary: Changed[7], Documentation[1], Fixed[1]
+
+### Fixed
+
+ - fix: escape angle brackets in walk's doc comment
+
+### Changed
+
+ - refactor: split release_with into named phases
+ - refactor: split verify_with into named phases
+ - refactor: dedupe JSON-path-walk logic
+ - refactor: dedupe cargo-metadata graph extraction
+ - refactor: dedupe cargo-metadata --no-deps call
+ - refactor: split wire_ci_at into named phases
+ - refactor: dedupe single-thread-runtime idiom
+
 ## [0.1.20] - 2026-09-26
 
-Summary: 
+Summary: Chore[1]
 
 ## [0.1.19] - 2026-09-26
 
@@ -338,7 +356,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...HEAD
+[0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20
 [0.1.19]: https://github.com/jerus-org/jci-audit/compare/v0.1.18...v0.1.19
 [0.1.18]: https://github.com/jerus-org/jci-audit/compare/v0.1.17...v0.1.18
 [0.1.17]: https://github.com/jerus-org/jci-audit/compare/v0.1.16...v0.1.17
