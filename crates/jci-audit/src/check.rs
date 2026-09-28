@@ -154,10 +154,10 @@ fn deny_dispatch_args<'a>(deny_args: &[&'a str]) -> Vec<&'a str> {
 /// aggregated report (see [`crate::diagnostics::Detail`]).
 ///
 /// Illustrative call shape (this crate has no `[lib]` target, jerus-org/
-/// jci-audit#90, so this snippet is documentation only — it is never
-/// compiled or run by any tool):
+/// jci-audit#90, so this snippet is documentation only — `ignore` means
+/// rustdoc would skip it even if a doctest runner existed here):
 ///
-/// ```text
+/// ```rust,ignore
 /// let report = check_with(&SystemRunner, cwd, Detail::Summary, false)?;
 /// if !report.warnings.is_empty() {
 ///     // a --deny-warnings caller would exit non-zero here
@@ -565,12 +565,11 @@ const NOTICES_TEMPLATE: &str = "about.hbs";
 /// keeps this runnable through the same [`CommandRunner`] abstraction
 /// every other step here uses, with no temp-file bookkeeping. Unlike
 /// [`resolve_license_policy`]'s discarded-output resolution check, this
-/// needs cargo-about to actually render the notices; cargo-about 0.9.2+
-/// (EmbarkStudios/cargo-about#312) renders deterministically even against a
-/// cold cache, so byte comparison here is reliable — confirmed against a
-/// cold cache before wiring into CI (jerus-org/jci-audit#36). Cost is
-/// opt-in — [`crate::cli`] only calls this when `--deny-stale-notices` is
-/// set.
+/// needs cargo-about to actually render the notices. This requires
+/// cargo-about 0.9.2+ (pinned in the CI toolchain), which renders
+/// deterministically even against a cold cache, so byte comparison here is
+/// reliable (jerus-org/jci-audit#36). Cost is opt-in — [`crate::cli`] only
+/// calls this when `--deny-stale-notices` is set.
 pub(crate) fn stale_notices<R: CommandRunner>(
     runner: &R,
     about_results: &[sync::AboutSyncResult],
