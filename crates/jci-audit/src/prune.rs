@@ -117,6 +117,9 @@ fn audit_args(lockfile: &Path) -> Vec<String> {
 /// `naked_cwd` must be a directory **outside** the repository, so cargo does not
 /// discover the repo's `.cargo/audit.toml` and apply the very suppressions we
 /// are testing.
+///
+/// See `tests::prune_flags_an_ignore_that_no_longer_fires` for a real,
+/// currently-passing exercise of this function.
 pub(crate) fn prune_with<R: CommandRunner>(
     runner: &R,
     start: &Path,

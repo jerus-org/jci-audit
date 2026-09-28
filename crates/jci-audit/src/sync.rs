@@ -207,7 +207,16 @@ pub(crate) fn multiline_array<I: IntoIterator<Item = String>>(items: I) -> Array
 /// hand-authored `[crate.clarify]` attribution pins, comments, and
 /// `ignore-dev-dependencies`. Not a wholesale rewrite (unlike
 /// [`render_audit_toml`]) because `about.toml` carries real hand-maintained
-/// content `deny.toml` has no equivalent for.
+/// content `deny.toml` has no equivalent for. `existing` is the crate's
+/// current `about.toml` text (empty for a not-yet-scaffolded one); `scope`
+/// is this crate's already-computed reachable license set (see
+/// [`crate::license_scope`]); `policy` supplies `deny.toml`'s
+/// `[[bans.skip]]` exceptions, each folded in only when the exception's
+/// crate is actually in `scope.reachable_exception_crates`.
+///
+/// See `tests::merge_about_toml_removes_stale_key_but_keeps_other_content`
+/// for a real, currently-passing exercise showing both the accepted-list
+/// merge and stale-key removal.
 pub(crate) fn merge_about_toml(
     existing: &str,
     scope: &crate::license_scope::CrateLicenseScope,
@@ -326,6 +335,9 @@ fn decide_and_write(
 /// Run the sync from `start` (the directory to search from). In `check` mode,
 /// returns `Drift`/`InSync` without writing; otherwise writes the file and
 /// returns `Wrote(n)`.
+///
+/// See `tests::sync_writes_then_is_in_sync_and_detects_drift` for a real,
+/// currently-passing exercise of this function.
 pub(crate) fn sync_at(start: &Path, check: bool) -> Result<SyncOutcome> {
     let (deny_path, audit_path) = locate_paths(start)?;
     let deny = std::fs::read_to_string(&deny_path)
@@ -458,7 +470,11 @@ pub(crate) struct AboutSyncResult {
 
 /// Sync every `crates/*/about.toml` found under the workspace root (located
 /// via the same `deny.toml` search as [`sync_at`]) against its own
-/// crate-scoped derivation.
+/// crate-scoped derivation. In `check` mode, reports each crate's
+/// [`SyncOutcome`] without writing; otherwise writes each one that drifted.
+///
+/// See `tests::sync_about_toml_writes_then_is_in_sync_and_detects_drift`
+/// for a real, currently-passing exercise of this function.
 pub(crate) fn sync_about_toml_at<R: crate::check::CommandRunner>(
     runner: &R,
     start: &Path,
