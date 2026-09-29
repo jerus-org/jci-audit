@@ -75,7 +75,7 @@ enum Commands {
         #[arg(long, help_heading = "Output")]
         deny_unused_licenses: bool,
 
-        /// Fail if a dependency's licensing changed since the committed notices.
+        /// Fail if the license set changed since the committed notices.
         ///
         /// Regenerates each crate's notices (that carries both an
         /// about.hbs template and a committed THIRD-PARTY-LICENSES.md) via
