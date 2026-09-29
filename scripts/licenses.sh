@@ -7,16 +7,17 @@
 #
 # Shared by the justfile recipes, for local regeneration and verification.
 #
-# `jci-audit check --deny-stale-notices` is the CI-facing equivalent of
-# `--check` below (jerus-org/jci-audit#36) — it compares a captured
-# `cargo about generate` render against the committed file through the same
-# `CommandRunner` abstraction every other check step uses, rather than
-# writing to disk and shelling out to `git diff` the way this script does.
-# Not yet wired into this repo's own CI: the flag needs a release before
-# `.circleci/config.yml` can reference it (`jci-audit wire-ci` resolves
-# against the *published* orb). This script remains genuinely useful
-# locally regardless — its `write` mode is how you actually regenerate and
-# commit the file, which the CLI's stdout-comparison alone doesn't do.
+# `jci-audit check --deny-stale-notices` is this repo's own CI-facing gate
+# (wired via `deny_stale_notices: true` in `.circleci/config.yml`,
+# jerus-org/jci-audit#36) but it is *not* equivalent to `--check` below
+# since jerus-org/jci-audit#266: it compares the rendered `## Overview`
+# section's license names, not the full text, so it only fails when the
+# license *set* grows (a substitution or an addition) — a version bump or
+# a new dependency under an already-accepted license warns instead of
+# failing. `--check` here stays a full byte-for-byte diff, for local
+# verification that the committed file is actually current — this script's
+# `write` mode is how you regenerate and commit it, which the CLI check
+# never does on its own.
 #
 # Both this script and the CLI check depend on cargo-about's rendered text
 # being reproducible across machines, which it wasn't always: cargo-about
