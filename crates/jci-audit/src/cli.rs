@@ -75,15 +75,20 @@ enum Commands {
         #[arg(long, help_heading = "Output")]
         deny_unused_licenses: bool,
 
-        /// Fail if the committed third-party license notices are stale.
+        /// Fail if the license set changed since the committed notices.
         ///
         /// Regenerates each crate's notices (that carries both an
         /// about.hbs template and a committed THIRD-PARTY-LICENSES.md) via
-        /// `cargo about generate` and compares against what's committed —
-        /// a real render, unlike the always-on resolution check above,
-        /// which discards its own render. Costs one cargo-about invocation
-        /// per crate that renders notices, so it's opt-in rather than
-        /// always-on.
+        /// `cargo about generate` and compares the license names against
+        /// what's committed — a real render, unlike the always-on
+        /// resolution check above, which discards its own render. Only
+        /// fails when that set of names grows (a license substituted or
+        /// added); a version bump or a new dependency under an
+        /// already-accepted license warns instead, since the notices file
+        /// only needs to be current at release time — this flag is early
+        /// warning of an actual licensing change, not a currency check.
+        /// Costs one cargo-about invocation per crate that renders
+        /// notices, so it's opt-in rather than always-on.
         #[arg(long, help_heading = "Output")]
         deny_stale_notices: bool,
 
