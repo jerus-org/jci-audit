@@ -19,8 +19,11 @@ independently maintained tools — `cargo audit` (live RustSec advisories) and
 `cargo deny` (policy enforcement: advisories, bans, licenses, sources) — as
 subprocesses, using each for what it is best at rather than reimplementing either:
 
-1. **`jci-audit check`** — PR/dev gate: `cargo deny` policy checks and a live
-   `cargo audit` scan, both blocking (`src/check.rs`).
+1. **`jci-audit check`** — PR/dev gate: `cargo deny` policy checks, a live
+   `cargo audit` scan, the `about.toml`/`deny.toml` drift check, and the `cargo-about`
+   license-policy resolution check, all blocking; plus an opt-in fifth check
+   (`--deny-stale-notices`) that only blocks if a dependency's license set grew, warning
+   on any other drift (`src/check.rs`).
 2. **`jci-audit release-prep`** — release gate: locks `cargo deny` to a **pinned advisory-db
    commit** and runs it offline for reproducibility; `cargo audit` keeps running live,
    as a non-blocking currency check rather than a second pinned pass; writes the

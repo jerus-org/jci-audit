@@ -194,8 +194,6 @@ Repository paths are relative to the repo root; the primary crate is `crates/jci
 - For `bus_factor` (Silver SHOULD), select the honest answer and reference `GOVERNANCE.md`, which
   records the single-maintainer limitation and its mitigations.
 - N/A answers above each carry a one-line justification to paste into the questionnaire's rationale.
-- The `static_analysis_common_vulnerabilities` answer is honest about a real, tracked gap: `cargo
-  deny`'s bans/licenses/sources checks do not yet run on every PR, only locally and at release time.
-  This does not block Silver (the criterion is about vulnerability-relevant static analysis, which
-  `cargo audit` + SonarCloud already cover), but should be revisited once consumer migration wires
-  `jci-audit check` into this repo's own CI.
+- The `static_analysis_common_vulnerabilities` answer's "Met" status needs no qualification:
+  `jci-audit/check` (the published orb job) already runs `cargo deny`'s bans/licenses/sources
+  checks, unfiltered, on every PR against this repo's own CI (`.circleci/config.yml`).
