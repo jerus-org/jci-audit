@@ -66,16 +66,23 @@ flowchart LR
     CHECK --> AUDIT["cargo audit\n(live database)"]
     CHECK --> DRIFT["about.toml drift check\n(sync, no subprocess)"]
     CHECK --> POLICY1["cargo-about policy resolution\n(cache-independent --locked check)"]
+    CHECK --> NOTICES["notices license-set check\n(opt-in, --deny-stale-notices)"]
     DENY --> RESULT["aggregated pass/fail"]
     AUDIT --> RESULT
     DRIFT --> RESULT
     POLICY1 --> RESULT
+    NOTICES --> RESULT
 ```
 
-All four checks are aggregated — a failure in one does not hide the others. The policy-resolution
-check runs even when the drift check above it failed, matching `release-prep`'s identical check
-(§3.2) — a PR fixing drift can't also be hiding an unresolvable licence
-([#80](https://github.com/jerus-org/jci-audit/issues/80)).
+The always-on checks are aggregated — a failure in one does not hide the others. The
+policy-resolution check runs even when the drift check above it failed, matching `release-prep`'s
+identical check (§3.2) — a PR fixing drift can't also be hiding an unresolvable licence
+([#80](https://github.com/jerus-org/jci-audit/issues/80)). The fifth, opt-in notices check
+([#266](https://github.com/jerus-org/jci-audit/issues/266)) compares the rendered
+`THIRD-PARTY-LICENSES.md`'s license-name set against the committed one: it only fails the
+aggregated result if that set grew (a license substituted or added), and only warns on any other
+drift (a version bump, a new dependency under an already-accepted license, or a license dropping
+out).
 
 ### 3.2 Release gate
 
@@ -352,11 +359,4 @@ for `rsign` (binary name differs from its crate), rustup for bare `cargo` (not
 
 ## 8. Future work
 
-- **Per-crate release ordering** ([#62](https://github.com/jerus-org/jci-audit/issues/62)) — let a
-  multi-crate workspace choose release order so a dependent crate releases against its
-  dependency's latest version, mirroring `pcu`'s pattern.
-- **Scoped `ignore-build-dependencies`/`ignore-transitive-dependencies`**
-  ([#63](https://github.com/jerus-org/jci-audit/issues/63)) — `license_scope` currently always
-  includes build dependencies; it should honour `about.toml`'s own settings.
-- **Accepted-warnings recording at release time** ([#49](https://github.com/jerus-org/jci-audit/issues/49)).
 - See [ROADMAP.md](../ROADMAP.md) for the full near/medium/long-term view.

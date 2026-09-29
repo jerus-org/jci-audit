@@ -101,13 +101,9 @@ just re-run `jci-audit check`/`release-prep` once to let cargo-deny refresh it) 
 ## Multi-crate workspaces
 
 `sync`'s `about.toml` derivation already scopes each crate's `accepted` list to its own
-dependency graph (see [design.md §4.2](design.md#42-abouttoml--a-per-crate-spdx-aware-derivation)).
-Two related limitations are tracked, not yet implemented:
-
-- **License scope always includes build dependencies**, regardless of `about.toml`'s own
-  `ignore-build-dependencies`/`ignore-transitive-dependencies` settings
-  ([#63](https://github.com/jerus-org/jci-audit/issues/63)).
-- **`release-prep`/`verify` don't yet support per-crate ordering** for a workspace with multiple
-  publishable crates and dependencies between them — see
-  [#62](https://github.com/jerus-org/jci-audit/issues/62), which tracks bringing the release
-  pattern `pcu` uses (explicit crate release order) to jci-audit.
+dependency graph (see [design.md §4.2](design.md#42-abouttoml--a-per-crate-spdx-aware-derivation)),
+and honours that crate's own `about.toml` `ignore-build-dependencies`/`ignore-transitive-dependencies`
+settings ([#63](https://github.com/jerus-org/jci-audit/issues/63)). `release-prep`/`verify` take a
+`--package <NAME>` selector to scope the dependency digest and record path to one crate at a time,
+for a workspace releasing crates individually in dependency order, mirroring `pcu`'s pattern
+([#62](https://github.com/jerus-org/jci-audit/issues/62)).

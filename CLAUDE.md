@@ -20,10 +20,24 @@ consumer migration).
 ```
 crates/jci-audit/
 ├── src/
-│   ├── main.rs       # crate doc + mod declarations, tracing setup
-│   ├── cli.rs        # Cli + Commands (check/release-prep/sync/prune/init), run()
-│   └── preflight.rs  # tool-presence detection for cargo-audit / cargo-deny
-└── tests/cmd/*.trycmd  # CLI snapshot tests (trycmd)
+│   ├── main.rs             # crate doc + mod declarations, tracing setup
+│   ├── cli.rs              # Cli + Commands, dispatch
+│   ├── check.rs            # PR/dev gate: cargo-deny, cargo-audit, license drift/resolution/notices
+│   ├── release.rs          # reproducible release gate (pinned advisory-db)
+│   ├── verify.rs           # re-verify a past release against its recorded snapshot
+│   ├── remote.rs           # verify's no-checkout fetch path (published release assets)
+│   ├── publish_record.rs   # uploads the release record + signature as release assets
+│   ├── sync.rs             # derive .cargo/audit.toml + about.toml from deny.toml
+│   ├── license_scope.rs    # per-crate license-acceptance scope from cargo metadata
+│   ├── exceptions.rs       # visibility for cargo-deny's [[bans.skip]] exceptions
+│   ├── prune.rs            # stale-ignore detector
+│   ├── init.rs             # scaffold deny.toml + derived .cargo/audit.toml
+│   ├── wire_ci.rs          # wire the published orb job(s) into a consumer's CI config
+│   ├── preflight.rs        # tool-presence detection for cargo-audit/-deny/-about/rsign
+│   ├── runtime.rs          # shared single-thread tokio runtime idiom
+│   ├── diagnostics.rs      # summarises the warnings the underlying tools emit
+│   └── fs_atomic.rs        # replace a file without leaving a partial one on disk
+└── tests/cmd/*.trycmd      # CLI snapshot tests (trycmd)
 ```
 
 Bin-only crate, deliberately — no `[lib]` target (`autolib = false`; no `src/lib.rs`).
