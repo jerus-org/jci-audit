@@ -61,7 +61,7 @@ flowchart LR
 | `release.rs` | Release gate: locks `cargo-deny` to a pinned `advisory-db` commit and runs it offline for reproducibility; `cargo-audit` runs live as a non-blocking currency check, not a second pinned pass; writes `.security/release-<version>.json` locally (see [#75](https://github.com/jerus-org/jci-audit/issues/75) for how it's distributed). |
 | `verify.rs` | Re-derives a past release's three recorded inputs (dependency-set digest, policy digest, advisory-db commit) from a real checkout and compares them against the record — answers "did it really pass, under the exceptions in force at the time?" |
 | `remote.rs` | `verify`'s no-checkout fallback when no local record exists: downloads the record and its signature from the **published** GitHub release via `pcu-release-assets`, finds the pubkey that signed it from one of two ordered `PubkeySource`s (`Cargo.toml` at the release tag, then the release's own `.pub` asset), and checks the minisign signature (shelling to `rsign verify`) before trusting the record's content. Does not re-run the gate — see [assurance-case.md](assurance-case.md) T6. |
-| `publish_record.rs` | `publish-record` (#75 phase 2): uploads a release's record and its `.sig` as named GitHub release assets, so `remote.rs` has something to fetch. |
+| `publish_record.rs` | `publish-record` (#75 phase 2): uploads a release's record, its `.sig`, and its signing `.pub` key as named GitHub release assets, so `remote.rs` has something to fetch. |
 | `prune.rs` | Stale-ignore detector: runs the audit tool from outside the workspace (so no local ignore file is discovered) to get the **naked** result, and flags configured ignores that no longer fire. |
 | `init.rs` | Scaffolds the standard `deny.toml` policy template plus its derived `.cargo/audit.toml`. |
 | `wire_ci.rs` | `wire-ci`/`check-ci-wiring`: wires the published `jerus-org/jci-audit` orb job(s) into a consumer's `.circleci/config.yml`, and checks whether that wiring has drifted. |
@@ -81,7 +81,7 @@ flowchart LR
 | `verify` | Audit / retrospective | Re-check a past release's record against a real checkout, or — with no checkout — fetch and signature-check the published release's record instead. |
 | `init` | Scaffold | Write the standard `deny.toml` template. |
 | `wire-ci` | Scaffold / dev | Wire the published orb job(s) into a consumer's `.circleci/config.yml`. |
-| `check-ci-wiring [--check]` | PR + dev | Detect drift between `wire-ci`'s managed CI region and what it would generate now. |
+| `check-ci-wiring` | PR + dev | Detect drift between `wire-ci`'s managed CI region and what it would generate now; check-only, takes no flags. |
 | `publish-record` | Release gate | Upload a release's record and signature as GitHub release assets, for `verify`'s remote path to fetch. |
 
 ## External interactions
