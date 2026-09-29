@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Changed
+
+- docs-correct stale-notices claims post-#266(pr [#269])
+
 ### Fixed
 
 - deps: update dependency jci-audit to v0.1.23(pr [#268])
@@ -671,6 +675,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#265]: https://github.com/jerus-org/jci-audit/pull/265
 [#267]: https://github.com/jerus-org/jci-audit/pull/267
 [#268]: https://github.com/jerus-org/jci-audit/pull/268
+[#269]: https://github.com/jerus-org/jci-audit/pull/269
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
