@@ -19,10 +19,11 @@ prerequisites.
 ## Quick start
 
 ```bash
-cargo binstall jci-audit              # or: cargo install jci-audit
-cargo binstall cargo-audit cargo-deny # jci-audit orchestrates these; both must be on PATH
+cargo binstall jci-audit                          # or: cargo install jci-audit
+cargo binstall cargo-audit cargo-deny cargo-about # jci-audit orchestrates these; all three on PATH
 
 jci-audit init                        # scaffold a standard deny.toml + derived .cargo/audit.toml
+jci-audit wire-ci                     # wire the orb into your CircleCI config
 jci-audit check                       # PR/dev gate: cargo-deny policy + a live cargo-audit scan
 jci-audit release-prep 1.2.0          # release gate: reproducible, pinned-advisory-db validation
 ```
