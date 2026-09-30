@@ -11,6 +11,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - docs-correct stale-notices claims post-#266(pr [#269])
 - docs-bring design docs up to current code state(pr [#270])
 - chore-regenerate orb source missed post-merge(pr [#272])
+- docs-document wire-ci onboarding, fix stale claims(pr [#273])
 
 ### Fixed
 
@@ -682,6 +683,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#270]: https://github.com/jerus-org/jci-audit/pull/270
 [#271]: https://github.com/jerus-org/jci-audit/pull/271
 [#272]: https://github.com/jerus-org/jci-audit/pull/272
+[#273]: https://github.com/jerus-org/jci-audit/pull/273
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
