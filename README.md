@@ -23,7 +23,7 @@ cargo binstall jci-audit                          # or: cargo install jci-audit
 cargo binstall cargo-audit cargo-deny cargo-about # jci-audit orchestrates these; all three on PATH
 
 jci-audit init                        # scaffold a standard deny.toml + derived .cargo/audit.toml
-jci-audit wire-ci                     # wire the orb into your CircleCI config
+jci-audit wire-ci                     # scaffolds jci-audit.toml first run; review, then re-run to wire CI
 jci-audit check                       # PR/dev gate: cargo-deny policy + a live cargo-audit scan
 jci-audit release-prep 1.2.0          # release gate: reproducible, pinned-advisory-db validation
 ```
