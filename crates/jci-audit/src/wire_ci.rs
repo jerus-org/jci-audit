@@ -462,12 +462,6 @@ fn resolve_scaffold_choices_non_interactive(flags: &ScaffoldFlags) -> ScaffoldCh
     }
 }
 
-/// Resolve [`ScaffoldChoices`] for a first `wire-ci` run: any flag set in
-/// `flags` wins outright; anything still unset falls back to
-/// [`ScaffoldChoices::default`] under [`is_non_interactive`], or is asked
-/// about interactively otherwise. `existing_ci_lines` is the target
-/// `CircleCI` file's content (empty when it doesn't exist yet) — offered as
-/// real workflow-name choices instead of guessing.
 /// Sentinel item offered alongside every real workflow name, for typing one
 /// that isn't in the list.
 const OTHER_WORKFLOW: &str = "<enter a different name>";
@@ -491,6 +485,12 @@ fn workflow_choices(existing_ci_lines: &[String], default_workflow: &str) -> (Ve
     (names, default_index)
 }
 
+/// Resolve [`ScaffoldChoices`] for a first `wire-ci` run: any flag set in
+/// `flags` wins outright; anything still unset falls back to
+/// [`ScaffoldChoices::default`] under [`is_non_interactive`], or is asked
+/// about interactively otherwise. `existing_ci_lines` is the target
+/// `CircleCI` file's content (empty when it doesn't exist yet) — offered as
+/// real workflow-name choices instead of guessing.
 fn gather_scaffold_choices(
     flags: &ScaffoldFlags,
     existing_ci_lines: &[String],
@@ -4855,7 +4855,7 @@ orb_version = \"jerus-org/jci-audit@1.0\"
     }
 
     #[test]
-    fn wire_ci_at_scaffold_flags_some_reads_scans_not_a_second_file_read() {
+    fn wire_ci_at_scaffold_flags_some_scaffolds_like_none_when_non_interactive() {
         // Forces the non-interactive resolution path deterministically
         // (real dialoguer prompts aren't unit-tested — see
         // resolve_scaffold_choices_non_interactive's own doc comment) while
