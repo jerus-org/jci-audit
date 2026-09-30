@@ -6,6 +6,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 ## [Unreleased]
 
+### Added
+
+- make wire-ci's scaffold configurable(pr [#276])
+
 ### Changed
 
 - docs-correct stale-notices claims post-#266(pr [#269])
@@ -684,6 +688,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#271]: https://github.com/jerus-org/jci-audit/pull/271
 [#272]: https://github.com/jerus-org/jci-audit/pull/272
 [#273]: https://github.com/jerus-org/jci-audit/pull/273
+[#276]: https://github.com/jerus-org/jci-audit/pull/276
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
