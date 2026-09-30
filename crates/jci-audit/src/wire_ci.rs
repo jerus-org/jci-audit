@@ -437,7 +437,25 @@ pub(crate) struct ScaffoldFlags {
 /// `gen-circleci-orb init`'s own check exactly — this org's existing
 /// precedent for this shape of first-run dialogue.
 fn is_non_interactive() -> bool {
-    std::env::var("CI").is_ok() || !console::Term::stderr().is_term()
+    ci_env_set() || !console::Term::stderr().is_term()
+}
+
+/// Whether `$CI` says this is a CI run — one definition shared by
+/// [`is_non_interactive`] (skip prompts) and the CLI's refusal to run
+/// write-mode `wire-ci` there, so the two can't drift apart. Set counts
+/// unless empty, `false` or `0`: a developer shell that exports `CI=false`
+/// must not be locked out of a command that now hard-fails in CI.
+pub(crate) fn ci_env_set() -> bool {
+    ci_value_means_ci(std::env::var("CI").ok().as_deref())
+}
+
+/// The pure half of [`ci_env_set`], so the value handling is testable
+/// without touching the process environment.
+fn ci_value_means_ci(value: Option<&str>) -> bool {
+    value.is_some_and(|v| {
+        let v = v.trim();
+        !(v.is_empty() || v == "0" || v.eq_ignore_ascii_case("false"))
+    })
 }
 
 /// Resolve [`ScaffoldChoices`] from `flags` alone, falling back to
@@ -2921,6 +2939,17 @@ orb_job = "jci-audit/publish_record"
         ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[test]
+    fn ci_value_counts_unless_empty_false_or_zero() {
+        assert!(!ci_value_means_ci(None));
+        for off in ["", "false", "FALSE", "False", "0", "  "] {
+            assert!(!ci_value_means_ci(Some(off)), "{off:?} must not count");
+        }
+        for on in ["true", "1", "yes", "circleci"] {
+            assert!(ci_value_means_ci(Some(on)), "{on:?} must count");
+        }
     }
 
     #[test]
