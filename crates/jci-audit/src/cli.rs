@@ -681,14 +681,10 @@ fn run_wire_ci(
     let cwd = std::env::current_dir()?;
     tracing::info!(check, "wire-ci");
 
-    let outcome = match scaffold_flags {
-        // check-ci-wiring never scaffolds (it bails instead), so scaffold
-        // flags have nothing to do — the plain entry point.
-        None => wire_ci::wire_ci_at(&cwd, config, check)?,
-        Some(flags) => wire_ci::wire_ci_at_with_scaffold_flags(&cwd, config, check, flags)?,
-    };
-
-    match outcome {
+    // `scaffold_flags: None` never prompts and never reads the target
+    // CircleCI config, so check-ci-wiring (which never scaffolds anyway —
+    // it bails instead) passing `None` here is fully safe.
+    match wire_ci::wire_ci_at(&cwd, config, check, scaffold_flags)? {
         wire_ci::WireCiOutcome::Scaffolded { notes } => {
             for note in &notes {
                 println!("{note}");
