@@ -3,7 +3,7 @@ description: >
 usage:
   version: 2.1
   orbs:
-    jci-audit: jerus-org/jci-audit@1.0
+    jci-audit: jerus-org/jci-audit@0.1
   workflows:
     use-my-orb:
       jobs:
