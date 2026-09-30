@@ -30,7 +30,7 @@ Thanks for your interest in contributing! This project is maintained by
 
 ## Coding standards
 
-- **Rust edition 2024**, MSRV **1.85**. Follow the
+- **Rust edition 2024**, MSRV **1.91**. Follow the
   [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/).
 - `rustfmt` (config in `rustfmt.toml` / `rustfmt-nightly.toml`) and `clippy`
   with `-D warnings` are enforced in CI.

@@ -21,6 +21,9 @@ jci-audit check [OPTIONS]
 
 Options:
       --manifest-path <MANIFEST_PATH>  Path to the Cargo.toml (or its directory) to check [default: .]
+      --deny-stale-exceptions          Fail if a configured [[bans.skip]] exception no longer fires
+      --deny-unused-licenses           Fail if deny.toml allows a license nothing in the graph uses
+      --deny-stale-notices             Fail if the license set changed since the committed notices
       --deny-warnings                  Fail if the tools report any warning
 ```
 
@@ -34,16 +37,28 @@ in one never hides a failure in another; the error message names every step that
 4. The `cargo-about` license-policy resolution check — can `cargo-about` actually attribute every
    reachable dependency's licence with what's on disk right now? Independent of drift: an
    in-sync `about.toml` can still fail this if an SPDX expression isn't covered by any
-   allow/exception combination. Previously only `release-prep` caught this, at the most
-   expensive point in the pipeline (jerus-org/jci-audit#80).
+   allow/exception combination.
 
-`--deny-warnings` escalates warnings (e.g. cargo-deny's `unmaintained = "all"` scope, which
-reports as a warning rather than an error by default) to failures. Use this on a schedule or a
-stricter branch policy where warnings shouldn't be allowed to accumulate silently.
+Three more flags narrow cargo-deny's own warnings into their own blocking checks, so a repo can
+require cleanup on just that one thing without failing on every unrelated warning:
+
+- `--deny-stale-exceptions` — a configured `[[bans.skip]]` exception cargo-deny already reports
+  as `warning[unmatched-skip]`/`warning[unnecessary-skip]`. Mirrors [`prune --check`](#prune).
+- `--deny-unused-licenses` — a `deny.toml` allow-list entry nothing in the graph actually uses,
+  reported as `warning[license-not-encountered]`.
+- `--deny-stale-notices` — compares a fresh `cargo-about` render's license names against the
+  committed `THIRD-PARTY-LICENSES.md`. Only fails if the set grew (a license substituted or
+  added); a version bump or a new dependency under an already-accepted license warns instead,
+  since this exists to catch a licensing change, not to keep the file byte-current.
+
+`--deny-warnings` escalates every remaining warning (e.g. cargo-deny's `unmaintained = "all"`
+scope, which reports as a warning rather than an error by default) to a failure too. Use this on
+a schedule or a stricter branch policy where warnings shouldn't be allowed to accumulate silently.
 
 ```bash
 jci-audit check                              # current directory
 jci-audit check --manifest-path crates/foo   # a specific crate in a workspace
+jci-audit check --deny-stale-notices         # also catch a licensing change early
 jci-audit check --deny-warnings              # treat warnings as failures too
 ```
 
@@ -57,6 +72,9 @@ Arguments:
 
 Options:
       --advisory-db <ADVISORY_DB>  Advisory-db root; cargo-deny's checkout lives beneath it [default: ~/.cargo/advisory-db]
+  -p, --package <PACKAGE>          The crate's package name — scopes the dependency digest and
+                                     record path to just this crate's reachable graph. Omit for a
+                                     single-crate workspace's whole-graph record
       --deny-warnings               Fail if the tools report any warning
 ```
 
@@ -66,8 +84,8 @@ it continuously via `check`), so at release time it only runs again as a non-blo
 check, not a second pinned/offline pass. Writes `.security/release-<VERSION>.json` to the working
 directory — see [design.md §5](design.md#5-reproducibility-the-release-record) for exactly what
 that record contains and why, and
-[advanced-configuration.md](advanced-configuration.md#the-release-record-is-local-only-for-now)
-for the record's current (local-only, not yet distributed) storage model.
+[advanced-configuration.md](advanced-configuration.md#how-the-release-record-is-stored-and-distributed)
+for how to sign and distribute it with `publish-record`.
 
 For a CI pipeline that computes the version at runtime (e.g. via `nextsv`), pass it straight
 through, e.g. `jci-audit release-prep "$SEMVER"`.
@@ -90,7 +108,7 @@ member's `about.toml` `accepted` license list (from `deny.toml`'s `[licenses]` p
 to each crate's own dependency graph) — see
 [design.md §4](design.md#4-the-sync-derivation) for the full derivation algorithm. Members are
 found via `cargo metadata`, not an assumption about directory layout — `crates/*/` is this
-project's own convention, not a requirement (jerus-org/jci-audit#100). Writing is a **merge**:
+project's own convention, not a requirement. Writing is a **merge**:
 hand-authored content in `about.toml` (comments, `.clarify` attribution pins) is left untouched.
 
 ```bash
@@ -135,6 +153,8 @@ Arguments:
 
 Options:
       --advisory-db <ADVISORY_DB>  Advisory-db root [default: ~/.cargo/advisory-db]
+  -p, --package <PACKAGE>          The crate's package name — must match whatever
+                                     `release-prep --package` (if any) the record was written under
       --owner <OWNER>               GitHub repository owner (remote-fetch fallback only)
       --repo <REPO>                 GitHub repository name (remote-fetch fallback only)
       --tag-prefix <TAG_PREFIX>     Release tag prefix (remote-fetch fallback only)
@@ -185,4 +205,79 @@ exceptions, additional advisory ignores).
 ```bash
 jci-audit init            # refuses if deny.toml already exists
 jci-audit init --force    # overwrite
+```
+
+`init` only writes the policy files above — it doesn't touch your CI config. Run [`wire-ci`](#wire-ci)
+next to get `jci-audit check` actually running in your pipeline.
+
+## `wire-ci`
+
+```
+jci-audit wire-ci [OPTIONS]
+
+Options:
+      --config <CONFIG>  Path to the jci-audit.toml-shaped wiring spec to read (and, if it has no
+                          [[ci.jobs]] entries yet, scaffold an example into)
+```
+
+Writes (or resyncs) the `jerus-org/jci-audit` orb job(s) declared in `jci-audit.toml`'s `[ci]`
+table into the CircleCI config named there (`.circleci/config.yml` by default). With no
+`jci-audit.toml` yet, the first run scaffolds one with a single example `jci-audit/check` job in a
+`validation` workflow — review and adapt it by hand (add more jobs, rename the workflow, change
+params), then re-run `wire-ci` to apply what you edited. Every run after that applies whatever
+`[[ci.jobs]]` currently says, without rewriting entries you didn't touch. Local/human-only: run
+it, review the diff, and commit the result.
+
+```bash
+jci-audit wire-ci                            # jci-audit.toml at the default location
+jci-audit wire-ci --config path/to/jci-audit.toml
+```
+
+## `check-ci-wiring`
+
+```
+jci-audit check-ci-wiring [OPTIONS]
+
+Options:
+      --config <CONFIG>  Path to the jci-audit.toml-shaped wiring spec to read. Same resolution
+                          rules as `wire-ci --config`
+```
+
+The CI-facing counterpart to `wire-ci` — fails (non-zero) on drift between `jci-audit.toml` and
+what's actually in the CircleCI config, and never writes either file: there is no flag to make it
+write, so a workflow wiring this job in can't regress to write mode by mistake. Add it to your
+validation workflow so a hand-edit to the managed CI region, or an orb version bump, gets caught
+before `wire-ci` needs to be re-run by hand.
+
+```bash
+jci-audit check-ci-wiring
+```
+
+## `publish-record`
+
+```
+jci-audit publish-record [OPTIONS] --tag <TAG> --owner <OWNER> --repo <REPO> <VERSION>
+
+Arguments:
+  <VERSION>  The release version whose record to publish (e.g. "1.2.0")
+
+Options:
+      --tag <TAG>            The exact release tag to attach assets to (e.g. "myapp-v1.2.0")
+      --owner <OWNER>        GitHub repository owner that owns the release
+      --repo <REPO>          GitHub repository name that owns the release
+      --publish              Un-draft the release once the assets are attached
+      --record-path <PATH>   Where to find the record to sign and upload
+```
+
+Self-contained: generates a one-use minisign keypair, signs a `release-prep`-written record, and
+uploads the record/`.sig`/`.pub` as assets on the given release tag — the source `verify`'s
+remote-fetch path fetches from later. The private key never leaves this one invocation. Needs a
+`GITHUB_TOKEN` environment variable with permission to upload (and, with `--publish`, publish) the
+release — read from the environment only, never a CLI flag, so it can't end up in a command line
+or CI log.
+
+```bash
+GITHUB_TOKEN=... jci-audit publish-record 1.2.0 \
+  --tag myapp-v1.2.0 --owner your-org --repo your-repo \
+  --record-path .security/release-1.2.0.json --publish
 ```

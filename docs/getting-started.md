@@ -20,15 +20,17 @@ Or build from source:
 cargo install jci-audit
 ```
 
-`jci-audit` orchestrates `cargo audit` and `cargo deny` as subprocesses rather than bundling
-them — install both too:
+`jci-audit` orchestrates `cargo audit`, `cargo deny`, and `cargo about` as subprocesses rather
+than bundling them — install all three:
 
 ```bash
-cargo binstall cargo-audit cargo-deny
+cargo binstall cargo-audit cargo-deny cargo-about
 ```
 
-Every subcommand that shells out checks for these first and reports, with actionable install
-guidance, if either is missing — see [preflight in the design doc](design.md#7-preflight-failing-loud-on-a-missing-tool).
+`cargo-about` is only needed for `check`'s license-notices resolution/staleness checks — skip it
+if you only run `sync`, `prune`, or `init`. Every subcommand that shells out to one of these tools
+checks for it first and reports, with actionable install guidance, if it's missing — see
+[preflight in the design doc](design.md#7-preflight-failing-loud-on-a-missing-tool).
 
 ## Scaffold a policy with `init`
 
@@ -44,6 +46,31 @@ all licenses except an explicit allow-list, and leaves `[advisories].ignore` emp
 [the configuration guide](configuration-guide.md) for what each section means and how to extend
 it (e.g. admitting a weak-copyleft license for one specific dependency).
 
+`init` only writes `deny.toml`/`.cargo/audit.toml` — it doesn't touch your CI config. Wiring
+`jci-audit check` into your pipeline is `wire-ci`'s job, next.
+
+## Wire the orb into your CI config
+
+```bash
+jci-audit wire-ci
+```
+
+Writes (or resyncs) the `jerus-org/jci-audit` orb job(s) declared in `jci-audit.toml`'s `[ci]`
+table into your `.circleci/config.yml`. On a project with no `jci-audit.toml` yet, the first run
+scaffolds one with a single example `jci-audit/check` job in a `validation` workflow — review and
+adapt it by hand (add `release-prep`/`sync`/`prune` jobs, change the workflow name, tune params),
+then re-run `wire-ci` to apply what you edited. It's local/human-only: run it, review the diff,
+and commit the result.
+
+```bash
+jci-audit check-ci-wiring
+```
+
+The CI-facing counterpart — fails (non-zero) on drift between `jci-audit.toml` and what's actually
+in `.circleci/config.yml`, and never writes either file. Add it to your validation workflow so a
+hand-edit to the managed CI region, or an orb version bump, gets caught before `wire-ci` needs to
+be re-run by hand.
+
 ## Run the PR/dev gate
 
 ```bash
@@ -51,10 +78,13 @@ jci-audit check
 ```
 
 This runs `cargo deny check advisories bans licenses sources` (policy), a **live** `cargo audit`
-scan (fresh RustSec advisories), and a check that `about.toml` still matches `deny.toml`'s
-license policy — all three independently blocking, aggregated so a failure in one never hides
-another. Wire this into your CI's validation workflow so every PR gets all three (see
-[the user guide](user-guide.md#check) for what each one covers).
+scan (fresh RustSec advisories), a check that `about.toml` still matches `deny.toml`'s license
+policy, and a check that `cargo-about` can resolve every dependency's license — all four
+independently blocking, aggregated so a failure in one never hides another. A fifth, opt-in check
+(`--deny-stale-notices`) only fails if a dependency's license set actually grew (a license
+substituted or added); a version bump or a new dependency under an already-accepted license warns
+instead. Wire this into your CI's validation workflow (via `wire-ci` above) so every PR gets all
+of it (see [the user guide](user-guide.md#check) for what each check covers).
 
 ## Keep derived files in sync
 

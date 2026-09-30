@@ -12,21 +12,18 @@ advisory-db location, and troubleshooting a `verify` mismatch. See
 fields jci-audit interacts with, and [user-guide.md](user-guide.md) for every subcommand's
 basic flags.
 
-## The release record is local-only, for now
+## How the release record is stored and distributed
 
 `jci-audit release-prep` writes `.security/release-<VERSION>.json` to the working directory and
-does nothing else with it — no git commit, no push, no signing. Earlier versions committed and
-GPG-signed the record via [`pcu`](https://crates.io/crates/pcu) (the `--commit`/`--push`/
-`--gpg-*-env`/`--sign-key-env` flags this section used to document); that path is gone
-([jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) phase 1) — those
-flags are now rejected by clap rather than silently accepted as no-ops. `.security/*.json` is
-`.gitignore`'d, so `cargo-release`'s dirty-tree check is unaffected by the write.
+does nothing else with it there — no git commit, no push, no signing. `.security/*.json` is
+`.gitignore`'d, so `cargo-release`'s dirty-tree check is unaffected by the write. A subsequent job
+needs the record handed to it explicitly to do anything durable with it.
 
-Distributing the record as a signed GitHub release asset (attached to the draft release before
-publish, verified via `rsign` in `verify`'s remote-fetch path) has since shipped
-([jerus-org/jci-audit#75](https://github.com/jerus-org/jci-audit/issues/75) phase 2) — see
-[RELEASING.md](RELEASING.md#what-is-signed) for the current state and [design.md
-§3.2](design.md#32-release-gate) for the write-time flow.
+`jci-audit publish-record` is that handoff: it signs the record with a one-use minisign keypair
+and uploads the record/`.sig`/`.pub` as named assets on the release, before (optionally,
+with `--publish`) un-drafting it. `verify`'s remote-fetch path then fetches and signature-checks
+that record with no local checkout at all. See [RELEASING.md](RELEASING.md#what-is-signed) for
+what's signed and how, and [design.md §3.2](design.md#32-release-gate) for the write-time flow.
 
 ## Overriding the advisory-db location
 
@@ -103,7 +100,8 @@ just re-run `jci-audit check`/`release-prep` once to let cargo-deny refresh it) 
 `sync`'s `about.toml` derivation already scopes each crate's `accepted` list to its own
 dependency graph (see [design.md §4.2](design.md#42-abouttoml--a-per-crate-spdx-aware-derivation)),
 and honours that crate's own `about.toml` `ignore-build-dependencies`/`ignore-transitive-dependencies`
-settings ([#63](https://github.com/jerus-org/jci-audit/issues/63)). `release-prep`/`verify` take a
-`--package <NAME>` selector to scope the dependency digest and record path to one crate at a time,
-for a workspace releasing crates individually in dependency order, mirroring `pcu`'s pattern
-([#62](https://github.com/jerus-org/jci-audit/issues/62)).
+settings. `release-prep`/`verify` take a `-p`/`--package <NAME>` selector to scope the dependency
+digest and record path to one crate at a time, for a workspace releasing crates individually in
+dependency order. `publish-record` and `verify`'s remote-fetch path don't take a per-package
+record path yet — point `--record-path` at the right file explicitly if you're publishing records
+for more than one crate from the same pipeline.
