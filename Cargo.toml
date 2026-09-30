@@ -47,6 +47,15 @@ uuid = { version = "1.26.1", features = ["v4"] }
 # than reimplementing expression evaluation by hand.
 spdx = "0.13.5"
 
+# Interactive prompts for wire-ci's first-run scaffold — same version pin as
+# gen-circleci-orb's own init dialogue, this org's existing precedent for
+# this shape of onboarding.
+dialoguer = "0.12.0"
+# TTY detection backing wire-ci's is_non_interactive. Pinned to the same
+# version dialoguer's own dependency tree already pulls in, so there's only
+# ever one `console` in the graph, not two.
+console = "0.16.6"
+
 # Release-record remote fetch (jerus-org/jci-audit#75 phase 3): downloads a
 # published release's record + signature with no git checkout required.
 pcu-release-assets = "0.1.4"

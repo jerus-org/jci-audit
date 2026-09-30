@@ -216,21 +216,39 @@ next to get `jci-audit check` actually running in your pipeline.
 jci-audit wire-ci [OPTIONS]
 
 Options:
-      --config <CONFIG>  Path to the jci-audit.toml-shaped wiring spec to read (and, if it has no
-                          [[ci.jobs]] entries yet, scaffold an example into)
+      --config <CONFIG>                  Path to the jci-audit.toml-shaped wiring spec to read
+                                          (and, if it has no [[ci.jobs]] entries yet, scaffold an
+                                          example into)
+      --workflow <WORKFLOW>               First-run scaffold only: which workflow the example
+                                          check job joins
+      --deny-unused-licenses <true|false> First-run scaffold only: whether the example enables
+                                          --deny-unused-licenses
+      --deny-stale-exceptions <true|false> First-run scaffold only: whether the example enables
+                                          --deny-stale-exceptions
+      --deny-stale-notices <true|false>   First-run scaffold only: whether the example enables
+                                          --deny-stale-notices
 ```
 
 Writes (or resyncs) the `jerus-org/jci-audit` orb job(s) declared in `jci-audit.toml`'s `[ci]`
 table into the CircleCI config named there (`.circleci/config.yml` by default). With no
-`jci-audit.toml` yet, the first run scaffolds one with a single example `jci-audit/check` job in a
-`validation` workflow — review and adapt it by hand (add more jobs, rename the workflow, change
-params), then re-run `wire-ci` to apply what you edited. Every run after that applies whatever
-`[[ci.jobs]]` currently says, without rewriting entries you didn't touch. Local/human-only: run
-it, review the diff, and commit the result.
+`jci-audit.toml` yet, the first run scaffolds one with a single example `jci-audit/check` job —
+review and adapt it by hand (add more jobs, rename the workflow, change params), then re-run
+`wire-ci` to apply what you edited. Every run after that applies whatever `[[ci.jobs]]` currently
+says, without rewriting entries you didn't touch. Local/human-only: run it, review the diff, and
+commit the result.
+
+The four flags above only shape that first-run scaffold, never an already-scaffolded
+`jci-audit.toml`. With a terminal attached and nothing set, scaffolding **prompts** for the
+workflow (offering any workflow names already declared in the target CircleCI config, alongside
+`validation`) and each check flag, defaulting to this repo's own dogfooded example
+(`validation`, `deny_unused_licenses`/`deny_stale_exceptions` on, `deny_stale_notices` off). In CI,
+or with no terminal attached, it silently uses those same defaults instead of prompting — set the
+flags explicitly there if you want something else.
 
 ```bash
 jci-audit wire-ci                            # jci-audit.toml at the default location
 jci-audit wire-ci --config path/to/jci-audit.toml
+jci-audit wire-ci --workflow build --deny-stale-notices true   # non-interactive, e.g. in a script
 ```
 
 ## `check-ci-wiring`

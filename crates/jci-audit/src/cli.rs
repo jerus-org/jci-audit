@@ -264,7 +264,13 @@ enum Commands {
     /// any of the orb job's own custom parameters). On a repo with
     /// no `[[ci.jobs]]` entries yet, this scaffolds one example into
     /// `jci-audit.toml` — review and adapt it by hand, then re-run to apply
-    /// it.
+    /// it. The flags below only shape that one-time scaffold (which
+    /// workflow the example joins, which of `check`'s flags it enables);
+    /// an already-scaffolded `jci-audit.toml` is unaffected by them —
+    /// edit the file itself for that. With no flags and a terminal
+    /// attached, scaffolding prompts for anything still unset instead of
+    /// silently assuming a default; unset in CI (or off a terminal), it
+    /// falls back to this repo's own dogfooded example.
     ///
     /// For a human to run locally and commit the result — never wired into
     /// CI (there is no `--check`; see `check-ci-wiring` for that).
@@ -280,6 +286,32 @@ enum Commands {
         /// workspace root.
         #[arg(long, help_heading = "Input")]
         config: Option<std::path::PathBuf>,
+
+        /// First-run scaffold only: which workflow the example `check` job
+        /// joins. Unset and non-interactive: `validation`. Unset and
+        /// interactive: offered as a choice, alongside any workflow names
+        /// already declared in the target `CircleCI` config.
+        #[arg(long, help_heading = "Scaffold")]
+        workflow: Option<String>,
+
+        /// First-run scaffold only: whether the example `check` job sets
+        /// `--deny-unused-licenses`. Unset and non-interactive: on
+        /// (matching this repo's own dogfooded example). Unset and
+        /// interactive: prompted.
+        #[arg(long, help_heading = "Scaffold")]
+        deny_unused_licenses: Option<bool>,
+
+        /// First-run scaffold only: whether the example `check` job sets
+        /// `--deny-stale-exceptions`. Unset and non-interactive: on. Unset
+        /// and interactive: prompted.
+        #[arg(long, help_heading = "Scaffold")]
+        deny_stale_exceptions: Option<bool>,
+
+        /// First-run scaffold only: whether the example `check` job sets
+        /// `--deny-stale-notices`. Unset and non-interactive: off. Unset
+        /// and interactive: prompted.
+        #[arg(long, help_heading = "Scaffold")]
+        deny_stale_notices: Option<bool>,
     },
     /// Check that the `CircleCI` config matches `jci-audit.toml`'s `[ci]`
     /// wiring spec, without writing.
@@ -373,8 +405,23 @@ impl Cli {
                 *publish,
                 record_path.as_deref(),
             ),
-            Commands::WireCi { config } => run_wire_ci(config.as_deref(), false),
-            Commands::CheckCiWiring { config } => run_wire_ci(config.as_deref(), true),
+            Commands::WireCi {
+                config,
+                workflow,
+                deny_unused_licenses,
+                deny_stale_exceptions,
+                deny_stale_notices,
+            } => run_wire_ci(
+                config.as_deref(),
+                false,
+                Some(&wire_ci::ScaffoldFlags {
+                    workflow: workflow.clone(),
+                    deny_unused_licenses: *deny_unused_licenses,
+                    deny_stale_exceptions: *deny_stale_exceptions,
+                    deny_stale_notices: *deny_stale_notices,
+                }),
+            ),
+            Commands::CheckCiWiring { config } => run_wire_ci(config.as_deref(), true, None),
         }
     }
 }
@@ -626,11 +673,18 @@ fn report_wire_ci_outcome(path: &str, with: &str, outcome: wire_ci::WriteOutcome
 /// every other subcommand here. Path resolution (the spec file itself, and
 /// `[ci].file` relative to it) is a single path, resolved entirely inside
 /// `wire_ci::wire_ci_at` (jerus-org/jci-audit#163).
-fn run_wire_ci(config: Option<&std::path::Path>, check: bool) -> Result<()> {
+fn run_wire_ci(
+    config: Option<&std::path::Path>,
+    check: bool,
+    scaffold_flags: Option<&wire_ci::ScaffoldFlags>,
+) -> Result<()> {
     let cwd = std::env::current_dir()?;
     tracing::info!(check, "wire-ci");
 
-    match wire_ci::wire_ci_at(&cwd, config, check)? {
+    // `scaffold_flags: None` never prompts and never reads the target
+    // CircleCI config, so check-ci-wiring (which never scaffolds anyway —
+    // it bails instead) passing `None` here is fully safe.
+    match wire_ci::wire_ci_at(&cwd, config, check, scaffold_flags)? {
         wire_ci::WireCiOutcome::Scaffolded { notes } => {
             for note in &notes {
                 println!("{note}");
@@ -1339,7 +1393,7 @@ mod tests {
         let cli = Cli::try_parse_from(["jci-audit", "wire-ci", "--config", "other.toml"])
             .expect("parses");
         match cli.command {
-            Commands::WireCi { config } => {
+            Commands::WireCi { config, .. } => {
                 assert_eq!(config, Some(std::path::PathBuf::from("other.toml")));
             }
             other => panic!("expected WireCi, got {other:?}"),

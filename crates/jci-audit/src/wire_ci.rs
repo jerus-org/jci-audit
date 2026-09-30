@@ -399,13 +399,173 @@ fn job_spec_to_table(job: &JobSpec) -> Table {
     table
 }
 
-/// Insert one example `[[ci.jobs]]` entry (this repo's own dogfooded
-/// `jci-audit/check` in `validation`) plus a `[ci].file` default into
-/// `jci-audit.toml`, preserving everything else in the file byte-for-byte.
-/// Only called when [`CiFile::jobs`] is empty AND nothing was discoverable
-/// in the `CircleCI` config either (see [`wire_ci_at`]) — never touches an
-/// existing `[[ci.jobs]]` entry.
-pub(crate) fn write_scaffold(jci_audit_toml: &str) -> Result<String> {
+/// The `jci-audit/check` job [`write_scaffold`] writes on a project's first
+/// `wire-ci` run: which workflow it joins, and which of `check`'s own
+/// opt-in flags are on. `Default` matches this repo's own dogfooded
+/// example — a real, working starting point, not an arbitrary one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ScaffoldChoices {
+    pub(crate) workflow: String,
+    pub(crate) deny_unused_licenses: bool,
+    pub(crate) deny_stale_exceptions: bool,
+    pub(crate) deny_stale_notices: bool,
+}
+
+impl Default for ScaffoldChoices {
+    fn default() -> Self {
+        Self {
+            workflow: "validation".to_string(),
+            deny_unused_licenses: true,
+            deny_stale_exceptions: true,
+            deny_stale_notices: false,
+        }
+    }
+}
+
+/// CLI overrides for [`ScaffoldChoices`] — `wire-ci`'s own flags, one field
+/// each. `None` means "not passed," not "off": whether that resolves to
+/// [`ScaffoldChoices::default`] or a prompt depends on [`is_non_interactive`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ScaffoldFlags {
+    pub(crate) workflow: Option<String>,
+    pub(crate) deny_unused_licenses: Option<bool>,
+    pub(crate) deny_stale_exceptions: Option<bool>,
+    pub(crate) deny_stale_notices: Option<bool>,
+}
+
+/// True when there is nobody to ask: no terminal, or a CI run. Mirrors
+/// `gen-circleci-orb init`'s own check exactly — this org's existing
+/// precedent for this shape of first-run dialogue.
+fn is_non_interactive() -> bool {
+    std::env::var("CI").is_ok() || !console::Term::stderr().is_term()
+}
+
+/// Resolve [`ScaffoldChoices`] from `flags` alone, falling back to
+/// [`ScaffoldChoices::default`] for anything unset — no prompting. The
+/// non-interactive half of [`gather_scaffold_choices`], pulled out on its
+/// own because it's the only half a test can safely exercise: `interact()`
+/// reads real stdin, so the prompting half isn't unit-tested here, the same
+/// boundary `gen-circleci-orb init`'s own tests draw.
+fn resolve_scaffold_choices_non_interactive(flags: &ScaffoldFlags) -> ScaffoldChoices {
+    let defaults = ScaffoldChoices::default();
+    ScaffoldChoices {
+        workflow: flags.workflow.clone().unwrap_or(defaults.workflow),
+        deny_unused_licenses: flags
+            .deny_unused_licenses
+            .unwrap_or(defaults.deny_unused_licenses),
+        deny_stale_exceptions: flags
+            .deny_stale_exceptions
+            .unwrap_or(defaults.deny_stale_exceptions),
+        deny_stale_notices: flags
+            .deny_stale_notices
+            .unwrap_or(defaults.deny_stale_notices),
+    }
+}
+
+/// Sentinel item offered alongside every real workflow name, for typing one
+/// that isn't in the list.
+const OTHER_WORKFLOW: &str = "<enter a different name>";
+
+/// The choice list and pre-selected index for the workflow `Select` prompt:
+/// every workflow name already declared in `existing_ci_lines`, plus
+/// `default_workflow` if it isn't already among them, plus [`OTHER_WORKFLOW`]
+/// — with the index pointing at wherever `default_workflow` actually landed
+/// (not always the front: an existing repo may already declare `validation`
+/// alongside other workflows, in any order). Pure and side-effect-free so it
+/// can be unit-tested without touching `dialoguer`, unlike the prompt itself.
+fn workflow_choices(existing_ci_lines: &[String], default_workflow: &str) -> (Vec<String>, usize) {
+    let mut names = all_workflow_names(existing_ci_lines);
+    let default_index = if let Some(i) = names.iter().position(|n| n == default_workflow) {
+        i
+    } else {
+        names.insert(0, default_workflow.to_string());
+        0
+    };
+    names.push(OTHER_WORKFLOW.to_string());
+    (names, default_index)
+}
+
+/// Resolve [`ScaffoldChoices`] for a first `wire-ci` run: any flag set in
+/// `flags` wins outright; anything still unset falls back to
+/// [`ScaffoldChoices::default`] under [`is_non_interactive`], or is asked
+/// about interactively otherwise. `existing_ci_lines` is the target
+/// `CircleCI` file's content (empty when it doesn't exist yet) — offered as
+/// real workflow-name choices instead of guessing.
+fn gather_scaffold_choices(
+    flags: &ScaffoldFlags,
+    existing_ci_lines: &[String],
+) -> Result<ScaffoldChoices> {
+    if is_non_interactive() {
+        return Ok(resolve_scaffold_choices_non_interactive(flags));
+    }
+
+    let defaults = ScaffoldChoices::default();
+
+    let workflow = if let Some(w) = &flags.workflow {
+        w.clone()
+    } else {
+        let (names, default_index) = workflow_choices(existing_ci_lines, &defaults.workflow);
+        let selection = dialoguer::Select::new()
+            .with_prompt("Which workflow should jci-audit/check join?")
+            .items(&names)
+            .default(default_index)
+            .interact()?;
+        if names[selection] == OTHER_WORKFLOW {
+            dialoguer::Input::<String>::new()
+                .with_prompt("Workflow name")
+                .interact_text()?
+        } else {
+            names[selection].clone()
+        }
+    };
+
+    let confirm = |label: &str, current: Option<bool>, default: bool| -> Result<bool> {
+        match current {
+            Some(v) => Ok(v),
+            None => Ok(dialoguer::Confirm::new()
+                .with_prompt(label)
+                .default(default)
+                .interact()?),
+        }
+    };
+    let deny_unused_licenses = confirm(
+        "Fail if deny.toml allows a license nothing in the graph uses?",
+        flags.deny_unused_licenses,
+        defaults.deny_unused_licenses,
+    )?;
+    let deny_stale_exceptions = confirm(
+        "Fail if a configured [[bans.skip]] exception no longer fires?",
+        flags.deny_stale_exceptions,
+        defaults.deny_stale_exceptions,
+    )?;
+    let deny_stale_notices = confirm(
+        "Fail if the license set changed since the committed notices?",
+        flags.deny_stale_notices,
+        defaults.deny_stale_notices,
+    )?;
+
+    Ok(ScaffoldChoices {
+        workflow,
+        deny_unused_licenses,
+        deny_stale_exceptions,
+        deny_stale_notices,
+    })
+}
+
+/// Insert one `[[ci.jobs]]` entry for `jci-audit/check` reflecting
+/// `choices`, plus a `[ci].file` default, into `jci-audit.toml`, preserving
+/// everything else in the file byte-for-byte. Only called when
+/// [`CiFile::jobs`] is empty AND nothing was discoverable in the `CircleCI`
+/// config either (see [`wire_ci_at`]) — never touches an existing
+/// `[[ci.jobs]]` entry. `choices` only shapes this one-time write; every
+/// `wire-ci`/`check-ci-wiring` run after this one reads only the resulting
+/// `jci-audit.toml` — see this module's own doc comment for why that split
+/// is deliberate (jerus-org/jci-audit#163).
+pub(crate) fn write_scaffold(jci_audit_toml: &str, choices: &ScaffoldChoices) -> Result<String> {
+    if choices.workflow.trim().is_empty() {
+        bail!("scaffold workflow name must not be empty");
+    }
+
     let mut doc = if jci_audit_toml.trim().is_empty() {
         DocumentMut::new()
     } else {
@@ -424,19 +584,27 @@ pub(crate) fn write_scaffold(jci_audit_toml: &str) -> Result<String> {
         ci["file"] = toml_edit::value(".circleci/config.yml");
     }
 
-    // A real, working example — jci-audit/check's own two flags — shows the
-    // shape without requiring the reader to invent a plausible one. Left
-    // empty: a job namespaced under jci-audit/ falls back to the running
-    // binary's own crate version when orb_version is unset (see
+    // Left empty: a job namespaced under jci-audit/ falls back to the
+    // running binary's own crate version when orb_version is unset (see
     // resolve_orb_version) — set it only to pin a different orb, or a
     // specific jci-audit version other than the one that wrote this file.
+    // A `false` flag matches `check`'s own default (unset = off), so only
+    // `true` flags become params — no point cluttering the scaffold with
+    // explicit `= "false"` entries that add nothing over leaving them out.
+    let mut params = Vec::new();
+    if choices.deny_unused_licenses {
+        params.push(("deny_unused_licenses".to_string(), "true".to_string()));
+    }
+    if choices.deny_stale_exceptions {
+        params.push(("deny_stale_exceptions".to_string(), "true".to_string()));
+    }
+    if choices.deny_stale_notices {
+        params.push(("deny_stale_notices".to_string(), "true".to_string()));
+    }
     let example = JobSpec {
-        workflow: Some("validation".to_string()),
+        workflow: Some(choices.workflow.clone()),
         orb_job: Some("jci-audit/check".to_string()),
-        params: vec![
-            ("deny_unused_licenses".to_string(), "true".to_string()),
-            ("deny_stale_exceptions".to_string(), "true".to_string()),
-        ],
+        params,
         ..JobSpec::default()
     };
 
@@ -1961,18 +2129,31 @@ struct Computed {
 ///
 /// ```rust,ignore
 /// // `wire-ci`: apply, writing jci-audit.toml/the CI file if either drifted.
-/// let outcome = wire_ci_at(&workspace_root, None, false)?;
+/// let outcome = wire_ci_at(&workspace_root, None, false, None)?;
 /// // `check-ci-wiring`: same reconciliation, never writes, errs on drift.
-/// let outcome = wire_ci_at(&workspace_root, None, true)?;
+/// let outcome = wire_ci_at(&workspace_root, None, true, None)?;
 /// ```
 ///
 /// See `tests::wire_ci_at_applies_configured_jobs_and_never_rewrites_the_spec`
 /// (apply mode) and `tests::wire_ci_at_check_detects_drift_without_writing_anything`
 /// (check mode) for real, currently-passing exercises of both paths.
+///
+/// `scaffold_flags` only ever shapes a first-run scaffold's one-time
+/// bootstrap write — never an already-scaffolded `jci-audit.toml`. `None`
+/// resolves it as [`ScaffoldChoices::default`], deterministically: no
+/// prompt, no extra file read, regardless of terminal/`$CI` state — every
+/// pre-existing caller (every test, and `check-ci-wiring`, which never
+/// reaches the scaffold write path anyway) passes this. `Some` resolves it
+/// from the given CLI overrides and, for anything still unset, an
+/// interactive prompt or the same default — see [`gather_scaffold_choices`].
+/// **Only the real `wire-ci` CLI dispatch should ever pass `Some`** —
+/// anything else risks blocking on stdin if a terminal happens to be
+/// attached and `$CI` happens to be unset.
 pub(crate) fn wire_ci_at(
     start: &Path,
     config_override: Option<&Path>,
     check: bool,
+    scaffold_flags: Option<&ScaffoldFlags>,
 ) -> Result<WireCiOutcome> {
     let config_path = if let Some(p) = config_override {
         p.to_path_buf()
@@ -2018,7 +2199,26 @@ pub(crate) fn wire_ci_at(
             }
             bail!(message);
         }
-        let scaffolded = write_scaffold(&existing_toml_text)?;
+        let choices = match scaffold_flags {
+            // No flags passed at all: the plain wire_ci_at entry point —
+            // always the hardcoded default, never a prompt, never extra
+            // I/O. Every pre-existing caller (tests, check-ci-wiring) gets
+            // exactly this.
+            None => ScaffoldChoices::default(),
+            // Real `wire-ci` CLI dispatch: every target file was already
+            // read into `scans` above (no second read), and every file in
+            // scope — not just the default — contributes workflow names,
+            // so `[ci].discover_files` is honoured here too.
+            Some(flags) => {
+                let existing_ci_lines: Vec<String> = scans
+                    .iter()
+                    .flat_map(|s| s.existing_text.lines())
+                    .map(str::to_string)
+                    .collect();
+                gather_scaffold_choices(flags, &existing_ci_lines)?
+            }
+        };
+        let scaffolded = write_scaffold(&existing_toml_text, &choices)?;
         fs_atomic::write_atomically(&config_path, &scaffolded)?;
         return Ok(WireCiOutcome::Scaffolded { notes });
     }
@@ -2549,7 +2749,7 @@ orb_job = "jci-audit/publish_record"
 
     #[test]
     fn write_scaffold_inserts_file_default_and_example_job_into_empty_file() {
-        let out = write_scaffold("").unwrap();
+        let out = write_scaffold("", &ScaffoldChoices::default()).unwrap();
         let got = read_ci_file(&out).unwrap();
         assert_eq!(got.file.as_deref(), Some(".circleci/config.yml"));
         assert_eq!(got.jobs.len(), 1);
@@ -2572,7 +2772,7 @@ orb_job = "jci-audit/publish_record"
     #[test]
     fn write_scaffold_preserves_unrelated_content() {
         let existing = "[other]\nkept = true\n";
-        let out = write_scaffold(existing).unwrap();
+        let out = write_scaffold(existing, &ScaffoldChoices::default()).unwrap();
         assert!(out.contains("[other]"));
         assert!(out.contains("kept = true"));
         assert_eq!(read_ci_file(&out).unwrap().jobs.len(), 1);
@@ -2581,11 +2781,189 @@ orb_job = "jci-audit/publish_record"
     #[test]
     fn write_scaffold_does_not_overwrite_an_existing_file_key() {
         let existing = "[ci]\nfile = \"custom.yml\"\n";
-        let out = write_scaffold(existing).unwrap();
+        let out = write_scaffold(existing, &ScaffoldChoices::default()).unwrap();
         assert_eq!(
             read_ci_file(&out).unwrap().file.as_deref(),
             Some("custom.yml")
         );
+    }
+
+    #[test]
+    fn write_scaffold_reflects_non_default_choices() {
+        let choices = ScaffoldChoices {
+            workflow: "build".to_string(),
+            deny_unused_licenses: false,
+            deny_stale_exceptions: false,
+            deny_stale_notices: true,
+        };
+        let out = write_scaffold("", &choices).unwrap();
+        let got = read_ci_file(&out).unwrap();
+        assert_eq!(got.jobs[0].workflow.as_deref(), Some("build"));
+        // Only true flags become params — a false flag matches check's own
+        // default (unset), so it isn't worth cluttering the scaffold with.
+        assert_eq!(
+            got.jobs[0].params,
+            vec![("deny_stale_notices".to_string(), "true".to_string())]
+        );
+    }
+
+    #[test]
+    fn write_scaffold_rejects_an_empty_workflow_name() {
+        let choices = ScaffoldChoices {
+            workflow: "   ".to_string(),
+            ..ScaffoldChoices::default()
+        };
+        let err = write_scaffold("", &choices).unwrap_err();
+        assert!(err.to_string().contains("must not be empty"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_scaffold_choices_non_interactive_uses_hardcoded_defaults_when_no_flags_set() {
+        let resolved = resolve_scaffold_choices_non_interactive(&ScaffoldFlags::default());
+        assert_eq!(resolved, ScaffoldChoices::default());
+    }
+
+    #[test]
+    fn resolve_scaffold_choices_non_interactive_prefers_flags_over_defaults() {
+        let flags = ScaffoldFlags {
+            workflow: Some("release".to_string()),
+            deny_unused_licenses: Some(false),
+            deny_stale_exceptions: Some(false),
+            deny_stale_notices: Some(true),
+        };
+        let resolved = resolve_scaffold_choices_non_interactive(&flags);
+        assert_eq!(
+            resolved,
+            ScaffoldChoices {
+                workflow: "release".to_string(),
+                deny_unused_licenses: false,
+                deny_stale_exceptions: false,
+                deny_stale_notices: true,
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_scaffold_choices_non_interactive_applies_flags_individually() {
+        // A single flag set must not disturb the other three's own defaults.
+        let flags = ScaffoldFlags {
+            workflow: Some("build".to_string()),
+            ..ScaffoldFlags::default()
+        };
+        let resolved = resolve_scaffold_choices_non_interactive(&flags);
+        assert_eq!(
+            resolved,
+            ScaffoldChoices {
+                workflow: "build".to_string(),
+                ..ScaffoldChoices::default()
+            }
+        );
+    }
+
+    #[test]
+    fn workflow_choices_defaults_to_front_when_nothing_declared_yet() {
+        let (names, default_index) = workflow_choices(&[], "validation");
+        assert_eq!(
+            names,
+            vec!["validation".to_string(), OTHER_WORKFLOW.to_string()]
+        );
+        assert_eq!(default_index, 0);
+    }
+
+    #[test]
+    fn workflow_choices_points_at_validation_when_present_but_not_first() {
+        // A repo whose config already declares other workflows before
+        // "validation" must still default to "validation", not whichever
+        // workflow happens to sit at index 0.
+        let lines: Vec<String> =
+            "workflows:\n  release:\n    jobs: []\n  validation:\n    jobs: []\n"
+                .lines()
+                .map(str::to_string)
+                .collect();
+        let (names, default_index) = workflow_choices(&lines, "validation");
+        assert_eq!(
+            names,
+            vec![
+                "release".to_string(),
+                "validation".to_string(),
+                OTHER_WORKFLOW.to_string()
+            ]
+        );
+        assert_eq!(names[default_index], "validation");
+    }
+
+    #[test]
+    fn workflow_choices_inserts_default_at_front_when_absent() {
+        let lines: Vec<String> = "workflows:\n  release:\n    jobs: []\n"
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let (names, default_index) = workflow_choices(&lines, "validation");
+        assert_eq!(
+            names,
+            vec![
+                "validation".to_string(),
+                "release".to_string(),
+                OTHER_WORKFLOW.to_string()
+            ]
+        );
+        assert_eq!(default_index, 0);
+    }
+
+    /// `$CI` is process-global, so the tests that set it cannot run alongside
+    /// the ones that read it. Rust runs tests in parallel by default: without
+    /// this, one test removing `$CI` can flip another's reading of it.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// A poisoned lock only means some other test panicked while holding it —
+    /// the data is `()`, so there is nothing to protect against.
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[test]
+    fn ci_env_var_forces_non_interactive() {
+        let _guard = lock_env();
+        let was = std::env::var("CI").ok();
+        // SAFETY: serialized by ENV_LOCK — no other thread reads/writes `CI`
+        // while this guard is held.
+        unsafe { std::env::set_var("CI", "true") };
+        let result = is_non_interactive();
+        match was {
+            Some(v) => unsafe { std::env::set_var("CI", v) },
+            None => unsafe { std::env::remove_var("CI") },
+        }
+        assert!(
+            result,
+            "$CI set must force non-interactive, whatever the terminal says"
+        );
+    }
+
+    #[test]
+    fn is_non_interactive_reflects_tty_state() {
+        let _guard = lock_env();
+        let ci_was = std::env::var("CI").ok();
+        // SAFETY: serialized by ENV_LOCK.
+        unsafe { std::env::remove_var("CI") };
+        let is_tty = console::Term::stderr().is_term();
+        let result = is_non_interactive();
+        if let Some(val) = ci_was {
+            unsafe { std::env::set_var("CI", val) };
+        }
+        if is_tty {
+            assert!(
+                !result,
+                "is_non_interactive must be false when stderr IS a terminal \
+                 and $CI is not set"
+            );
+        } else {
+            assert!(
+                result,
+                "is_non_interactive must be true when stderr is NOT a terminal"
+            );
+        }
     }
 
     // -- fixtures for the line-splicing core ----------------------------
@@ -4465,7 +4843,7 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         let dir = tempfile::tempdir().unwrap();
         let (toml_path, config_path) = write_workspace(dir.path(), CONFIG_BASE);
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         assert_eq!(outcome, WireCiOutcome::Scaffolded { notes: Vec::new() });
 
         assert!(toml_path.is_file());
@@ -4474,6 +4852,34 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         assert_eq!(scaffolded.jobs[0].workflow.as_deref(), Some("validation"));
         // Nothing applied yet — the CI file is untouched.
         assert_eq!(std::fs::read_to_string(&config_path).unwrap(), CONFIG_BASE);
+    }
+
+    #[test]
+    fn wire_ci_at_scaffold_flags_some_scaffolds_like_none_when_non_interactive() {
+        // Forces the non-interactive resolution path deterministically
+        // (real dialoguer prompts aren't unit-tested — see
+        // resolve_scaffold_choices_non_interactive's own doc comment) while
+        // still exercising Some(...)'s scans-derived existing_ci_lines
+        // plumbing end to end: this must run without panicking on a moved
+        // `scans` or a borrow conflict, and must scaffold exactly like the
+        // None path when every flag is left unset.
+        let _guard = lock_env();
+        let ci_was = std::env::var("CI").ok();
+        // SAFETY: serialized by ENV_LOCK.
+        unsafe { std::env::set_var("CI", "true") };
+
+        let dir = tempfile::tempdir().unwrap();
+        let (toml_path, _config_path) = write_workspace(dir.path(), CONFIG_BASE);
+        let outcome = wire_ci_at(dir.path(), None, false, Some(&ScaffoldFlags::default())).unwrap();
+
+        match ci_was {
+            Some(v) => unsafe { std::env::set_var("CI", v) },
+            None => unsafe { std::env::remove_var("CI") },
+        }
+
+        assert_eq!(outcome, WireCiOutcome::Scaffolded { notes: Vec::new() });
+        let scaffolded = read_ci_file(&std::fs::read_to_string(&toml_path).unwrap()).unwrap();
+        assert_eq!(scaffolded.jobs[0].workflow.as_deref(), Some("validation"));
     }
 
     /// "Nothing discoverable" must mean nothing *usable*, not that the
@@ -4496,7 +4902,7 @@ workflows:
         let dir = tempfile::tempdir().unwrap();
         write_workspace(dir.path(), CONFIG_WITH_UNSYNTHESIZABLE_CHECK_JOB);
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         let WireCiOutcome::Scaffolded { notes } = outcome else {
             panic!("expected Scaffolded, got {outcome:?}");
         };
@@ -4509,7 +4915,9 @@ workflows:
         let dir = tempfile::tempdir().unwrap();
         write_workspace(dir.path(), CONFIG_WITH_UNSYNTHESIZABLE_CHECK_JOB);
 
-        let err = wire_ci_at(dir.path(), None, true).unwrap_err().to_string();
+        let err = wire_ci_at(dir.path(), None, true, None)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("jci-audit/check"), "got: {err}");
     }
 
@@ -4518,7 +4926,7 @@ workflows:
         let dir = tempfile::tempdir().unwrap();
         let (toml_path, config_path) = write_workspace(dir.path(), CONFIG_BASE);
 
-        let err = wire_ci_at(dir.path(), None, true);
+        let err = wire_ci_at(dir.path(), None, true, None);
         assert!(err.is_err());
         assert!(!toml_path.is_file());
         assert_eq!(std::fs::read_to_string(&config_path).unwrap(), CONFIG_BASE);
@@ -4530,7 +4938,7 @@ workflows:
         let (toml_path, config_path) = write_workspace(dir.path(), CONFIG_BASE);
         std::fs::write(&toml_path, CONFIGURED_JOB_TOML).unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         assert_eq!(
             outcome,
             WireCiOutcome::Configured {
@@ -4556,10 +4964,10 @@ workflows:
         let (toml_path, config_path) = write_workspace(dir.path(), CONFIG_BASE);
         std::fs::write(&toml_path, CONFIGURED_JOB_TOML).unwrap();
 
-        wire_ci_at(dir.path(), None, false).unwrap();
+        wire_ci_at(dir.path(), None, false, None).unwrap();
         let ci_after_first = std::fs::read_to_string(&config_path).unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         assert_eq!(only_ci_file_outcome(&outcome), WriteOutcome::InSync);
         assert_eq!(
             std::fs::read_to_string(&config_path).unwrap(),
@@ -4573,12 +4981,12 @@ workflows:
         let (toml_path, config_path) = write_workspace(dir.path(), CONFIG_BASE);
         std::fs::write(&toml_path, CONFIGURED_JOB_TOML).unwrap();
 
-        wire_ci_at(dir.path(), None, false).unwrap();
+        wire_ci_at(dir.path(), None, false, None).unwrap();
         // Hand-revert the CI file only.
         std::fs::write(&config_path, CONFIG_BASE).unwrap();
         let toml_before = std::fs::read_to_string(&toml_path).unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, true).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, true, None).unwrap();
         assert_eq!(only_ci_file_outcome(&outcome), WriteOutcome::Drift);
         assert_eq!(std::fs::read_to_string(&config_path).unwrap(), CONFIG_BASE);
         assert_eq!(std::fs::read_to_string(&toml_path).unwrap(), toml_before);
@@ -4590,7 +4998,7 @@ workflows:
         std::fs::write(dir.path().join("deny.toml"), "[advisories]\n").unwrap();
         std::fs::write(dir.path().join("jci-audit.toml"), CONFIGURED_JOB_TOML).unwrap();
 
-        let err = wire_ci_at(dir.path(), None, false);
+        let err = wire_ci_at(dir.path(), None, false, None);
         assert!(err.is_err());
         assert!(!dir.path().join(".circleci/config.yml").exists());
     }
@@ -4608,7 +5016,7 @@ required_by = [\"deploy\"]
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        let err = wire_ci_at(dir.path(), None, false);
+        let err = wire_ci_at(dir.path(), None, false, None);
         assert!(err.is_err());
         assert_eq!(
             std::fs::read_to_string(&config_path).unwrap(),
@@ -4647,7 +5055,7 @@ orb_job = \"jci-audit/publish_record\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        let err = wire_ci_at(dir.path(), None, false);
+        let err = wire_ci_at(dir.path(), None, false, None);
         assert!(
             err.is_err(),
             "publish_record's unrecognized requires: must bail"
@@ -4673,7 +5081,7 @@ orb_job = \"jci-audit/publish_record\"
         )
         .unwrap();
 
-        let outcome = wire_ci_at(dir.path(), Some(&spec_path), false).unwrap();
+        let outcome = wire_ci_at(dir.path(), Some(&spec_path), false, None).unwrap();
         let WireCiOutcome::Configured { ci_files, .. } = &outcome else {
             panic!("expected Configured, got {outcome:?}");
         };
@@ -4699,7 +5107,7 @@ orb_version = \"jerus-org/jci-audit@1.0\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        wire_ci_at(dir.path(), None, false).unwrap();
+        wire_ci_at(dir.path(), None, false, None).unwrap();
         let ci_text = std::fs::read_to_string(&config_path).unwrap();
         assert!(ci_text.contains("      - jci-audit/check"));
         assert!(ci_text.contains("      - jci-audit/publish_record"));
@@ -4716,7 +5124,7 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         // not fall back to the canned scaffold.
         std::fs::write(&toml_path, "").unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         let WireCiOutcome::Configured { toml, .. } = &outcome else {
             panic!("expected Configured (discovery found a real job), not Scaffolded");
         };
@@ -4746,7 +5154,7 @@ orb_version = \"jerus-org/jci-audit@1.0\"
         let (toml_path, _) = write_workspace(dir.path(), CONFIG_WITH_UNMARKED_CHECK_JOB);
         std::fs::write(&toml_path, "").unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, true).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, true, None).unwrap();
         let WireCiOutcome::Configured { toml, .. } = &outcome else {
             panic!("expected Configured");
         };
@@ -4770,7 +5178,7 @@ deny_unused_licenses = \"true\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         let WireCiOutcome::Configured { toml, .. } = outcome else {
             panic!("expected Configured");
         };
@@ -4799,7 +5207,7 @@ workflows:
         let (toml_path, _) = write_workspace(dir.path(), content);
         std::fs::write(&toml_path, "").unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         let WireCiOutcome::Configured { toml, .. } = outcome else {
             panic!("expected Configured");
         };
@@ -4862,7 +5270,7 @@ file = \".circleci/release.yml\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        wire_ci_at(dir.path(), None, false).unwrap();
+        wire_ci_at(dir.path(), None, false, None).unwrap();
 
         let config_text = std::fs::read_to_string(&config_path).unwrap();
         assert!(
@@ -4923,7 +5331,7 @@ file = \"./.circleci/release.yml\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        wire_ci_at(dir.path(), None, false).unwrap();
+        wire_ci_at(dir.path(), None, false, None).unwrap();
 
         let release_text = std::fs::read_to_string(&release_path).unwrap();
         assert!(
@@ -4968,7 +5376,7 @@ params = { deny_unused_licenses = \"false\" }
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        wire_ci_at(dir.path(), None, false).unwrap();
+        wire_ci_at(dir.path(), None, false, None).unwrap();
 
         let config_text = std::fs::read_to_string(&config_path).unwrap();
         assert!(
@@ -5020,7 +5428,7 @@ orb_version = \"jerus-org/jci-audit@1.0\"
 file = \".circleci/release.yml\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
-        wire_ci_at(dir.path(), None, false).unwrap();
+        wire_ci_at(dir.path(), None, false, None).unwrap();
 
         // Hand-revert only release.yml.
         std::fs::write(
@@ -5037,7 +5445,7 @@ workflows:
         )
         .unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, true).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, true, None).unwrap();
         let WireCiOutcome::Configured { ci_files, .. } = &outcome else {
             panic!("expected Configured, got {outcome:?}");
         };
@@ -5067,7 +5475,10 @@ file = \".circleci/release.yml\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        let err = format!("{:?}", wire_ci_at(dir.path(), None, false).unwrap_err());
+        let err = format!(
+            "{:?}",
+            wire_ci_at(dir.path(), None, false, None).unwrap_err()
+        );
         // Names the actually-missing file up front — the generic hint text
         // that follows mentions config.yml too, which is fine.
         assert!(
@@ -5101,7 +5512,7 @@ file = \".circleci/release.yml\"
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         let WireCiOutcome::Configured { ci_files, .. } = &outcome else {
             panic!("expected Configured, got {outcome:?}");
         };
@@ -5140,7 +5551,7 @@ discover_files = [\".circleci/release.yml\"]
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        let outcome = wire_ci_at(dir.path(), None, false).unwrap();
+        let outcome = wire_ci_at(dir.path(), None, false, None).unwrap();
         let WireCiOutcome::Configured { .. } = &outcome else {
             panic!("expected Configured (discovery found real jobs), got {outcome:?}");
         };
@@ -5170,7 +5581,7 @@ discover_files = [\".circleci/release.yml\"]
         assert!(release_text.contains(MANAGED_BEGIN), "got: {release_text}");
 
         // Idempotent: a second run is a no-op.
-        let second = wire_ci_at(dir.path(), None, true).unwrap();
+        let second = wire_ci_at(dir.path(), None, true, None).unwrap();
         let WireCiOutcome::Configured { toml, ci_files, .. } = &second else {
             panic!("expected Configured, got {second:?}");
         };
@@ -5191,7 +5602,10 @@ discover_files = [\".circleci/release.yml\"]
 ";
         std::fs::write(&toml_path, toml).unwrap();
 
-        let err = format!("{:?}", wire_ci_at(dir.path(), None, false).unwrap_err());
+        let err = format!(
+            "{:?}",
+            wire_ci_at(dir.path(), None, false, None).unwrap_err()
+        );
         assert!(err.contains("release.yml"), "got: {err}");
         assert!(err.contains("discover_files"), "got: {err}");
     }

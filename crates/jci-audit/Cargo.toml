@@ -50,6 +50,10 @@ sha2.workspace = true
 # satisfies a dependency's (possibly compound) declared license, per crate
 spdx.workspace = true
 
+# Interactive prompts + TTY detection for wire-ci's first-run scaffold
+dialoguer.workspace = true
+console.workspace = true
+
 # Release-record remote fetch (verify's no-local-checkout path, #75 phase 3):
 # downloads the record and signature from a published GitHub release, and
 # (via a pubkey source) the pubkey that signed it — either the release's own
