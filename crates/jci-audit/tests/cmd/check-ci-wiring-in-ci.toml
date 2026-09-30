@@ -1,0 +1,8 @@
+bin.name = "jci-audit"
+args = ["-q", "check-ci-wiring"]
+env.add.CI = "true"
+fs.cwd = "in-ci.in"
+fs.sandbox = true
+status.code = 1
+stdout = ""
+stderr = "Error: 'jci-audit.toml' has no [[ci.jobs]] entries — run `jci-audit wire-ci` to scaffold one, edit it to match your CI, then re-run\n"

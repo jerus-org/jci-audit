@@ -241,9 +241,13 @@ The four flags above only shape that first-run scaffold, never an already-scaffo
 `jci-audit.toml`. With a terminal attached and nothing set, scaffolding **prompts** for the
 workflow (offering any workflow names already declared in the target CircleCI config, alongside
 `validation`) and each check flag, defaulting to this repo's own dogfooded example
-(`validation`, `deny_unused_licenses`/`deny_stale_exceptions` on, `deny_stale_notices` off). In CI,
-or with no terminal attached, it silently uses those same defaults instead of prompting — set the
-flags explicitly there if you want something else.
+(`validation`, `deny_unused_licenses`/`deny_stale_exceptions` on, `deny_stale_notices` off). With no terminal
+attached (a script, a redirected stderr) it silently uses those same defaults instead of
+prompting — set the flags explicitly if you want something else.
+
+`wire-ci` **refuses to run when `$CI` is set** (anything but empty, `false` or `0`), and exits non-zero. It rewrites files, so a CI job
+running it would only change its own throwaway checkout and pass whatever the drift; use
+[`check-ci-wiring`](#check-ci-wiring) in CI instead.
 
 ```bash
 jci-audit wire-ci                            # jci-audit.toml at the default location

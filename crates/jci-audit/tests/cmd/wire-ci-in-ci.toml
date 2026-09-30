@@ -1,0 +1,8 @@
+bin.name = "jci-audit"
+args = ["wire-ci"]
+env.add.CI = "true"
+fs.cwd = "in-ci.in"
+fs.sandbox = true
+status.code = 1
+stdout = ""
+stderr = "Error: wire-ci writes files and is for local use, but $CI is set. In CI use `jci-audit check-ci-wiring`, which reports drift without writing\n"

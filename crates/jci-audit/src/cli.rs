@@ -269,11 +269,13 @@ enum Commands {
     /// an already-scaffolded `jci-audit.toml` is unaffected by them —
     /// edit the file itself for that. With no flags and a terminal
     /// attached, scaffolding prompts for anything still unset instead of
-    /// silently assuming a default; unset in CI (or off a terminal), it
-    /// falls back to this repo's own dogfooded example.
+    /// silently assuming a default; unset off a terminal, it falls back to
+    /// this repo's own dogfooded example.
     ///
-    /// For a human to run locally and commit the result — never wired into
-    /// CI (there is no `--check`; see `check-ci-wiring` for that).
+    /// For a human to run locally and commit the result — it refuses to run
+    /// when `$CI` is set, since a CI job would only rewrite its own
+    /// throwaway checkout and pass regardless of drift (there is no
+    /// `--check`; see `check-ci-wiring` for the CI-facing counterpart).
     #[command(name = "wire-ci")]
     WireCi {
         /// Path to the jci-audit.toml-shaped wiring spec to read (and, if
@@ -669,6 +671,24 @@ fn report_wire_ci_outcome(path: &str, with: &str, outcome: wire_ci::WriteOutcome
     }
 }
 
+/// Write-mode `wire-ci` is for a human to run locally; `check-ci-wiring`
+/// (`check = true`) is the CI-facing subcommand. A CI job that ran `wire-ci`
+/// would rewrite its own ephemeral checkout and exit 0 on drift, so
+/// validation would pass no matter what — refuse instead. Takes `in_ci`
+/// rather than reading `$CI` itself so it is testable without touching the
+/// process environment. Deliberately at the CLI layer, not inside
+/// `wire_ci::wire_ci_at`: CI sets `$CI` for this crate's own tests too, and
+/// they call `wire_ci_at` in write mode.
+fn refuse_write_in_ci(check: bool, in_ci: bool) -> Result<()> {
+    if !check && in_ci {
+        bail!(
+            "wire-ci writes files and is for local use, but $CI is set. In CI use \
+             `jci-audit check-ci-wiring`, which reports drift without writing"
+        );
+    }
+    Ok(())
+}
+
 /// Shells out to nothing — no `preflight::ensure_available` call, unlike
 /// every other subcommand here. Path resolution (the spec file itself, and
 /// `[ci].file` relative to it) is a single path, resolved entirely inside
@@ -678,6 +698,7 @@ fn run_wire_ci(
     check: bool,
     scaffold_flags: Option<&wire_ci::ScaffoldFlags>,
 ) -> Result<()> {
+    refuse_write_in_ci(check, wire_ci::ci_env_set())?;
     let cwd = std::env::current_dir()?;
     tracing::info!(check, "wire-ci");
 
@@ -1386,6 +1407,24 @@ mod tests {
     #[test]
     fn wire_ci_has_no_check_flag() {
         assert!(Cli::try_parse_from(["jci-audit", "wire-ci", "--check"]).is_err());
+    }
+
+    #[test]
+    fn write_mode_wire_ci_is_refused_in_ci() {
+        let err = refuse_write_in_ci(false, true).unwrap_err().to_string();
+        assert!(err.contains("check-ci-wiring"), "got: {err}");
+    }
+
+    #[test]
+    fn check_mode_is_allowed_in_ci() {
+        // check-ci-wiring is the CI-facing subcommand; the guard must never
+        // get in its way.
+        assert!(refuse_write_in_ci(true, true).is_ok());
+    }
+
+    #[test]
+    fn write_mode_wire_ci_is_allowed_outside_ci() {
+        assert!(refuse_write_in_ci(false, false).is_ok());
     }
 
     #[test]
