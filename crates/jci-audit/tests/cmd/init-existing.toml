@@ -1,0 +1,17 @@
+bin.name = "jci-audit"
+args = ["-q", "init"]
+fs.cwd = "init-existing.in"
+fs.sandbox = true
+status.code = 0
+stdout = """
+added 8 standard key(s) to deny.toml:
+  [advisories] db-path
+  [advisories] db-urls
+  [advisories] unmaintained
+  [bans] multiple-versions
+  [bans] wildcards
+  [sources] unknown-registry
+  [sources] unknown-git
+  [sources] allow-registry
+wrote .cargo/audit.toml, derived from deny.toml
+"""

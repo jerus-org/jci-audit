@@ -206,10 +206,15 @@ enum Commands {
     },
     /// Scaffold a standard `deny.toml` and its derived `.cargo/audit.toml`.
     ///
-    /// Non-interactive — every value in the template is fixed; edit the
-    /// written files afterwards for anything project-specific.
+    /// Given an existing `deny.toml`, adds the standard keys it lacks and
+    /// reports each one; nothing already in the file is changed or removed.
+    /// Every added key is a default to edit, and none is required to run
+    /// jci-audit. `.cargo/audit.toml` is then derived from the result,
+    /// replacing any existing copy (and reporting that it did); edit
+    /// `deny.toml`, not `audit.toml`.
     Init {
-        /// Overwrite existing files without confirmation.
+        /// Replace an existing `deny.toml` with the standard template instead
+        /// of adding to it.
         #[arg(long)]
         force: bool,
     },
@@ -1043,8 +1048,33 @@ fn run_verify_remote(
 fn run_init(force: bool) -> Result<()> {
     let cwd = std::env::current_dir()?;
     tracing::info!(force, dir = %cwd.display(), "init");
-    init::init_at(&cwd, force)?;
-    println!("wrote deny.toml and derived .cargo/audit.toml");
+    let outcome = init::init_at(&cwd, force)?;
+    match outcome.deny {
+        init::DenyOutcome::Created => println!("wrote deny.toml"),
+        init::DenyOutcome::Replaced => println!("replaced deny.toml with the standard template"),
+        init::DenyOutcome::Unchanged => {
+            println!("deny.toml already has every standard key; unchanged");
+        }
+        init::DenyOutcome::Merged { added } => {
+            println!("added {} standard key(s) to deny.toml:", added.len());
+            for key in added {
+                println!("  {key}");
+            }
+        }
+    }
+    match outcome.audit {
+        init::AuditOutcome::Created => println!("wrote .cargo/audit.toml, derived from deny.toml"),
+        init::AuditOutcome::Unchanged => {
+            println!(".cargo/audit.toml already matches deny.toml; unchanged");
+        }
+        init::AuditOutcome::Overwritten => {
+            tracing::warn!(
+                "overwrote the existing .cargo/audit.toml: it is derived from deny.toml and \
+                 kept in sync by `jci-audit sync`, so make changes in deny.toml, not here"
+            );
+            println!("overwrote .cargo/audit.toml, derived from deny.toml");
+        }
+    }
     Ok(())
 }
 

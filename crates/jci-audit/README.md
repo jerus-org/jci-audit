@@ -74,7 +74,7 @@ jci-audit prune [--check]
 # run from a checkout of the released tag
 jci-audit verify 1.2.0
 
-# Scaffold a standard deny.toml + derived .cargo/audit.toml
+# Scaffold a standard deny.toml (or add its missing keys to yours) + derived .cargo/audit.toml
 jci-audit init
 
 # Wire the jerus-org/jci-audit orb's job(s) into an existing workflow in
