@@ -193,18 +193,35 @@ jci-audit verify 1.2.0 \
 jci-audit init [OPTIONS]
 
 Options:
-      --force       Overwrite existing files without confirmation
+      --force       Replace an existing deny.toml with the standard template instead of adding to it
 ```
 
 Scaffolds a standard `deny.toml` (see [configuration-guide.md](configuration-guide.md) for what
-each section means) plus the `.cargo/audit.toml` derived from it. Refuses to overwrite an
-existing `deny.toml` unless `--force` is given. Non-interactive — every value in the template is
-fixed; edit the written `deny.toml` afterwards for anything project-specific (license
-exceptions, additional advisory ignores).
+each section means) plus the `.cargo/audit.toml` derived from it.
+
+With no `deny.toml`, it writes the template. With one, it adds whichever standard keys the file
+lacks and prints each one, so you can see exactly what changed:
+
+```
+added 3 standard key(s) to deny.toml:
+  [advisories] yanked
+  [advisories] ignore
+  [sources] allow-registry
+```
+
+Nothing already in the file is changed or removed: your values, comments, ignores, license
+exceptions and `[[bans.skip]]` entries stay as written. Each added key is only a default to edit
+(or delete); `jci-audit` runs without any of them except `[licenses] allow`, which cargo-deny
+itself needs to admit any license. A `deny.toml` that already has every key is left untouched.
+`.cargo/audit.toml` is derived from the result, so your existing advisory ignores carry into it.
+If an `audit.toml` already exists and differs, `init` overwrites it and warns that it did: from
+then on it is kept in sync with `deny.toml` by [`sync`](#sync), so make changes in `deny.toml`,
+not in `audit.toml`.
+`init` is non-interactive; edit `deny.toml` afterwards for anything project-specific.
 
 ```bash
-jci-audit init            # refuses if deny.toml already exists
-jci-audit init --force    # overwrite
+jci-audit init            # create deny.toml, or add the standard keys it lacks
+jci-audit init --force    # replace deny.toml with the standard template
 ```
 
 `init` only writes the policy files above — it doesn't touch your CI config. Run [`wire-ci`](#wire-ci)

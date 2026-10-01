@@ -31,7 +31,7 @@ crates/jci-audit/
 │   ├── license_scope.rs    # per-crate license-acceptance scope from cargo metadata
 │   ├── exceptions.rs       # visibility for cargo-deny's [[bans.skip]] exceptions
 │   ├── prune.rs            # stale-ignore detector
-│   ├── init.rs             # scaffold deny.toml + derived .cargo/audit.toml
+│   ├── init.rs             # scaffold or complete deny.toml + derived .cargo/audit.toml
 │   ├── wire_ci.rs          # wire the published orb job(s) into a consumer's CI config
 │   ├── preflight.rs        # tool-presence detection for cargo-audit/-deny/-about/rsign
 │   ├── runtime.rs          # shared single-thread tokio runtime idiom

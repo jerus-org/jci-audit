@@ -41,8 +41,10 @@ checks for it first and reports, with actionable install guidance, if it's missi
 jci-audit init
 ```
 
-It refuses to overwrite an existing `deny.toml` unless you pass `--force`. The template denies
-all licenses except an explicit allow-list, and leaves `[advisories].ignore` empty — see
+If you already have a `deny.toml`, `init` adds the standard keys it lacks and lists each one; your
+existing settings, comments and exceptions are left as they are (`--force` replaces the file with
+the template instead). The template denies all licenses except an explicit allow-list, and leaves
+`[advisories].ignore` empty — see
 [the configuration guide](configuration-guide.md) for what each section means and how to extend
 it (e.g. admitting a weak-copyleft license for one specific dependency).
 
