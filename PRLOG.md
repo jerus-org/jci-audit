@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Added
 
 - make wire-ci's scaffold configurable(pr [#276])
+- init completes an existing deny.toml(pr [#278])
 
 ### Changed
 
@@ -691,6 +692,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#273]: https://github.com/jerus-org/jci-audit/pull/273
 [#276]: https://github.com/jerus-org/jci-audit/pull/276
 [#277]: https://github.com/jerus-org/jci-audit/pull/277
+[#278]: https://github.com/jerus-org/jci-audit/pull/278
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
