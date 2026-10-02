@@ -15,7 +15,7 @@ orbs:
   jci-audit: jerus-org/jci-audit@0.1.23
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.1.28
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.0
   # <<< gen-circleci-orb
 workflows:
   validation:
@@ -124,14 +124,10 @@ workflows:
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
           package: jci-audit
-          pre-steps:
-            - run:
-                name: Check post-merge-regen branch
-                command: |
-                  case "$CIRCLE_BRANCH" in
-                    renovate/*) echo "Relocated to post-merge regen ($CIRCLE_BRANCH) - nothing to do here."; circleci-agent step halt ;;
-                    *) ;;
-                  esac
+          filters:
+            branches:
+              ignore:
+                - /^renovate\/.*$/
       - gen-circleci-orb/generate:
           name: regenerate-orb
           binary: jci-audit
@@ -146,14 +142,7 @@ workflows:
             branches:
               ignore:
                 - main
-          pre-steps:
-            - run:
-                name: Check post-merge-regen branch
-                command: |
-                  case "$CIRCLE_BRANCH" in
-                    renovate/*) echo "Relocated to post-merge regen ($CIRCLE_BRANCH) - nothing to do here."; circleci-agent step halt ;;
-                    *) ;;
-                  esac
+                - /^renovate\/.*$/
       - gen-circleci-orb/update:
           name: check-ci-wiring
           check: true
@@ -166,13 +155,6 @@ workflows:
           checkout: false
           source_dir: orb/src
           pre-steps:
-            - run:
-                name: Check post-merge-regen branch
-                command: |
-                  case "$CIRCLE_BRANCH" in
-                    renovate/*) echo "Relocated to post-merge regen ($CIRCLE_BRANCH) - nothing to do here."; circleci-agent step halt ;;
-                    *) ;;
-                  esac
             - attach_workspace:
                 at: .
           requires: [regenerate-orb]
@@ -180,18 +162,12 @@ workflows:
             branches:
               ignore:
                 - main
+                - /^renovate\/.*$/
       - orb-tools/review:
           name: review-orb
           checkout: false
           source_dir: orb/src
           pre-steps:
-            - run:
-                name: Check post-merge-regen branch
-                command: |
-                  case "$CIRCLE_BRANCH" in
-                    renovate/*) echo "Relocated to post-merge regen ($CIRCLE_BRANCH) - nothing to do here."; circleci-agent step halt ;;
-                    *) ;;
-                  esac
             - attach_workspace:
                 at: .
           requires: [pack-orb]
@@ -199,6 +175,7 @@ workflows:
             branches:
               ignore:
                 - main
+                - /^renovate\/.*$/
       # <<< gen-circleci-orb
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
