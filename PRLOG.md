@@ -24,6 +24,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency gen-circleci-orb to v0.1.28(pr [#271])
 - refuse write-mode wire-ci when CI is set(pr [#277])
 - deps: update dependency toolkit to v8.0.2(pr [#279])
+- deps: update rust crate config to 0.15.27(pr [#280])
 
 ## [0.1.23] - 2026-09-28
 
@@ -695,6 +696,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#277]: https://github.com/jerus-org/jci-audit/pull/277
 [#278]: https://github.com/jerus-org/jci-audit/pull/278
 [#279]: https://github.com/jerus-org/jci-audit/pull/279
+[#280]: https://github.com/jerus-org/jci-audit/pull/280
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
