@@ -27,6 +27,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate config to 0.15.27(pr [#280])
 - deps: update rust crate pcu-release-assets to 0.1.5(pr [#281])
 - deps: update dependency gen-circleci-orb to v0.2.0(pr [#282])
+- deps: lock file maintenance(pr [#283])
 
 ## [0.1.23] - 2026-09-28
 
@@ -701,6 +702,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#280]: https://github.com/jerus-org/jci-audit/pull/280
 [#281]: https://github.com/jerus-org/jci-audit/pull/281
 [#282]: https://github.com/jerus-org/jci-audit/pull/282
+[#283]: https://github.com/jerus-org/jci-audit/pull/283
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
