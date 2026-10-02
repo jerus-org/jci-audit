@@ -13,8 +13,10 @@ parameters:
 orbs:
   toolkit: jerus-org/circleci-toolkit@8.0.2
   jci-audit: jerus-org/jci-audit@0.1.23
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.0
-
+  orb-tools: circleci/orb-tools@12.5.0
+  # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.3
+  # <<< gen-circleci-orb
 workflows:
   release:
     jobs:
@@ -27,7 +29,9 @@ workflows:
 
       - approve-release:
           type: approval
-          requires: [calculate-versions]
+          # release-gate-review-orb: the orb about to be released is checked,
+          # packed and reviewed before approval (gen-circleci-orb#462).
+          requires: [calculate-versions, release-gate-review-orb]
 
       # Build the binary from THIS commit. record-release attaches the workspace,
       # so the release is recorded by the code being released rather than by the
@@ -107,3 +111,24 @@ workflows:
                 paths:
                   - .security
       # <<< jci-audit wire-ci
+      # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
+      - gen-circleci-orb/build_rust_binary:
+          name: release-gate-build-binary
+          package: jci-audit
+      - gen-circleci-orb/generate:
+          name: release-gate-check-orb
+          binary: jci-audit
+          orb_namespace: jerus-org
+          orb_dir: orb
+          attach_workspace: true
+          check: true
+          requires: [release-gate-build-binary]
+      - orb-tools/pack:
+          name: release-gate-pack-orb
+          source_dir: orb/src
+          requires: [release-gate-check-orb]
+      - orb-tools/review:
+          name: release-gate-review-orb
+          source_dir: orb/src
+          requires: [release-gate-pack-orb]
+      # <<< gen-circleci-orb

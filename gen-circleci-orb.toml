@@ -43,6 +43,11 @@ orb_context = "orb-publishing"
 mcp = false
 mcp_context = ["pcu-app"]
 mcp_earliest_version = "0.0.1"
+# Release gate (gen-circleci-orb#462): release.yml's release workflow checks,
+# packs and reviews the orb about to be released before approve-release can
+# be given. `update` adds the gate jobs; approve-release's `requires:` names
+# release-gate-review-orb by hand (update verifies it, never edits it).
+release_gate_before = "approve-release"
 
 [subcommand.init]
 interactive = true
@@ -63,13 +68,15 @@ interactive = true
 # in the first place.
 interactive = true
 
-# Relocates the regen+record chain off Renovate branches (which it would
-# otherwise freeze, gen-circleci-orb#326/#328) and into this repo's existing
-# "PR merged"-triggered update_prlog workflow, run last after
-# toolkit/update_prlog per the requires-ordering fix in #394, with the
-# original validation-workflow chain excluded on qualifying branches per
-# #397.
-[post_merge_regen]
+# Check-only post-merge chain (gen-circleci-orb#462): after a Renovate PR
+# merges, build the binary fresh, run `generate --check` against main, then
+# pack and review the committed orb. Nothing is recorded or pushed to main.
+# Renovate branches skip the validation workflow's orb jobs (skip patterns
+# default to branch_patterns): a regen commit on a bot branch makes Renovate
+# stop rebasing it (gen-circleci-orb#326/#328), and this check covers what
+# merged. Runs last in this repo's "PR merged"-triggered update_prlog
+# workflow, after toolkit/update_prlog.
+[post_merge_check]
 branch_patterns = ["renovate/*"]
 workflow = "update_prlog"
 file = "update_prlog.yml"
