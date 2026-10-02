@@ -1351,14 +1351,16 @@ dependencies = [
 
 [[package]]
 name = "pcu-release-assets"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97e4cddf607d635f381307d3235edf1ab975bad31fe7a32d36beeee781a4f90d"
+checksum = "73df2f6a1a0f3aa325ccb54689a940a02ce67809aef44189516046c728b3eb35"
 dependencies = [
  "gql_client",
+ "http",
  "log",
  "octocrab",
  "reqwest 0.13.5",
+ "secrecy",
  "serde",
  "thiserror",
  "tokio",
