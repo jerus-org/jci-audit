@@ -5,9 +5,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.24] - 2026-10-02
+
+Summary: Added[2], Documentation[3], Fixed[3], Testing[1]
+
+### Added
+
+ - feat: init completes an existing deny.toml
+ - feat: make wire-ci's scaffold configurable
+
+### Fixed
+
+ - fix(deps): update rust crate pcu-release-assets to 0.1.5
+ - fix: refuse write-mode wire-ci when CI is set
+ - fix: code-review findings on wire-ci scaffold
+
 ## [0.1.23] - 2026-09-28
 
-Summary: Added[1], Chore[1], Fixed[2]
+Summary: Added[1], Chore[2], Fixed[2]
 
 ### Added
 
@@ -373,7 +388,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
+[0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...v0.1.21
 [0.1.20]: https://github.com/jerus-org/jci-audit/compare/v0.1.19...v0.1.20

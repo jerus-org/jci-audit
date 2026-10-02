@@ -1616,7 +1616,7 @@ Used by:
 
 Used by:
 
-- pcu-release-assets 0.1.4
+- pcu-release-assets 0.1.5
 
 ```text
                                  Apache License
@@ -1826,7 +1826,7 @@ Used by:
 
 Used by:
 
-- rustls-platform-verifier 0.7.0
+- rustls-platform-verifier 0.7.1
 
 ```text
                                  Apache License
@@ -3757,7 +3757,7 @@ limitations under the License.
 
 Used by:
 
-- tokio-rustls 0.26.5
+- tokio-rustls 0.26.6
 
 ```text
                               Apache License
@@ -4611,7 +4611,7 @@ Used by:
 - bitflags 2.13.2
 - bumpalo 3.20.3
 - camino 1.2.6
-- cc 1.4.7
+- cc 1.5.1
 - cfg-if 1.0.5
 - cmake 0.1.58
 - core-foundation-sys 0.8.7
@@ -4620,7 +4620,7 @@ Used by:
 - equivalent 1.0.2
 - errno 0.3.14
 - fastrand 2.5.0
-- find-msvc-tools 0.1.13
+- find-msvc-tools 0.1.14
 - form_urlencoded 1.2.2
 - hashbrown 0.17.1
 - heck 0.5.0
@@ -4632,8 +4632,8 @@ Used by:
 - idna_adapter 1.2.2
 - indexmap 2.14.2
 - jobserver 0.1.35
-- js-sys 0.3.105
-- lazy_static 1.5.0
+- js-sys 0.3.106
+- lazy_static 1.5.1
 - linux-raw-sys 0.12.1
 - log 0.4.34
 - num-bigint 0.4.8
@@ -4653,7 +4653,7 @@ Used by:
 - security-framework-sys 2.17.0
 - security-framework 3.7.0
 - simd_cesu8 1.2.0
-- smallvec 1.16.1
+- smallvec 1.16.2
 - socket2 0.6.5
 - stable_deref_trait 1.2.1
 - tempfile 3.27.0
@@ -4662,12 +4662,12 @@ Used by:
 - url 2.5.8
 - uuid 1.26.1
 - wasi 0.11.1+wasi-snapshot-preview1
-- wasm-bindgen-futures 0.4.78
-- wasm-bindgen-macro-support 0.2.128
-- wasm-bindgen-macro 0.2.128
-- wasm-bindgen-shared 0.2.128
-- wasm-bindgen 0.2.128
-- web-sys 0.3.105
+- wasm-bindgen-futures 0.4.79
+- wasm-bindgen-macro-support 0.2.129
+- wasm-bindgen-macro 0.2.129
+- wasm-bindgen-shared 0.2.129
+- wasm-bindgen 0.2.129
+- web-sys 0.3.106
 
 ```text
                               Apache License
@@ -5307,7 +5307,7 @@ limitations under the License.
 
 Used by:
 
-- jci-audit 0.1.23
+- jci-audit 0.1.24
 
 ```text
                               Apache License
@@ -5730,7 +5730,7 @@ limitations under the License.
 
 Used by:
 
-- cargo-platform 0.3.2
+- cargo-platform 0.3.3
 
 ```text
                               Apache License
@@ -6171,7 +6171,7 @@ Used by:
 - proc-macro2 1.0.107
 - quote 1.0.47
 - r-efi 6.0.0
-- rustls-platform-verifier-android 0.1.1
+- rustls-platform-verifier-android 0.2.0
 - rustversion 1.0.23
 - ryu 1.0.23
 - semver 1.0.28
@@ -7833,7 +7833,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- hyper-util 0.1.20
+- hyper-util 0.1.21
 
 ```text
 Copyright (c) 2023-2025 Sean McArthur
@@ -8414,7 +8414,7 @@ Used by:
 - potential_utf 0.1.6
 - tinystr 0.8.4
 - writeable 0.6.4
-- yoke-derive 0.8.3
+- yoke-derive 0.8.4
 - yoke 0.8.3
 - zerofrom-derive 0.1.8
 - zerofrom 0.1.8
