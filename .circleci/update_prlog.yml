@@ -40,16 +40,14 @@ workflows:
                     *) echo "Not a qualifying branch ($CIRCLE_BRANCH) - nothing to do."; circleci-agent step halt ;;
                   esac
       - gen-circleci-orb/generate:
-          name: post-merge-regenerate-orb
+          name: post-merge-check-orb
           binary: jci-audit
           orb_namespace: jerus-org
           orb_dir: orb
           attach_workspace: true
           target_branch: main
-          allow_main_record: true
-          ssh_fingerprint: "SHA256:OkxsH8Z6Iim6WDJBaII9eTT9aaO1f3eDc6IpsgYYPVg"
+          check: true
           persist_orb_workspace: true
-          context: [release]
           requires: [post-merge-build-binary]
           pre-steps:
             - run:
@@ -73,7 +71,7 @@ workflows:
                   esac
             - attach_workspace:
                 at: .
-          requires: [post-merge-regenerate-orb]
+          requires: [post-merge-check-orb]
       - orb-tools/review:
           name: post-merge-review-orb
           checkout: false
