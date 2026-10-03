@@ -10,6 +10,10 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - ci-adopt the post-merge check and release gate(pr [#285])
 
+### Fixed
+
+- deps: lock file maintenance(pr [#290])
+
 ## [0.1.24] - 2026-10-02
 
 ### Added
@@ -710,6 +714,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#282]: https://github.com/jerus-org/jci-audit/pull/282
 [#283]: https://github.com/jerus-org/jci-audit/pull/283
 [#285]: https://github.com/jerus-org/jci-audit/pull/285
+[#290]: https://github.com/jerus-org/jci-audit/pull/290
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...HEAD
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
