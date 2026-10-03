@@ -11,7 +11,7 @@ parameters:
     description: "Override workspace v* version (empty = nextsv auto-detect)"
 
 orbs:
-  toolkit: jerus-org/circleci-toolkit@8.0.2
+  toolkit: jerus-org/circleci-toolkit@8.0.3
   jci-audit: jerus-org/jci-audit@0.1.23
   orb-tools: circleci/orb-tools@12.5.0
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
