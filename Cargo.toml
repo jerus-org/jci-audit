@@ -45,7 +45,7 @@ uuid = { version = "1.26.1", features = ["v4"] }
 # SPDX license expression parsing/evaluation for the about.toml derivation
 # (license_scope) — the same crate cargo-deny itself uses internally, rather
 # than reimplementing expression evaluation by hand.
-spdx = "0.13.5"
+spdx = "0.13.6"
 
 # Interactive prompts for wire-ci's first-run scaffold — same version pin as
 # gen-circleci-orb's own init dialogue, this org's existing precedent for
