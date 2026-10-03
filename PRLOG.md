@@ -13,6 +13,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Fixed
 
 - deps: lock file maintenance(pr [#290])
+- deps: update rust:1-slim-trixie docker digest to 70d3b1a(pr [#286])
 
 ## [0.1.24] - 2026-10-02
 
@@ -715,6 +716,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#283]: https://github.com/jerus-org/jci-audit/pull/283
 [#285]: https://github.com/jerus-org/jci-audit/pull/285
 [#290]: https://github.com/jerus-org/jci-audit/pull/290
+[#286]: https://github.com/jerus-org/jci-audit/pull/286
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...HEAD
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
