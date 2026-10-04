@@ -143,7 +143,7 @@ mod tests {
     fn missing_tools_reports_none_when_all_present() {
         let tools = [Tool::CargoAudit, Tool::CargoDeny];
         let missing = missing_tools(&tools, |_| true);
-        assert!(missing.is_empty());
+        assert_eq!(missing, [] as [crate::preflight::Tool; 0]);
     }
 
     #[test]

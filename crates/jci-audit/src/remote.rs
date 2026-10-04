@@ -684,7 +684,10 @@ mod tests {
 
     #[test]
     fn extract_workspace_members_is_empty_without_a_workspace_table() {
-        assert!(extract_workspace_members("[package]\nname = \"solo\"\n").is_empty());
+        assert_eq!(
+            extract_workspace_members("[package]\nname = \"solo\"\n"),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]
