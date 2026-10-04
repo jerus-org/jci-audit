@@ -5,9 +5,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.25] - 2026-10-04
+
+Summary: Fixed[3]
+
+### Fixed
+
+ - fix: clippy issues from rust 1.99
+ - fix(deps): update rust crate uuid to 1.27.0
+ - fix(deps): update rust crate spdx to 0.13.6
+
 ## [0.1.24] - 2026-10-02
 
-Summary: Added[2], Documentation[3], Fixed[3], Testing[1]
+Summary: Added[2], Chore[1], Documentation[3], Fixed[3], Testing[1]
 
 ### Added
 
@@ -388,7 +398,8 @@ Summary: Added[4], Changed[1], Chore[2], Documentation[1], Fixed[5]
 
  - refactor: invoke tools as standalone binaries
 
-[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...HEAD
+[Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...HEAD
+[0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
 [0.1.22]: https://github.com/jerus-org/jci-audit/compare/v0.1.21...v0.1.22
 [0.1.21]: https://github.com/jerus-org/jci-audit/compare/v0.1.20...v0.1.21

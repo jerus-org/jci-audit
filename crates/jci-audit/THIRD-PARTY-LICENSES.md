@@ -4611,7 +4611,7 @@ Used by:
 - bitflags 2.13.2
 - bumpalo 3.20.3
 - camino 1.2.6
-- cc 1.5.1
+- cc 1.6.0
 - cfg-if 1.0.5
 - cmake 0.1.58
 - core-foundation-sys 0.8.7
@@ -4660,7 +4660,7 @@ Used by:
 - thread_local 1.1.10
 - unicode-width 0.2.2
 - url 2.5.8
-- uuid 1.26.1
+- uuid 1.27.0
 - wasi 0.11.1+wasi-snapshot-preview1
 - wasm-bindgen-futures 0.4.79
 - wasm-bindgen-macro-support 0.2.129
@@ -4878,7 +4878,7 @@ limitations under the License.
 
 Used by:
 
-- spdx 0.13.5
+- spdx 0.13.6
 
 ```text
                               Apache License
@@ -5307,7 +5307,7 @@ limitations under the License.
 
 Used by:
 
-- jci-audit 0.1.24
+- jci-audit 0.1.25
 
 ```text
                               Apache License
@@ -6162,7 +6162,7 @@ Used by:
 - jni-macros 0.22.4
 - jni-sys-macros 0.4.1
 - jni 0.22.4
-- libc 0.2.189
+- libc 0.2.190
 - num-conv 0.2.2
 - octocrab 0.54.2
 - pin-project-internal 1.1.13
@@ -6525,7 +6525,7 @@ limitations under the License.
 
 Used by:
 
-- spdx 0.13.5
+- spdx 0.13.6
 
 ```text
 r#"Apache License
