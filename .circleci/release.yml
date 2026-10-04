@@ -12,7 +12,7 @@ parameters:
 
 orbs:
   toolkit: jerus-org/circleci-toolkit@8.0.2
-  jci-audit: jerus-org/jci-audit@0.1.23
+  jci-audit: jerus-org/jci-audit@0.1.24
   orb-tools: circleci/orb-tools@12.5.0
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
   gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.4
