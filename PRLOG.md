@@ -18,6 +18,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update dependency jci-audit to v0.1.24(pr [#287])
 - deps: update rust crate spdx to 0.13.6(pr [#288])
 - deps: update rust crate uuid to 1.27.0(pr [#289])
+- deps: update dependency toolkit to v8.0.3(pr [#292])
 
 ## [0.1.24] - 2026-10-02
 
@@ -725,6 +726,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#287]: https://github.com/jerus-org/jci-audit/pull/287
 [#288]: https://github.com/jerus-org/jci-audit/pull/288
 [#289]: https://github.com/jerus-org/jci-audit/pull/289
+[#292]: https://github.com/jerus-org/jci-audit/pull/292
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...HEAD
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
