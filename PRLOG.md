@@ -15,6 +15,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#290])
 - deps: update rust:1-slim-trixie docker digest to 70d3b1a(pr [#286])
 - deps: update dependency gen-circleci-orb to v0.2.4(pr [#291])
+- deps: update dependency jci-audit to v0.1.24(pr [#287])
 
 ## [0.1.24] - 2026-10-02
 
@@ -719,6 +720,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#290]: https://github.com/jerus-org/jci-audit/pull/290
 [#286]: https://github.com/jerus-org/jci-audit/pull/286
 [#291]: https://github.com/jerus-org/jci-audit/pull/291
+[#287]: https://github.com/jerus-org/jci-audit/pull/287
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...HEAD
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
 [0.1.23]: https://github.com/jerus-org/jci-audit/compare/v0.1.22...v0.1.23
