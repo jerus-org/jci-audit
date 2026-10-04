@@ -1589,7 +1589,10 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "a drifted about.toml must not leave a record"
         );
         // The expensive cargo-deny gate must not have run — caught earlier.
-        assert!(runner.ran_cargo("deny").is_empty());
+        assert_eq!(
+            runner.ran_cargo("deny"),
+            [] as [std::vec::Vec<std::string::String>; 0]
+        );
     }
 
     #[test]
@@ -1622,7 +1625,10 @@ checksum = "d91e0c145792ef73a6ad36d27c75ac09f1832222a3c209689d90f534685ee5b7"
             "an unresolvable licence must not leave a record"
         );
         // The expensive cargo-deny gate must not have run — caught earlier.
-        assert!(runner.ran_cargo("deny").is_empty());
+        assert_eq!(
+            runner.ran_cargo("deny"),
+            [] as [std::vec::Vec<std::string::String>; 0]
+        );
     }
 
     #[test]

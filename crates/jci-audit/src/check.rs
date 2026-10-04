@@ -1029,7 +1029,10 @@ mod tests {
         let runner = MockRunner::new(vec![ok(), ok(), workspace_metadata(&[])]);
         let report =
             check_with(&runner, dir.path(), crate::diagnostics::Detail::Full, false).unwrap();
-        assert!(report.accepted_warnings.in_force.is_empty());
+        assert_eq!(
+            report.accepted_warnings.in_force,
+            [] as [crate::exceptions::SkipEntry; 0]
+        );
         assert_eq!(
             runner.calls.borrow().len(),
             3,
@@ -1062,8 +1065,14 @@ mod tests {
             false,
         )
         .unwrap();
-        assert!(report.accepted_warnings.in_force.is_empty());
-        assert!(report.accepted_warnings.stale.is_empty());
+        assert_eq!(
+            report.accepted_warnings.in_force,
+            [] as [crate::exceptions::SkipEntry; 0]
+        );
+        assert_eq!(
+            report.accepted_warnings.stale,
+            [] as [crate::exceptions::SkipEntry; 0]
+        );
     }
 
     #[test]
@@ -1818,8 +1827,14 @@ licenses ok
 
     #[test]
     fn unused_license_names_is_empty_when_nothing_flagged() {
-        assert!(unused_license_names("licenses ok\n").is_empty());
-        assert!(unused_license_names("warning[duplicate]: found 2\n").is_empty());
+        assert_eq!(
+            unused_license_names("licenses ok\n"),
+            [] as [std::string::String; 0]
+        );
+        assert_eq!(
+            unused_license_names("warning[duplicate]: found 2\n"),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]
@@ -1861,7 +1876,7 @@ licenses ok
             false,
         )
         .unwrap();
-        assert!(report.unused_licenses.is_empty());
+        assert_eq!(report.unused_licenses, [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -1893,8 +1908,14 @@ error[duplicate]: found 2 duplicate entries for crate 'syn'
 
     #[test]
     fn duplicate_crate_names_is_empty_when_nothing_flagged() {
-        assert!(duplicate_crate_names("bans ok\n").is_empty());
-        assert!(duplicate_crate_names("warning[unnecessary-skip]: skip 'x'\n").is_empty());
+        assert_eq!(
+            duplicate_crate_names("bans ok\n"),
+            [] as [std::string::String; 0]
+        );
+        assert_eq!(
+            duplicate_crate_names("warning[unnecessary-skip]: skip 'x'\n"),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]
@@ -1966,6 +1987,6 @@ error[duplicate]: found 2 duplicate entries for crate 'syn'
             false,
         )
         .unwrap();
-        assert!(report.duplicate_crates.is_empty());
+        assert_eq!(report.duplicate_crates, [] as [std::string::String; 0]);
     }
 }

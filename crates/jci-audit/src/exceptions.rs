@@ -423,19 +423,17 @@ reason = \"block syntax crate form\"
 
     #[test]
     fn missing_bans_table_yields_no_entries() {
-        assert!(
-            extract_bans_skips("[licenses]\nallow = []\n")
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            extract_bans_skips("[licenses]\nallow = []\n").unwrap(),
+            [] as [SkipEntry; 0]
         );
     }
 
     #[test]
     fn bans_table_without_skip_yields_no_entries() {
-        assert!(
-            extract_bans_skips("[bans]\nmultiple-versions = \"deny\"\n")
-                .unwrap()
-                .is_empty()
+        assert_eq!(
+            extract_bans_skips("[bans]\nmultiple-versions = \"deny\"\n").unwrap(),
+            [] as [SkipEntry; 0]
         );
     }
 
@@ -463,7 +461,7 @@ warning[unmatched-skip]: skipped crate 'totally-nonexistent-crate-xyz' was not e
         // syn genuinely duplicates and is skip-listed — cargo-deny is silent
         // about it, so there is nothing in stderr naming it at all.
         let stderr = "warning[duplicate]: found 2 duplicate entries for crate 'reqwest'\n";
-        assert!(stale_skip_names(stderr).is_empty());
+        assert_eq!(stale_skip_names(stderr), [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -475,8 +473,8 @@ warning[unmatched-skip]: skipped crate 'totally-nonexistent-crate-xyz' was not e
     #[test]
     fn no_configured_skips_means_nothing_in_force_or_stale() {
         let result = accepted_warnings(Vec::new(), STDERR_WITH_UNMATCHED);
-        assert!(result.in_force.is_empty());
-        assert!(result.stale.is_empty());
+        assert_eq!(result.in_force, [] as [SkipEntry; 0]);
+        assert_eq!(result.stale, [] as [SkipEntry; 0]);
     }
 
     #[test]
@@ -562,7 +560,7 @@ warning[unnecessary-skip]: skip 'anyhow' applied to a crate with only one versio
         let stderr =
             "warning[unnecessary-skip]: skip 'anyhow' applied to a crate with only one version\n";
         let result = accepted_warnings(configured, stderr);
-        assert!(result.in_force.is_empty());
+        assert_eq!(result.in_force, [] as [SkipEntry; 0]);
         assert_eq!(result.stale.len(), 1);
         assert_eq!(result.stale[0].name, "anyhow");
     }
@@ -662,7 +660,7 @@ warning[unmatched-skip]: skipped crate 'syn' was not encountered
 warning[unmatched-skip]: skipped crate 'windows-sys' was not encountered
 ";
         let result = accepted_warnings(configured, stderr);
-        assert!(result.in_force.is_empty());
+        assert_eq!(result.in_force, [] as [SkipEntry; 0]);
         assert_eq!(result.stale.len(), 2);
     }
 }

@@ -285,7 +285,10 @@ mod tests {
 
     #[test]
     fn parse_ids_on_clean_report_is_empty() {
-        assert!(parse_firing_ids(clean_json()).unwrap().is_empty());
+        assert_eq!(
+            parse_firing_ids(clean_json()).unwrap(),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]
@@ -302,7 +305,10 @@ mod tests {
 
     #[test]
     fn no_configured_ignores_means_nothing_stale() {
-        assert!(stale_ignores(&[], &["RUSTSEC-A".to_string()]).is_empty());
+        assert_eq!(
+            stale_ignores(&[], &["RUSTSEC-A".to_string()]),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]
@@ -312,7 +318,7 @@ mod tests {
         let runner = MockRunner::new(found(clean_json()));
         let report = prune_with(&runner, dir.path(), Path::new("/tmp")).unwrap();
         assert_eq!(report.configured, vec!["RUSTSEC-2023-0071"]);
-        assert!(report.firing.is_empty());
+        assert_eq!(report.firing, [] as [std::string::String; 0]);
         assert_eq!(report.stale, vec!["RUSTSEC-2023-0071"]);
         assert!(!report.is_clean());
     }

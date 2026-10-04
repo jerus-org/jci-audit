@@ -232,7 +232,7 @@ mod tests {
     fn template_is_valid_and_has_empty_ignore() {
         // The embedded template must parse and start with no ignores.
         let ignores = extract_ignores(DENY_TEMPLATE).unwrap();
-        assert!(ignores.is_empty());
+        assert_eq!(ignores, [] as [crate::sync::IgnoreEntry; 0]);
         assert!(DENY_TEMPLATE.contains("[advisories]"));
         assert!(DENY_TEMPLATE.contains("[licenses]"));
         assert!(DENY_TEMPLATE.contains("[bans]"));

@@ -2733,9 +2733,12 @@ params = "deny_unused_licenses"
         assert_eq!(got.jobs.len(), 1);
         assert_eq!(got.jobs[0].workflow.as_deref(), Some("validation"));
         assert_eq!(got.jobs[0].orb_job.as_deref(), Some("jci-audit/check"));
-        assert!(got.jobs[0].requires.is_empty());
-        assert!(got.jobs[0].required_by.is_empty());
-        assert!(got.jobs[0].params.is_empty());
+        assert_eq!(got.jobs[0].requires, [] as [std::string::String; 0]);
+        assert_eq!(got.jobs[0].required_by, [] as [std::string::String; 0]);
+        assert_eq!(
+            got.jobs[0].params,
+            [] as [(std::string::String, std::string::String); 0]
+        );
     }
 
     #[test]

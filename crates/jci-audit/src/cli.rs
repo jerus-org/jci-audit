@@ -1786,7 +1786,10 @@ mod tests {
 
     #[test]
     fn check_failures_is_empty_for_a_clean_report() {
-        assert!(check_failures(&passing_report(), false, false, false).is_empty());
+        assert_eq!(
+            check_failures(&passing_report(), false, false, false),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]

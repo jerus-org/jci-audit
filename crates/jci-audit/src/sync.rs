@@ -625,8 +625,14 @@ allow = ["MIT"]
 
     #[test]
     fn extract_empty_and_missing_yield_no_entries() {
-        assert!(extract_ignores(DENY_EMPTY_IGNORE).unwrap().is_empty());
-        assert!(extract_ignores(DENY_NO_ADVISORIES).unwrap().is_empty());
+        assert_eq!(
+            extract_ignores(DENY_EMPTY_IGNORE).unwrap(),
+            [] as [IgnoreEntry; 0]
+        );
+        assert_eq!(
+            extract_ignores(DENY_NO_ADVISORIES).unwrap(),
+            [] as [IgnoreEntry; 0]
+        );
     }
 
     #[test]
@@ -751,7 +757,10 @@ allow = ["MPL-2.0"]
     fn extract_license_policy_missing_sections_yield_empty() {
         let policy = extract_license_policy("").unwrap();
         assert!(policy.allow.is_empty());
-        assert!(policy.exceptions.is_empty());
+        assert_eq!(
+            policy.exceptions,
+            [] as [(std::string::String, std::vec::Vec<std::string::String>); 0]
+        );
     }
 
     fn scope(
