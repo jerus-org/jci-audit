@@ -21,7 +21,7 @@ autolib = false
 
 # jci-audit orchestrates the `cargo audit`, `cargo deny` and `cargo about` *binaries* as
 # subprocesses — it does not link them as library crates. They are runtime
-# prerequisites (shipped by the `jerusdp/ci-rust:audit` executor image), and
+# prerequisites (shipped by the orb's `jerusdp/jci-audit` executor image), and
 # the CLI's preflight check reports their absence rather than failing opaquely.
 
 [dependencies]
