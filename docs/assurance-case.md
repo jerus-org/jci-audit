@@ -14,10 +14,11 @@ process in [`SECURITY.md`](../SECURITY.md).
 
 ## 1. What the software is and does
 
-jci-audit is a **context-aware security gate** for Rust projects. It orchestrates two
-independently maintained tools — `cargo audit` (live RustSec advisories) and
-`cargo deny` (policy enforcement: advisories, bans, licenses, sources) — as
-subprocesses, using each for what it is best at rather than reimplementing either:
+jci-audit is a **context-aware security and license gate** for Rust projects. It orchestrates
+three independently maintained tools — `cargo audit` (live RustSec advisories),
+`cargo deny` (policy enforcement: advisories, bans, licenses, sources) and `cargo about`
+(license attribution) — as subprocesses, using each for what it is best at rather than
+reimplementing any:
 
 1. **`jci-audit check`** — PR/dev gate: `cargo deny` policy checks, a live
    `cargo audit` scan, the `about.toml`/`deny.toml` drift check, and the `cargo-about`

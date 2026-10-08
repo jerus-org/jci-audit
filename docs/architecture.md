@@ -11,9 +11,10 @@ worked examples, see the [design document](design.md).
 
 ## What it does, in one line
 
-Orchestrate `cargo audit` and `cargo deny` per pipeline context — live and blocking on a PR,
-pinned and reproducible at release — with `deny.toml` as the single source of truth that
-`.cargo/audit.toml` and every crate's `about.toml` are derived from.
+Orchestrate `cargo audit`, `cargo deny` and `cargo about` per pipeline context — live and
+blocking on a PR, pinned and reproducible at release — with `deny.toml` as the single source of
+truth that `.cargo/audit.toml` and every crate's `about.toml` are derived from, so security
+policy and third-party license notices are checked together.
 
 ## Crate layout
 

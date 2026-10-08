@@ -1,9 +1,11 @@
 # jci-audit
 
-A context-aware Rust security gate that orchestrates
-[`cargo-audit`](https://crates.io/crates/cargo-audit) and
-[`cargo-deny`](https://crates.io/crates/cargo-deny) — using the complementary
-strengths of each and validating security **reproducibly at release time**.
+A context-aware Rust security and license gate that orchestrates
+[`cargo-audit`](https://crates.io/crates/cargo-audit),
+[`cargo-deny`](https://crates.io/crates/cargo-deny) and
+[`cargo-about`](https://crates.io/crates/cargo-about) — live advisories, policy, and
+third-party license attribution checked together, and validated **reproducibly at release
+time**. One file, `deny.toml`, is the source of truth for all three.
 
 [![Crates.io](https://img.shields.io/crates/v/jci-audit.svg)](https://crates.io/crates/jci-audit)
 [![License](https://img.shields.io/crates/l/jci-audit.svg)](#license)
@@ -37,6 +39,9 @@ See the [crate README](crates/jci-audit/README.md) for the full usage guide, and
   (advisories, bans, licenses, sources) with **file-based, justified** ignores.
 - `deny.toml` is the single source of truth; `.cargo/audit.toml` and every crate's
   `about.toml` are derived from it.
+- **License notices stay trustworthy.** `cargo-about` attributes every dependency's license;
+  `check` verifies that it still can, against the policy in `deny.toml`, and
+  `--deny-stale-notices` flags a licensing change against your committed notices.
 - **Release** validation is reproducible: `cargo deny` locks to a **pinned advisory-db
   commit** and runs offline; `cargo audit` keeps running live, as a non-blocking check.
 

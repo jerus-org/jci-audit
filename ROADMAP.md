@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Roadmap
 
-_Last updated: 2026-09-23._
+_Last updated: 2026-10-06._
 
 This roadmap describes the intended direction of jci-audit over roughly the next year.
 It is a statement of intent, not a commitment: priorities may shift with user feedback and
@@ -16,7 +16,7 @@ into themes and horizons.
 
 ## Current status
 
-jci-audit is **pre-1.0, currently `0.1.9`** — published bin-only (no importable `[lib]` target,
+jci-audit is **pre-1.0** — published bin-only (no importable `[lib]` target,
 [#90](https://github.com/jerus-org/jci-audit/issues/90)) and, unlike every earlier version, both
 installable and verifiable. **`0.0.1`–`0.1.0` are yanked**: `0.0.1`–`0.0.7` for the
 accidentally-importable library (#90), and `0.1.0` because its release-security-record was
@@ -24,8 +24,8 @@ unrecoverable (never committed, never uploaded as a release asset, and the CI bu
 expired — see [#75](https://github.com/jerus-org/jci-audit/issues/75)) and can never be
 reconstructed. `0.1.1` closed that gap: it's the first release cut after #75 phase 2's release-asset
 distribution landed, and `jci-audit verify 0.1.1`, run unauthenticated from a bare
-directory, confirmed it end-to-end. All seven subcommands (`check`, `release-prep`, `sync`, `prune`,
-`verify`, `init`, `publish-record`) are implemented and tested; the crate and its generated orb
+directory, confirmed it end-to-end. All nine subcommands (`check`, `release-prep`, `sync`, `prune`,
+`verify`, `init`, `publish-record`, `wire-ci`, `check-ci-wiring`) are implemented and tested; the crate and its generated orb
 (`jerus-org/jci-audit`) publish in tag-lockstep. `deny.toml` is the single source of truth for
 both advisory ignores and license policy — `.cargo/audit.toml` and every crate's `about.toml` are
 derived from it.
@@ -37,7 +37,7 @@ The original build phased as follows:
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **P0 — scaffold** | New repo, workspace + clap skeleton, release lockstep, CI | ✅ Done |
-| **P1 — `check` + `sync` + `init` + orb** | Both tools in one gate; `deny.toml` → `.cargo/audit.toml` single source; standard policy template; generated orb | ✅ Done |
+| **P1 — `check` + `sync` + `init` + orb** | The two security tools (`cargo-audit` and `cargo-deny`) in one gate — `cargo-about` license checks were folded in later (#80, below); `deny.toml` → `.cargo/audit.toml` single source; standard policy template; generated orb | ✅ Done |
 | **P2 — `prune`** | Automated stale-ignore detection (naked-DB diff) | ✅ Done |
 | **P3 — `release-prep` + `verify`** | Pinned-advisory-db reproducible validation, signed release record, independent re-verification | ✅ Done (the original commit-based signing was later removed by #75 phase 1; see the #75 gate below for the current, unfinished replacement) |
 | **P4 — publish** | crates.io + orb published in lockstep | ✅ Done — publishing itself works; whether any given *version* is currently installable is separate, see Current status above |
@@ -94,7 +94,7 @@ version tag itself, and still gate consumer migration.
   workspace-wide `deny.toml` allow-list.
 - **Documentation and a project presence.** Repo docs ✅ done. jrussell.ie project page:
   [digital-prstv/jrussell.ie#264](https://github.com/digital-prstv/jrussell.ie/pull/264) open.
-  Announcement draft for the jrussell.ie blog: not yet started.
+  Announcement for the jrussell.ie blog: drafted, to publish with `0.2.0`.
 - **Consumer migration (P4's remaining half).** Add the published orb to `gen-changelog`, `pcu`,
   `nextsv`, and `gen-circleci-orb`; wire `jci-audit check`/`release-prep` into their pipelines;
   standardize each `deny.toml` on the shared template; retire ad-hoc `--ignore` CI flags. Deferred

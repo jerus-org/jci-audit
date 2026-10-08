@@ -1,6 +1,6 @@
 ```
 $ jci-audit -h
-Context-aware Rust security gate orchestrating cargo-audit and cargo-deny with reproducible release-time validation
+Rust security and license gate: runs cargo-audit, cargo-deny and cargo-about from one deny.toml, with reproducible release-time validation
 
 Usage: jci-audit [OPTIONS] <COMMAND>
 

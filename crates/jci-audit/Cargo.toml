@@ -1,7 +1,7 @@
 [package]
 name = "jci-audit"
 version = "0.1.25"
-description = "Context-aware Rust security gate orchestrating cargo-audit and cargo-deny with reproducible release-time validation"
+description = "Rust security and license gate: runs cargo-audit, cargo-deny and cargo-about from one deny.toml, with reproducible release-time validation"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -19,7 +19,7 @@ exclude = ["about.toml", "about.hbs"]
 # `src/lib.rs`, so a future `src/lib.rs` doesn't silently resurrect one.
 autolib = false
 
-# jci-audit orchestrates the `cargo audit` and `cargo deny` *binaries* as
+# jci-audit orchestrates the `cargo audit`, `cargo deny` and `cargo about` *binaries* as
 # subprocesses — it does not link them as library crates. They are runtime
 # prerequisites (shipped by the `jerusdp/ci-rust:audit` executor image), and
 # the CLI's preflight check reports their absence rather than failing opaquely.
