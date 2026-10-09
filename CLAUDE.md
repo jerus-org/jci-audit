@@ -5,8 +5,8 @@ code in this repository. It supplements the garden-level and global CLAUDE.md.
 
 ## Overview
 
-**jci-audit** is a context-aware Rust security gate that orchestrates the
-`cargo audit` and `cargo deny` **binaries** (as subprocesses — it does not link
+**jci-audit** is a context-aware Rust security and license gate that orchestrates the
+`cargo audit`, `cargo deny` and `cargo about` **binaries** (as subprocesses — it does not link
 them as libraries) and validates security reproducibly at release time. It ships
 a crate to crates.io and (from P1) a generated CircleCI orb `jerus-org/jci-audit`
 in tag-lockstep, produced by `gen-circleci-orb`.

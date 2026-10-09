@@ -1,6 +1,6 @@
 version: 2.1
 description: >
-  Orchestrate cargo-audit and cargo-deny per pipeline context. `check` gates PRs on both tools; `release-prep` validates reproducibly against a pinned advisory-db; `sync` derives .cargo/audit.toml from the canonical deny.toml; `prune` detects stale advisory ignores; `init` scaffolds a standard deny.toml.
+  Rust security and license gate: runs cargo-audit (live advisories), cargo-deny (policy) and cargo-about (license attribution) per pipeline context, all driven by one deny.toml, with reproducible release-time validation.
 display:
   home_url: "https://github.com/jerus-org/jci-audit"
   source_url: "https://github.com/jerus-org/jci-audit"

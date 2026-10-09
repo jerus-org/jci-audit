@@ -1,13 +1,18 @@
 //! # jci-audit
 //!
-//! A context-aware Rust security gate that orchestrates
-//! [`cargo-audit`](https://crates.io/crates/cargo-audit) and
-//! [`cargo-deny`](https://crates.io/crates/cargo-deny), leveraging the
+//! A context-aware Rust security and license gate that orchestrates
+//! [`cargo-audit`](https://crates.io/crates/cargo-audit),
+//! [`cargo-deny`](https://crates.io/crates/cargo-deny) and
+//! [`cargo-about`](https://crates.io/crates/cargo-about), leveraging the
 //! complementary strengths of each:
 //!
 //! - **`cargo audit`** — fresh, *live* advisories from the `RustSec` database.
 //! - **`cargo deny`** — policy enforcement (advisories, bans, licenses,
 //!   sources) with **file-based** ignores that carry written justifications.
+//! - **`cargo about`** — third-party license attribution: `check` verifies every
+//!   dependency's license can still be attributed under the `deny.toml` policy,
+//!   and `--deny-stale-notices` flags a licensing change against the committed
+//!   notices.
 //!
 //! `deny.toml` is the single source of truth for both advisory ignores and
 //! license policy; `.cargo/audit.toml` and every crate's `about.toml` are
@@ -16,7 +21,7 @@
 //! runs offline; `cargo audit` keeps running live, as a non-blocking
 //! currency check.
 //!
-//! `jci-audit` shells out to the `cargo audit` and `cargo deny` binaries; it
+//! `jci-audit` shells out to the `cargo audit`, `cargo deny` and `cargo about` binaries; it
 //! does not reimplement them. See [`preflight`] for the presence check every
 //! shelling subcommand runs first.
 //!

@@ -1,9 +1,11 @@
 # jci-audit
 
-A context-aware Rust security gate that orchestrates
-[`cargo-audit`](https://crates.io/crates/cargo-audit) and
-[`cargo-deny`](https://crates.io/crates/cargo-deny), using the complementary
-strengths of each and validating security **reproducibly at release time**.
+A context-aware Rust security and license gate that orchestrates
+[`cargo-audit`](https://crates.io/crates/cargo-audit),
+[`cargo-deny`](https://crates.io/crates/cargo-deny) and
+[`cargo-about`](https://crates.io/crates/cargo-about): live advisories, policy, and
+third-party license attribution checked together, and validated **reproducibly at release
+time**. One file, `deny.toml`, is the source of truth for all three.
 
 [![Crates.io](https://img.shields.io/crates/v/jci-audit.svg)](https://crates.io/crates/jci-audit)
 [![License](https://img.shields.io/crates/l/jci-audit.svg)](https://github.com/jerus-org/jci-audit#license)

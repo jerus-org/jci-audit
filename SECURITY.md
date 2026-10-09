@@ -81,9 +81,9 @@ placing the advisory identifier (GHSA / RUSTSEC / CVE) in the right place:
 
 ## Scope, expectations, and limitations
 
-jci-audit is a **security gate that orchestrates two well-known, independently
-vetted tools** — `cargo audit` and `cargo deny` — as subprocesses, plus `cargo about`
-for license attribution and bare `cargo` for `cargo metadata`. Understanding its
+jci-audit is a **security and license gate that orchestrates three well-known,
+independently vetted tools** — `cargo audit`, `cargo deny` and `cargo about` (license
+attribution) — as subprocesses, plus bare `cargo` for `cargo metadata`. Understanding its
 trust model is important to using it safely:
 
 - **It shells out to fixed, known binaries — never a caller-supplied one.** Every

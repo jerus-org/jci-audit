@@ -1,6 +1,8 @@
 //! Reproducible release gate.
 //!
-//! Division of labour between the two tools:
+//! Division of labour between the two security tools. (`release-prep` also runs
+//! the license-policy checks — the `about.toml` drift check and `cargo about`'s
+//! attribution check — unconditionally alongside them; see [`release_with`].)
 //!
 //! - **cargo-audit is the currency check** — it always runs against the *live*
 //!   `RustSec` database. Every PR gates on it (see [`crate::check`]), so newly

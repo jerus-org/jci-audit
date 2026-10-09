@@ -9,18 +9,17 @@ use crate::{
     check, diagnostics, init, prune, publish_record, release, remote, sync, verify, wire_ci,
 };
 
-/// Context-aware Rust security gate over cargo-audit and cargo-deny.
+/// Context-aware Rust security and license gate over cargo-audit, cargo-deny and cargo-about.
 #[derive(Debug, Parser)]
 #[command(name = "jci-audit")]
 #[command(
     author,
     version,
     about,
-    long_about = "Orchestrate cargo-audit and cargo-deny per pipeline context. \
-        `check` gates PRs on both tools; `release-prep` validates reproducibly \
-        against a pinned advisory-db; `sync` derives .cargo/audit.toml from the \
-        canonical deny.toml; `prune` detects stale advisory ignores; `init` \
-        scaffolds a standard deny.toml."
+    long_about = "Rust security and license gate: runs cargo-audit (live advisories), \
+        cargo-deny (policy) and cargo-about (license attribution) per pipeline \
+        context, all driven by one deny.toml, with reproducible release-time \
+        validation."
 )]
 pub(crate) struct Cli {
     #[command(flatten)]
