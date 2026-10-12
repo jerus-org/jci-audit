@@ -33,7 +33,7 @@ toml_edit = "0.25.15"
 
 # Serialization (release record JSON, deny.toml parsing)
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 
 # Hashing — records which Cargo.lock a release was validated against
 sha2 = "0.11.0"
