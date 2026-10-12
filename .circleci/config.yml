@@ -15,7 +15,7 @@ orbs:
   jci-audit: jerus-org/jci-audit@0.1.24
 
   # >>> gen-circleci-orb (managed — edits overwritten by 'gen-circleci-orb update')
-  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.4
+  gen-circleci-orb: jerus-org/gen-circleci-orb@0.2.5
   # <<< gen-circleci-orb
 workflows:
   validation:
@@ -124,10 +124,6 @@ workflows:
       - gen-circleci-orb/build_rust_binary:
           name: build-binary
           package: jci-audit
-          filters:
-            branches:
-              ignore:
-                - /^renovate\/.*$/
       - gen-circleci-orb/generate:
           name: regenerate-orb
           binary: jci-audit
@@ -142,7 +138,6 @@ workflows:
             branches:
               ignore:
                 - main
-                - /^renovate\/.*$/
       - gen-circleci-orb/update:
           name: check-ci-wiring
           check: true
