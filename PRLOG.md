@@ -14,6 +14,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 
 - deps: update rust crate uuid to 1.28.0(pr [#300])
 - deps: update rust:1-slim-trixie docker digest to 2752b33(pr [#294])
+- deps: update dependency gen-circleci-orb to v0.2.5(pr [#295])
 
 ## [0.1.25] - 2026-10-04
 
@@ -741,6 +742,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#293]: https://github.com/jerus-org/jci-audit/pull/293
 [#300]: https://github.com/jerus-org/jci-audit/pull/300
 [#294]: https://github.com/jerus-org/jci-audit/pull/294
+[#295]: https://github.com/jerus-org/jci-audit/pull/295
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.25...HEAD
 [0.1.25]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
