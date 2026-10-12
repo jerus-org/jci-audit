@@ -7,5 +7,6 @@
     "docker:pinDigests",
     "customManagers:dockerfileVersions",
     "github>jerusdp/renovate-config:default.json"
-  ]
+  ],
+  "gitIgnoredAuthors": ["171541392+jerus-bot@users.noreply.github.com"]
 }
