@@ -23,6 +23,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: lock file maintenance(pr [#301])
 - deps: update rust crate pcu-release-assets to 0.1.6(pr [#302])
 - deps: update rust crate sha2 to 0.11.1(pr [#303])
+- deps: update rust crate tokio to 1.53.3(pr [#304])
 
 ## [0.1.25] - 2026-10-04
 
@@ -759,6 +760,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#301]: https://github.com/jerus-org/jci-audit/pull/301
 [#302]: https://github.com/jerus-org/jci-audit/pull/302
 [#303]: https://github.com/jerus-org/jci-audit/pull/303
+[#304]: https://github.com/jerus-org/jci-audit/pull/304
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.25...HEAD
 [0.1.25]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
