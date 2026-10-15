@@ -76,6 +76,26 @@ reason = "0.2 via ring; 0.4 via jobserver/cc's build-time chain (aws-lc-sys) —
 crate = "base64"
 reason = "0.22 via hyper-util; 0.23 via reqwest@0.13.5 — unrelated consumers"
 
+[[bans.skip]]
+crate = "sha2"
+reason = "0.10 via octocrab (>=0.54.3, pcu-release-assets' GitHub API chain); 0.11 used directly by jci-audit"
+
+[[bans.skip]]
+crate = "digest"
+reason = "0.10 via sha2@0.10 / hmac@0.12 (octocrab); 0.11 via sha2@0.11 — same RustCrypto split as sha2"
+
+[[bans.skip]]
+crate = "block-buffer"
+reason = "0.10 via digest@0.10 (octocrab's sha2/hmac); 0.12 via digest@0.11 — same RustCrypto split as sha2"
+
+[[bans.skip]]
+crate = "crypto-common"
+reason = "0.1 via digest@0.10 (octocrab's sha2/hmac); 0.2 via digest@0.11 — same RustCrypto split as sha2"
+
+[[bans.skip]]
+crate = "cpufeatures"
+reason = "0.2 via sha2@0.10 (octocrab); 0.3 via sha2@0.11 — same RustCrypto split as sha2"
+
 [sources]
 unknown-registry = "warn"
 unknown-git = "warn"

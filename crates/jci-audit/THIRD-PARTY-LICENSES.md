@@ -13,8 +13,8 @@ from the dependency graph with [`cargo-about`](https://github.com/EmbarkStudios/
 
 ## Overview
 
-- **Apache License 2.0** — 196 crate(s)
-- **MIT License** — 44 crate(s)
+- **Apache License 2.0** — 204 crate(s)
+- **MIT License** — 45 crate(s)
 - **ISC License** — 22 crate(s)
 - **Unicode License v3** — 19 crate(s)
 - **BSD 3-Clause "New" or "Revised" License** — 2 crate(s)
@@ -24,7 +24,7 @@ from the dependency graph with [`cargo-about`](https://github.com/EmbarkStudios/
 
 Used by:
 
-- powerfmt 0.2.0
+- powerfmt 0.2.1
 
 ```text
 
@@ -236,7 +236,7 @@ Used by:
 
 Used by:
 
-- deranged 0.5.8
+- deranged 0.5.9
 
 ```text
 
@@ -451,7 +451,7 @@ Used by:
 - encode_unicode 1.0.0
 - secrecy 0.10.3
 - utf8_iter 1.0.4
-- zeroize 1.9.0
+- zeroize 1.9.1
 - zeroize_derive 1.5.0
 
 ```text
@@ -1616,7 +1616,7 @@ Used by:
 
 Used by:
 
-- pcu-release-assets 0.1.5
+- pcu-release-assets 0.1.6
 
 ```text
                                  Apache License
@@ -2252,6 +2252,10 @@ Used by:
 - clap_builder 4.6.7
 - clap_derive 4.6.7
 - clap_lex 1.1.1
+- toml_datetime 1.1.2+spec-1.1.0
+- toml_edit 0.25.17+spec-1.1.0
+- toml_parser 1.1.5+spec-1.1.0
+- toml_writer 1.1.3+spec-1.1.0
 
 ```text
                                  Apache License
@@ -2472,16 +2476,13 @@ Used by:
 - colorchoice 1.0.5
 - foreign-types-shared 0.1.1
 - foreign-types 0.3.2
+- hex 0.4.3
 - is_terminal_polyfill 1.70.2
 - jni-sys 0.4.1
 - native-tls 0.2.18
 - once_cell_polyfill 1.70.2
 - openssl-macros 0.1.1
 - openssl 0.10.81
-- toml_datetime 1.1.1+spec-1.1.0
-- toml_edit 0.25.15+spec-1.1.0
-- toml_parser 1.1.3+spec-1.1.0
-- toml_writer 1.1.2+spec-1.1.0
 
 ```text
                                  Apache License
@@ -4611,13 +4612,13 @@ Used by:
 - bitflags 2.13.2
 - bumpalo 3.20.3
 - camino 1.2.6
-- cc 1.6.0
+- cc 1.8.0
 - cfg-if 1.0.5
 - cmake 0.1.58
 - core-foundation-sys 0.8.7
 - core-foundation 0.10.1
 - displaydoc 0.2.7
-- equivalent 1.0.2
+- equivalent 1.0.3
 - errno 0.3.14
 - fastrand 2.5.0
 - find-msvc-tools 0.1.14
@@ -4648,19 +4649,20 @@ Used by:
 - ring 0.17.14
 - rustc_version 0.4.1
 - rustix 1.1.5
-- rustls-native-certs 0.8.4
-- rustls 0.23.45
+- rustls-native-certs 0.8.5
+- rustls 0.23.46
 - security-framework-sys 2.17.0
 - security-framework 3.7.0
 - simd_cesu8 1.2.0
-- smallvec 1.16.2
+- smallvec 1.16.3
 - socket2 0.6.5
 - stable_deref_trait 1.2.1
 - tempfile 3.27.0
 - thread_local 1.1.10
 - unicode-width 0.2.2
 - url 2.5.8
-- uuid 1.27.0
+- uuid 1.28.0
+- version_check 0.9.5
 - wasi 0.11.1+wasi-snapshot-preview1
 - wasm-bindgen-futures 0.4.79
 - wasm-bindgen-macro-support 0.2.129
@@ -5089,13 +5091,19 @@ limitations under the License.
 
 Used by:
 
+- block-buffer 0.10.4
 - block-buffer 0.12.1
 - const-oid 0.10.2
+- cpufeatures 0.2.17
 - cpufeatures 0.3.1
+- crypto-common 0.1.7
 - crypto-common 0.2.2
+- digest 0.10.7
 - digest 0.11.3
+- hmac 0.12.1
 - hybrid-array 0.4.15
-- sha2 0.11.0
+- sha2 0.10.9
+- sha2 0.11.1
 - signature 2.2.0
 
 ```text
@@ -6155,7 +6163,7 @@ Used by:
 
 - android_system_properties 0.1.6
 - anyhow 1.0.104
-- aws-lc-sys 0.45.0
+- aws-lc-sys 0.46.0
 - dunce 1.0.5
 - http-serde 2.1.1
 - itoa 1.0.18
@@ -6164,7 +6172,7 @@ Used by:
 - jni 0.22.4
 - libc 0.2.190
 - num-conv 0.2.2
-- octocrab 0.54.2
+- octocrab 0.54.4
 - pin-project-internal 1.1.13
 - pin-project-lite 0.2.17
 - pin-project 1.1.13
@@ -6178,20 +6186,20 @@ Used by:
 - serde 1.0.229
 - serde_core 1.0.229
 - serde_derive 1.0.229
-- serde_json 1.0.151
+- serde_json 1.0.154
 - serde_path_to_error 0.1.20
 - serde_urlencoded 0.7.1
 - shlex 2.0.1
 - simdutf8 0.1.5
 - syn 2.0.119
-- syn 3.0.6
+- syn 3.0.9
 - sync_wrapper 1.0.2
 - thiserror-impl 2.0.21
 - thiserror 2.0.21
 - time-core 0.1.9
 - time-macros 0.2.32
 - time 0.3.55
-- unicode-ident 1.0.26
+- unicode-ident 1.0.27
 - utf8parse 0.2.2
 
 ```text
@@ -6647,7 +6655,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Used by:
 
-- aws-lc-sys 0.45.0
+- aws-lc-sys 0.46.0
 
 ```text
 Copyright (c) <year> <owner>. 
@@ -7367,8 +7375,8 @@ third-party/chromium/LICENSE.
 
 Used by:
 
-- aws-lc-rs 1.18.1
-- aws-lc-sys 0.45.0
+- aws-lc-rs 1.18.2
+- aws-lc-sys 0.46.0
 
 ```text
 ISC License:
@@ -7421,7 +7429,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- mio 1.2.3
+- mio 1.2.4
 
 ```text
 Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -7450,7 +7458,7 @@ THE SOFTWARE.
 
 Used by:
 
-- hyper 1.11.1
+- hyper 1.12.0
 
 ```text
 Copyright (c) 2014-2026 Sean McArthur
@@ -7531,7 +7539,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- want 0.3.1
+- want 0.3.2
 
 ```text
 Copyright (c) 2018-2019 Sean McArthur
@@ -7941,8 +7949,8 @@ SOFTWARE.
 
 Used by:
 
-- tokio-util 0.7.19
-- tokio 1.53.1
+- tokio-util 0.7.20
+- tokio 1.53.3
 
 ```text
 MIT License
@@ -8194,7 +8202,7 @@ SOFTWARE.
 
 Used by:
 
-- aws-lc-sys 0.45.0
+- aws-lc-sys 0.46.0
 
 ```text
 The MIT License (MIT)
@@ -8350,11 +8358,41 @@ SOFTWARE.
 
 ```
 
+## MIT License
+
+Used by:
+
+- generic-array 0.14.7
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2015 Bartłomiej Kamiński
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Unicode License v3
 
 Used by:
 
-- unicode-ident 1.0.26
+- unicode-ident 1.0.27
 
 ```text
 UNICODE LICENSE V3
