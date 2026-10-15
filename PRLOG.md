@@ -20,6 +20,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate tokio to 1.53.2(pr [#298])
 - deps: update rust crate toml_edit to 0.25.17(pr [#299])
 - deps: update rustls to 0.23.46(pr [#305])
+- deps: lock file maintenance(pr [#301])
 
 ## [0.1.25] - 2026-10-04
 
@@ -753,6 +754,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#298]: https://github.com/jerus-org/jci-audit/pull/298
 [#299]: https://github.com/jerus-org/jci-audit/pull/299
 [#305]: https://github.com/jerus-org/jci-audit/pull/305
+[#301]: https://github.com/jerus-org/jci-audit/pull/301
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.25...HEAD
 [0.1.25]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
