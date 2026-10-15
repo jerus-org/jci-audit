@@ -21,6 +21,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate toml_edit to 0.25.17(pr [#299])
 - deps: update rustls to 0.23.46(pr [#305])
 - deps: lock file maintenance(pr [#301])
+- deps: update rust crate pcu-release-assets to 0.1.6(pr [#302])
 
 ## [0.1.25] - 2026-10-04
 
@@ -755,6 +756,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#299]: https://github.com/jerus-org/jci-audit/pull/299
 [#305]: https://github.com/jerus-org/jci-audit/pull/305
 [#301]: https://github.com/jerus-org/jci-audit/pull/301
+[#302]: https://github.com/jerus-org/jci-audit/pull/302
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.25...HEAD
 [0.1.25]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
