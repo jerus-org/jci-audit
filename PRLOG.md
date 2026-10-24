@@ -25,6 +25,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate sha2 to 0.11.1(pr [#303])
 - deps: update rust crate tokio to 1.53.3(pr [#304])
 - deps: lock file maintenance(pr [#311])
+- deps: update rust:1-slim-trixie docker digest to aab4239(pr [#306])
 
 ## [0.1.25] - 2026-10-04
 
@@ -763,6 +764,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#303]: https://github.com/jerus-org/jci-audit/pull/303
 [#304]: https://github.com/jerus-org/jci-audit/pull/304
 [#311]: https://github.com/jerus-org/jci-audit/pull/311
+[#306]: https://github.com/jerus-org/jci-audit/pull/306
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.25...HEAD
 [0.1.25]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
