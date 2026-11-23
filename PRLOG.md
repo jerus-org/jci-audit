@@ -32,6 +32,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 - deps: update rust crate uuid to 1.29.0(pr [#310])
 - deps: lock file maintenance(pr [#312])
 - deps: lock file maintenance(pr [#313])
+- audit: clear new advisories failing check(pr [#323])
 
 ## [0.1.25] - 2026-10-04
 
@@ -777,6 +778,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#310]: https://github.com/jerus-org/jci-audit/pull/310
 [#312]: https://github.com/jerus-org/jci-audit/pull/312
 [#313]: https://github.com/jerus-org/jci-audit/pull/313
+[#323]: https://github.com/jerus-org/jci-audit/pull/323
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.25...HEAD
 [0.1.25]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
