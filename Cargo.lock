@@ -1419,9 +1419,9 @@ dependencies = [
 
 [[package]]
 name = "pcu-release-assets"
-version = "0.1.7"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edf40e69e54905b506f23bde398bad177c35e18aa83f7833ba0252426a91c29b"
+checksum = "4394b782adce3fbc35850cca433186474c75e7babf04d2f40109f60fc7a7fc24"
 dependencies = [
  "gql_client",
  "http",
