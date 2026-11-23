@@ -9,6 +9,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 ### Changed
 
 - docs-name cargo-about in the tool description(pr [#293])
+- docs-adopt pcu agent rules and signing hook(pr [#324])
 
 ### Fixed
 
@@ -779,6 +780,7 @@ tracked in each crate's `CHANGELOG.md` (`<crate>-v<VERSION>` tags).
 [#312]: https://github.com/jerus-org/jci-audit/pull/312
 [#313]: https://github.com/jerus-org/jci-audit/pull/313
 [#323]: https://github.com/jerus-org/jci-audit/pull/323
+[#324]: https://github.com/jerus-org/jci-audit/pull/324
 [Unreleased]: https://github.com/jerus-org/jci-audit/compare/v0.1.25...HEAD
 [0.1.25]: https://github.com/jerus-org/jci-audit/compare/v0.1.24...v0.1.25
 [0.1.24]: https://github.com/jerus-org/jci-audit/compare/v0.1.23...v0.1.24
