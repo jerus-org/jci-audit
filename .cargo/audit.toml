@@ -4,4 +4,9 @@
 # ignores; this file lets `cargo audit` (run without cargo-deny) honour the
 # same ignore set.
 [advisories]
-ignore = []
+ignore = [
+    # RUSTSEC-2026-0543: chrono is unmaintained. Arrives via
+    "RUSTSEC-2026-0543",
+    # RUSTSEC-2026-0542: humantime is unmaintained. Dev-dependency only, via
+    "RUSTSEC-2026-0542",
+]
