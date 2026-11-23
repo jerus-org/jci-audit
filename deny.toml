@@ -10,7 +10,7 @@ yanked = "warn"
 # derived from this list via `jci-audit sync`. Each entry needs a written
 # justification, and `jci-audit prune` reports any entry that no longer fires.
 #
-# Empty, and worth keeping that way. RUSTSEC-2023-0071 (`rsa`, Marvin Attack)
+# Keep this list as short as possible. RUSTSEC-2023-0071 (`rsa`, Marvin Attack)
 # used to sit here: it arrived through pcu's OIDC/attestation surface, which
 # could not be excluded because pcu had no feature gates. jerus-org/pcu#1028
 # added them, and taking pcu with `default-features = false` removes `rsa`,
@@ -21,7 +21,23 @@ yanked = "warn"
 #
 # Not suppressing an advisory beats justifying it. An ignore says the risk was
 # reasoned about; an absent dependency says there is nothing to reason about.
-ignore = []
+#
+# Current entries are both "unmaintained" notices with no patched version, so
+# there is nothing to upgrade to; each is time-boxed to its upstream fix.
+ignore = [
+    # RUSTSEC-2026-0543: chrono is unmaintained. Arrives via
+    # pcu-release-assets -> octocrab -> chrono; jci-audit does not use chrono
+    # directly. The migration away from chrono is tracked in
+    # https://github.com/jerus-org/pcu/issues/1153. Remove this entry once pcu
+    # (and octocrab's chain) no longer pulls chrono in.
+    "RUSTSEC-2026-0543",
+    # RUSTSEC-2026-0542: humantime is unmaintained. Dev-dependency only, via
+    # trycmd -> humantime-serde -> humantime; it is not in the shipped binary.
+    # The deprecation follows from chrono's (humantime-serde builds on it), so
+    # the fix waits on a trycmd release that drops it. Remove this entry once
+    # trycmd no longer depends on humantime.
+    "RUSTSEC-2026-0542",
+]
 
 [licenses]
 # All licenses are denied unless explicitly allowed. Permissive licenses are
