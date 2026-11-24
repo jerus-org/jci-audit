@@ -19,7 +19,7 @@ clap = { version = "4.6.9", features = ["derive"] }
 clap-verbosity-flag = { version = "3.0.4", default-features = false, features = ["tracing"] }
 
 # Error Handling
-anyhow = "1.0.104"
+anyhow = "1.0.105"
 thiserror = "2.0.21"
 
 # Logging
